@@ -117,6 +117,15 @@ pub(crate) fn show_glyph<'a>(
         }
         TextRenderingMode::Clip => {
             clip_glyph(ctx, glyph, glyph_transform);
+            // Like `Invisible`: nothing is painted, but the device still learns about the
+            // glyph, so that it can for example be used for text extraction.
+            device.draw_glyph(
+                glyph,
+                ctx.get().ctm,
+                glyph_transform,
+                &get_paint(ctx, false),
+                &GlyphDrawMode::Invisible,
+            );
         }
         TextRenderingMode::FillAndClip => {
             clip_glyph(ctx, glyph, glyph_transform);

@@ -17,8 +17,8 @@ use crate::x_object::{
 };
 use hayro_syntax::content::TypedIter;
 use hayro_syntax::content::ops::TypedInstruction;
-use hayro_syntax::object::dict::keys::{ANNOTS, AP, F, MCID, N, OC, RECT};
-use hayro_syntax::object::{Array, Dict, Object, Rect, Stream, dict_or_stream};
+use hayro_syntax::object::dict::keys::{ANNOTS, AP, F, MCID, N, OC, POPUP, RECT, SUBTYPE};
+use hayro_syntax::object::{Array, Dict, Name, Object, Rect, Stream, dict_or_stream};
 use hayro_syntax::page::{Page, Resources};
 use kurbo::{Affine, Point, Shape};
 use smallvec::smallvec;
@@ -329,8 +329,18 @@ pub fn interpret_page<'a>(
         for annot in annot_arr.iter::<Dict<'_>>() {
             let flags = annot.get::<u32>(F).unwrap_or(0);
 
-            // Annotation should be hidden.
-            if flags & 2 != 0 {
+            // Annotation should be hidden (bit 2, Hidden) or not shown on screen (bit 6,
+            // NoView).
+            if flags & (2 | 32) != 0 {
+                continue;
+            }
+
+            // A pop-up only displays its parent's text in a window, and a link's appearance
+            // is at most a border; viewers do not draw either as page content.
+            if annot
+                .get::<Name<'_>>(SUBTYPE)
+                .is_some_and(|s| matches!(s.as_ref(), POPUP | b"Link"))
+            {
                 continue;
             }
 
