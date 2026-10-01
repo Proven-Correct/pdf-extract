@@ -2,11 +2,13 @@ use crate::reader::Reader;
 use alloc::vec;
 use alloc::vec::Vec;
 
-pub(crate) fn decode(data: &[u8]) -> Option<Vec<u8>> {
+/// Decode run-length data. Stops early once more than `limit` bytes have been
+/// produced (one run of up to 128 bytes past it); the caller rejects that.
+pub(crate) fn decode(data: &[u8], limit: usize) -> Option<Vec<u8>> {
     let mut reader = Reader::new(data);
     let mut decoded = vec![];
 
-    loop {
+    while decoded.len() <= limit {
         let length = reader.read_byte()?;
 
         match length {
@@ -37,7 +39,7 @@ mod tests {
     fn run_length() {
         let input = vec![4, 10, 11, 12, 13, 14, 253, 3, 128];
         assert_eq!(
-            decode(&input).unwrap(),
+            decode(&input, usize::MAX).unwrap(),
             vec![10, 11, 12, 13, 14, 3, 3, 3, 3]
         );
     }

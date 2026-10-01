@@ -2,6 +2,7 @@
 
 use crate::crypto::{DecryptionError, DecryptionTarget, Decryptor, get};
 use crate::data::Data;
+use crate::filter::{DecodeBudget, DecodeStats};
 use crate::metadata::Metadata;
 use crate::object::Name;
 use crate::object::ObjectIdentifier;
@@ -38,11 +39,15 @@ pub(crate) enum XRefError {
 }
 
 /// Parse the "root" xref from the PDF.
-pub(crate) fn root_xref(data: PdfData, password: &[u8]) -> Result<XRef, XRefError> {
+pub(crate) fn root_xref(
+    data: PdfData,
+    password: &[u8],
+    budget: Arc<DecodeBudget>,
+) -> Result<XRef, XRefError> {
     let mut xref_map = FxHashMap::default();
     let xref_pos = find_last_xref_pos(data.as_ref()).ok_or(XRefError::Unknown)?;
-    let trailer =
-        populate_xref_impl(data.as_ref(), xref_pos, &mut xref_map).ok_or(XRefError::Unknown)?;
+    let trailer = populate_xref_impl(data.as_ref(), xref_pos, &mut xref_map, &budget)
+        .ok_or(XRefError::Unknown)?;
 
     XRef::new(
         data.clone(),
@@ -50,18 +55,19 @@ pub(crate) fn root_xref(data: PdfData, password: &[u8]) -> Result<XRef, XRefErro
         XRefInput::TrailerDictData(trailer),
         false,
         password,
+        budget,
     )
 }
 
 /// Try to manually parse the PDF to build an xref table and trailer dictionary.
-pub(crate) fn fallback(data: PdfData, password: &[u8]) -> Option<XRef> {
+pub(crate) fn fallback(data: PdfData, password: &[u8], budget: Arc<DecodeBudget>) -> Option<XRef> {
     warn!("xref table was invalid, trying to manually build xref table");
-    let (xref_map, xref_input) = fallback_xref_map(&data, password);
+    let (xref_map, xref_input) = fallback_xref_map(&data, password, &budget);
 
     if let Some(xref_input) = xref_input {
         warn!("rebuild xref table with {} entries", xref_map.len());
 
-        XRef::new(data.clone(), xref_map, xref_input, true, password).ok()
+        XRef::new(data.clone(), xref_map, xref_input, true, password, budget).ok()
     } else {
         warn!("couldn't find trailer dictionary, failed to rebuild xref table");
 
@@ -69,8 +75,12 @@ pub(crate) fn fallback(data: PdfData, password: &[u8]) -> Option<XRef> {
     }
 }
 
-fn fallback_xref_map<'a>(data: &'a PdfData, password: &[u8]) -> (XrefMap, Option<XRefInput<'a>>) {
-    fallback_xref_map_inner(data, ReaderContext::dummy(), true, password)
+fn fallback_xref_map<'a>(
+    data: &'a PdfData,
+    password: &[u8],
+    budget: &Arc<DecodeBudget>,
+) -> (XrefMap, Option<XRefInput<'a>>) {
+    fallback_xref_map_inner(data, ReaderContext::dummy(), true, password, budget)
 }
 
 fn fallback_xref_map_inner<'a>(
@@ -78,6 +88,7 @@ fn fallback_xref_map_inner<'a>(
     mut dummy_ctx: ReaderContext<'a>,
     recurse: bool,
     password: &[u8],
+    budget: &Arc<DecodeBudget>,
 ) -> (XrefMap, Option<XRefInput<'a>>) {
     let mut xref_map = FxHashMap::default();
     let mut trailer_dicts = vec![];
@@ -132,7 +143,7 @@ fn fallback_xref_map_inner<'a>(
 
                         if let Some(stream) = old_r.read::<Stream<'_>>(&dummy_ctx)
                             && dict.get::<Name<'_>>(TYPE).as_deref() == Some(b"ObjStm")
-                            && let Some(data) = stream.decoded().ok()
+                            && let Some(data) = stream.decoded_with_budget(budget).ok()
                             && let Some(last_obj_num) = last_obj_num
                             && let Some(obj_stream) = ObjectStream::new(stream, &data, &dummy_ctx)
                         {
@@ -207,7 +218,7 @@ fn fallback_xref_map_inner<'a>(
                                 reader.read_with_context::<IndirectObject<Stream<'_>>>(&dummy_ctx)
                                 && {
                                     let stream = stream.get();
-                                    if let Some(data) = stream.decoded().ok()
+                                    if let Some(data) = stream.decoded_with_budget(budget).ok()
                                         && let Some(object_stream) =
                                             ObjectStream::new(stream, &data, &dummy_ctx)
                                         && let Some(obj) = object_stream.get::<Dict<'_>>(*idx)
@@ -248,9 +259,10 @@ fn fallback_xref_map_inner<'a>(
             XRefInput::TrailerDictData(trailer_dict.as_ref().map(|d| d.data()).unwrap()),
             true,
             password,
+            budget.clone(),
         ) {
             let ctx = ReaderContext::new(&xref, false);
-            let (patched_map, _) = fallback_xref_map_inner(data, ctx, false, password);
+            let (patched_map, _) = fallback_xref_map_inner(data, ctx, false, password, budget);
             xref_map = patched_map;
         }
     }
@@ -280,6 +292,7 @@ impl XRef {
         input: XRefInput<'_>,
         repaired: bool,
         password: &[u8],
+        decode_budget: Arc<DecodeBudget>,
     ) -> Result<Self, XRefError> {
         // This is a bit hacky, but the problem is we can't read the resolved trailer dictionary
         // before we actually created the xref struct. So we first create it using dummy data
@@ -294,6 +307,7 @@ impl XRef {
             metadata: Arc::new(Metadata::default()),
             trailer_data,
             password: password.to_vec(),
+            decode_budget,
         })));
 
         // We read the trailer twice, once to determine the encryption used and then a second
@@ -395,6 +409,21 @@ impl XRef {
         &DUMMY_XREF
     }
 
+    /// The document's decode budget; `None` for the dummy xref, whose
+    /// streams are not limited.
+    pub(crate) fn decode_budget(&self) -> Option<&DecodeBudget> {
+        match &self.0 {
+            Inner::Dummy => None,
+            Inner::Some(r) => Some(&r.decode_budget),
+        }
+    }
+
+    pub(crate) fn decode_stats(&self) -> DecodeStats {
+        self.decode_budget()
+            .map(DecodeBudget::stats)
+            .unwrap_or_default()
+    }
+
     pub(crate) fn len(&self) -> usize {
         match &self.0 {
             Inner::Dummy => 0,
@@ -485,7 +514,7 @@ impl XRef {
         let mut locked = r.map.try_put().unwrap();
         assert!(!locked.repaired);
 
-        let (xref_map, _) = fallback_xref_map(r.data.get(), &r.password);
+        let (xref_map, _) = fallback_xref_map(r.data.get(), &r.password, &r.decode_budget);
         locked.xref_map = xref_map;
         locked.repaired = true;
     }
@@ -681,6 +710,7 @@ struct SomeRepr {
     has_ocgs: bool,
     password: Vec<u8>,
     trailer_data: TrailerData,
+    decode_budget: Arc<DecodeBudget>,
 }
 
 #[derive(Debug, Clone)]
@@ -729,9 +759,14 @@ impl XRefEntry {
     }
 }
 
-fn populate_xref_impl<'a>(data: &'a [u8], pos: usize, xref_map: &mut XrefMap) -> Option<&'a [u8]> {
+fn populate_xref_impl<'a>(
+    data: &'a [u8],
+    pos: usize,
+    xref_map: &mut XrefMap,
+    budget: &DecodeBudget,
+) -> Option<&'a [u8]> {
     let mut visited = BTreeSet::new();
-    populate_xref_impl_inner(data, pos, xref_map, &mut visited)
+    populate_xref_impl_inner(data, pos, xref_map, &mut visited, budget)
 }
 
 /// Maximum number of allowed xref `Prev` pointers before we abort.
@@ -742,6 +777,7 @@ fn populate_xref_impl_inner<'a>(
     pos: usize,
     xref_map: &mut XrefMap,
     visited: &mut BTreeSet<usize>,
+    budget: &DecodeBudget,
 ) -> Option<&'a [u8]> {
     if !visited.insert(pos) {
         warn!("circular xref PREV chain detected at offset {}", pos);
@@ -769,9 +805,9 @@ fn populate_xref_impl_inner<'a>(
         .read_without_context::<ObjectIdentifier>()
         .is_some()
     {
-        populate_from_xref_stream(data, &mut r2, xref_map, visited)
+        populate_from_xref_stream(data, &mut r2, xref_map, visited, budget)
     } else {
-        populate_from_xref_table(data, &mut r2, xref_map, visited)
+        populate_from_xref_table(data, &mut r2, xref_map, visited, budget)
     }
 }
 
@@ -798,6 +834,7 @@ fn populate_from_xref_table<'a>(
     reader: &mut Reader<'a>,
     insert_map: &mut XrefMap,
     visited: &mut BTreeSet<usize>,
+    budget: &DecodeBudget,
 ) -> Option<&'a [u8]> {
     let trailer = {
         let mut reader = reader.clone();
@@ -812,13 +849,13 @@ fn populate_from_xref_table<'a>(
 
     if let Some(prev) = trailer.get::<i32>(PREV) {
         // First insert the entries from any previous xref tables.
-        populate_xref_impl_inner(data, prev as usize, insert_map, visited)?;
+        populate_xref_impl_inner(data, prev as usize, insert_map, visited, budget)?;
     }
 
     // In hybrid files, entries in `XRefStm` should have higher priority, therefore we insert them
     // after looking at `PREV`.
     if let Some(xref_stm) = trailer.get::<i32>(XREF_STM) {
-        populate_xref_impl_inner(data, xref_stm as usize, insert_map, visited)?;
+        populate_xref_impl_inner(data, xref_stm as usize, insert_map, visited, budget)?;
     }
 
     while let Some(header) = reader.read_without_context::<SubsectionHeader>() {
@@ -851,6 +888,7 @@ fn populate_from_xref_stream<'a>(
     reader: &mut Reader<'a>,
     insert_map: &mut XrefMap,
     visited: &mut BTreeSet<usize>,
+    budget: &DecodeBudget,
 ) -> Option<&'a [u8]> {
     let stream = reader
         .read_with_context::<IndirectObject<Stream<'_>>>(&ReaderContext::dummy())?
@@ -858,7 +896,7 @@ fn populate_from_xref_stream<'a>(
 
     if let Some(prev) = stream.dict().get::<i32>(PREV) {
         // First insert the entries from any previous xref tables.
-        let _ = populate_xref_impl_inner(data, prev as usize, insert_map, visited)?;
+        let _ = populate_xref_impl_inner(data, prev as usize, insert_map, visited, budget)?;
     }
 
     let size = stream.dict().get::<u32>(SIZE)?;
@@ -876,7 +914,9 @@ fn populate_from_xref_stream<'a>(
         warn!("first field in xref stream was longer than 1");
     }
 
-    let xref_data = stream.decoded().ok()?;
+    // The stream's context is the dummy one (there is no `XRef` yet), so the
+    // document's limits are passed explicitly.
+    let xref_data = stream.decoded_with_budget(budget).ok()?;
     let mut xref_reader = Reader::new(xref_data.as_ref());
 
     if let Some(arr) = stream.dict().get::<Array<'_>>(INDEX) {
@@ -1136,7 +1176,8 @@ mod tests {
 
         let mut xref_map = FxHashMap::default();
         let xref_pos = find_last_xref_pos(pdf.as_ref()).unwrap();
-        let _result = populate_xref_impl(pdf.as_ref(), xref_pos, &mut xref_map);
+        let budget = DecodeBudget::new(crate::DecodeLimits::default());
+        let _result = populate_xref_impl(pdf.as_ref(), xref_pos, &mut xref_map, &budget);
     }
 
     #[test]

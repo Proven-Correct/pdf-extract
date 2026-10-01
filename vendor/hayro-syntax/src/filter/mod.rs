@@ -17,7 +17,76 @@ use crate::object::Dict;
 use crate::object::Name;
 use crate::object::dict::keys::*;
 use crate::object::stream::{DecodeFailure, FilterResult, ImageDecodeParams};
+use alloc::vec::Vec;
 use core::ops::Deref;
+use core::sync::atomic::{AtomicU64, Ordering};
+
+/// Limits on the output of stream filters, set per document with
+/// [`Pdf::new_with_options`](crate::Pdf::new_with_options).
+///
+/// A compressed stream can expand by a factor of a thousand or more, so a
+/// small file can demand gigabytes when it is decoded. The limit applies to
+/// each filter of a stream's filter chain separately, and covers the flate,
+/// LZW, run-length, ASCII hex and ASCII base-85 filters (image codecs are not
+/// limited). A stream that would exceed it fails to decode with
+/// [`DecodeFailure::LimitExceeded`], which hayro treats like any other stream
+/// it cannot decode, and is counted in [`DecodeStats`].
+///
+/// Streams read without a document, such as objects parsed with
+/// [`FromBytes`](crate::object::FromBytes) or inline images in a content
+/// stream, are not limited.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct DecodeLimits {
+    /// The maximum number of bytes one filter may produce for one stream.
+    /// The default, `u64::MAX`, means no limit.
+    pub max_stream_decoded_bytes: u64,
+}
+
+impl Default for DecodeLimits {
+    fn default() -> Self {
+        Self {
+            max_stream_decoded_bytes: u64::MAX,
+        }
+    }
+}
+
+/// What has happened while decoding a document's streams so far; see
+/// [`Pdf::decode_stats`](crate::Pdf::decode_stats).
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
+pub struct DecodeStats {
+    /// How many stream decodes failed because a filter would have produced
+    /// more than [`DecodeLimits::max_stream_decoded_bytes`]. hayro does not
+    /// cache decoded streams, so a stream decoded twice counts twice.
+    pub streams_over_limit: u64,
+}
+
+/// A document's decode limits and the counters behind its [`DecodeStats`].
+/// Shared by everything that decodes the document's streams, including the
+/// xref streams read before the document's `XRef` exists.
+#[derive(Debug)]
+pub(crate) struct DecodeBudget {
+    pub(crate) limits: DecodeLimits,
+    streams_over_limit: AtomicU64,
+}
+
+impl DecodeBudget {
+    pub(crate) fn new(limits: DecodeLimits) -> Self {
+        Self {
+            limits,
+            streams_over_limit: AtomicU64::new(0),
+        }
+    }
+
+    pub(crate) fn note_over_limit(&self) {
+        self.streams_over_limit.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn stats(&self) -> DecodeStats {
+        DecodeStats {
+            streams_over_limit: self.streams_over_limit.load(Ordering::Relaxed),
+        }
+    }
+}
 
 /// A data filter.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -80,28 +149,25 @@ impl Filter {
         }
     }
 
+    /// Apply the filter. `limit` is the maximum output length of the
+    /// non-image filters (see [`DecodeLimits`]).
     pub(crate) fn apply(
         &self,
         data: &[u8],
         params: &Dict<'_>,
         #[cfg_attr(not(feature = "images"), allow(unused))] image_params: &ImageDecodeParams,
+        limit: u64,
     ) -> Result<FilterResult<'static>, DecodeFailure> {
+        let limit = usize::try_from(limit).unwrap_or(usize::MAX);
+
         let res = match self {
-            Self::AsciiHexDecode => ascii_hex::decode(data)
-                .map(FilterResult::from_data)
-                .ok_or(DecodeFailure::StreamDecode),
-            Self::Ascii85Decode => ascii_85::decode(data)
-                .map(FilterResult::from_data)
-                .ok_or(DecodeFailure::StreamDecode),
-            Self::RunLengthDecode => run_length::decode(data)
-                .map(FilterResult::from_data)
-                .ok_or(DecodeFailure::StreamDecode),
-            Self::LzwDecode => lzw_flate::lzw::decode(data, params)
-                .map(FilterResult::from_data)
-                .ok_or(DecodeFailure::StreamDecode),
-            Self::FlateDecode => lzw_flate::flate::decode(data, params)
-                .map(FilterResult::from_data)
-                .ok_or(DecodeFailure::StreamDecode),
+            // ASCII hex output is at most half its input, so the decoder needs
+            // no early stop; `limited` still enforces the limit.
+            Self::AsciiHexDecode => limited(ascii_hex::decode(data), limit),
+            Self::Ascii85Decode => limited(ascii_85::decode(data, limit), limit),
+            Self::RunLengthDecode => limited(run_length::decode(data, limit), limit),
+            Self::LzwDecode => limited(lzw_flate::lzw::decode(data, params, limit), limit),
+            Self::FlateDecode => limited(lzw_flate::flate::decode(data, params, limit), limit),
             #[cfg(feature = "images")]
             Self::DctDecode => {
                 dct::decode(data, params, image_params).ok_or(DecodeFailure::ImageDecode)
@@ -129,5 +195,20 @@ impl Filter {
         }
 
         res
+    }
+}
+
+/// Turn a decoder's output into a filter result. Decoders stop as soon as
+/// their output is longer than `limit`, so longer output means the limit was
+/// hit, not that the data is broken.
+fn limited(decoded: Option<Vec<u8>>, limit: usize) -> Result<FilterResult<'static>, DecodeFailure> {
+    match decoded {
+        Some(data) if data.len() > limit => {
+            warn!("decoded stream exceeds the limit of {limit} bytes");
+
+            Err(DecodeFailure::LimitExceeded)
+        }
+        Some(data) => Ok(FilterResult::from_data(data)),
+        None => Err(DecodeFailure::StreamDecode),
     }
 }

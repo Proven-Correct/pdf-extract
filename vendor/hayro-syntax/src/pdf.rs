@@ -1,6 +1,7 @@
 //! The starting point for reading PDF files.
 
 use crate::PdfData;
+use crate::filter::{DecodeBudget, DecodeLimits, DecodeStats};
 use crate::object::Object;
 use crate::page::Pages;
 use crate::page::cached::CachedPages;
@@ -44,14 +45,27 @@ impl Pdf {
         data: impl Into<PdfData>,
         password: &str,
     ) -> Result<Self, LoadPdfError> {
+        Self::new_with_options(data, password, DecodeLimits::default())
+    }
+
+    /// Try to read the given PDF file with a password, decoding its streams
+    /// within `limits`.
+    ///
+    /// Returns `Err` if it was unable to read it or if the password is incorrect.
+    pub fn new_with_options(
+        data: impl Into<PdfData>,
+        password: &str,
+        limits: DecodeLimits,
+    ) -> Result<Self, LoadPdfError> {
         let data = data.into();
         let password = password.as_bytes();
         let version = find_version(data.as_ref()).unwrap_or(PdfVersion::Pdf10);
-        let xref = match root_xref(data.clone(), password) {
+        let budget = Arc::new(DecodeBudget::new(limits));
+        let xref = match root_xref(data.clone(), password, budget.clone()) {
             Ok(x) => x,
             Err(e) => match e {
                 XRefError::Unknown => {
-                    fallback(data.clone(), password).ok_or(LoadPdfError::Invalid)?
+                    fallback(data.clone(), password, budget).ok_or(LoadPdfError::Invalid)?
                 }
                 XRefError::Encryption(e) => return Err(LoadPdfError::Decryption(e)),
             },
@@ -104,6 +118,12 @@ impl Pdf {
     /// Return the metadata in the document information dictionary of the document.
     pub fn metadata(&self) -> &Metadata {
         self.xref.metadata()
+    }
+
+    /// Return what has happened so far while decoding the document's streams,
+    /// such as how many hit the [`DecodeLimits`] it was opened with.
+    pub fn decode_stats(&self) -> DecodeStats {
+        self.xref.decode_stats()
     }
 }
 

@@ -4,7 +4,9 @@ use crate::reader::Reader;
 use crate::trivia::is_white_space_character;
 use alloc::vec::Vec;
 
-pub(crate) fn decode(data: &[u8]) -> Option<Vec<u8>> {
+/// Decode ASCII base-85 data. Stops early once more than `limit` bytes have
+/// been produced (at most four past it); the caller rejects that.
+pub(crate) fn decode(data: &[u8], limit: usize) -> Option<Vec<u8>> {
     const POW_85: [u32; 5] = [52200625, 614125, 7225, 85, 1];
 
     let mut reader = Reader::new(data);
@@ -55,10 +57,15 @@ pub(crate) fn decode(data: &[u8]) -> Option<Vec<u8>> {
         Some(())
     };
 
-    let mut decoded = Vec::with_capacity(data.len() * 4 / 5);
+    let mut decoded = Vec::with_capacity((data.len() * 4 / 5).min(limit));
     let mut group = Vec::with_capacity(5);
 
     loop {
+        // `z` makes the output up to four times larger than the input.
+        if decoded.len() > limit {
+            return Some(decoded);
+        }
+
         let Some(b) = read_byte() else {
             // Be lenient and accept what we have (see PDFBOX-5910).
             flush_group(&mut group, &mut decoded)?;

@@ -1,7 +1,7 @@
 //! Streams.
 
 use crate::crypto::DecryptionTarget;
-use crate::filter::Filter;
+use crate::filter::{DecodeBudget, Filter};
 use crate::object;
 use crate::object::Dict;
 use crate::object::Name;
@@ -163,10 +163,32 @@ impl<'a> Stream<'a> {
 
     /// Return the decoded data of the stream, and return image metadata
     /// if available.
+    ///
+    /// Decoding is subject to the document's [`DecodeLimits`](crate::DecodeLimits).
     pub fn decoded_image(
         &self,
         image_params: &ImageDecodeParams,
     ) -> Result<FilterResult<'a>, DecodeFailure> {
+        self.decoded_image_with(image_params, self.dict.ctx().xref().decode_budget())
+    }
+
+    /// [`Self::decoded`] under an explicit budget, for streams that are read
+    /// before their document's `XRef` exists (xref streams), so that their
+    /// context cannot supply it.
+    pub(crate) fn decoded_with_budget(
+        &self,
+        budget: &DecodeBudget,
+    ) -> Result<Cow<'a, [u8]>, DecodeFailure> {
+        self.decoded_image_with(&ImageDecodeParams::default(), Some(budget))
+            .map(|r| r.data)
+    }
+
+    fn decoded_image_with(
+        &self,
+        image_params: &ImageDecodeParams,
+        budget: Option<&DecodeBudget>,
+    ) -> Result<FilterResult<'a>, DecodeFailure> {
+        let limit = budget.map_or(u64::MAX, |b| b.limits.max_stream_decoded_bytes);
         let data = self.raw_data();
         let filters_and_params = self.filters_and_params();
 
@@ -177,11 +199,18 @@ impl<'a> Stream<'a> {
             .iter()
             .zip(filters_and_params.params.iter())
         {
-            let new = filter.apply(
-                current.as_ref().map(|c| c.data.as_ref()).unwrap_or(&data),
-                params,
-                image_params,
-            )?;
+            let new = filter
+                .apply(
+                    current.as_ref().map(|c| c.data.as_ref()).unwrap_or(&data),
+                    params,
+                    image_params,
+                    limit,
+                )
+                .inspect_err(|e| {
+                    if let (DecodeFailure::LimitExceeded, Some(budget)) = (e, budget) {
+                        budget.note_over_limit();
+                    }
+                })?;
             current = Some(new);
         }
 
@@ -240,6 +269,9 @@ pub enum DecodeFailure {
     Decryption,
     /// An unknown failure occurred.
     Unknown,
+    /// A filter would have produced more data than the document's
+    /// [`DecodeLimits`](crate::DecodeLimits) allow.
+    LimitExceeded,
 }
 
 /// An image color space.
