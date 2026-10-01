@@ -5,7 +5,7 @@ use crate::font::{Font, StandardFont};
 use crate::interpret::state::{ClipType, State, TextStateFont};
 use crate::ocg::OcgState;
 use crate::util::{BezPathExt, Float64Ext};
-use crate::{ClipPath, Device, FillRule, InterpreterSettings, StrokeProps};
+use crate::{ClipPath, Device, FillRule, InterpretStats, InterpreterSettings, StrokeProps};
 use hayro_syntax::content::ops::Transform;
 use hayro_syntax::object::Dict;
 use hayro_syntax::object::Name;
@@ -287,9 +287,33 @@ impl<'a> Context<'a> {
         self.nesting_depth
     }
 
+    /// Account for one operator against the budget in the settings.
+    ///
+    /// Returns `false` once the budget is exhausted.
+    pub(crate) fn budget_tick(&self) -> bool {
+        self.settings.budget.tick()
+    }
+
+    /// The counters of the [`InterpretBudget`] in the settings: operators interpreted, whether
+    /// and why interpretation was cut short, and how often nested content was skipped.
+    ///
+    /// The counters are shared with every clone of the budget, so they cover all
+    /// interpretation done with these settings, nested contexts included.
+    ///
+    /// [`InterpretBudget`]: crate::InterpretBudget
+    pub fn stats(&self) -> InterpretStats {
+        self.settings.budget.stats()
+    }
+
+    /// Whether interpretation was cut short because the budget was exhausted. When this
+    /// returns `true`, the device has received only part of the content.
+    pub fn budget_exhausted(&self) -> bool {
+        self.stats().exhausted.is_some()
+    }
+
     pub(crate) fn begin_nested_interpretation(&mut self) -> bool {
         if self.nesting_depth >= MAX_NESTED_INTERPRETATION_DEPTH {
-            warn!("interpreter nesting depth exceeded");
+            self.settings.budget.note_nesting_cap_hit();
 
             return false;
         }

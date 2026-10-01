@@ -106,7 +106,9 @@ pub(crate) fn draw_form_xobject<'a, 'b>(
     context: &mut Context<'a>,
     device: &mut impl Device<'a>,
 ) {
-    if !context.ocg_state.is_visible() {
+    // With an exhausted budget, the form's content would not be interpreted anyway; returning
+    // here also keeps its clip path and transparency group from reaching the device.
+    if !context.ocg_state.is_visible() || context.budget_exhausted() {
         return;
     }
 

@@ -110,6 +110,15 @@ impl<'a> Type3<'a> {
         paint: &Paint<'a>,
         device: &mut impl Device<'a>,
     ) -> Option<()> {
+        // Devices call this after the interpreter may have run out of budget; return before
+        // decoding the glyph procedure. A glyph procedure can show text in its own font, so
+        // the nesting cap is what bounds the recursion.
+        if glyph.settings.budget.is_exhausted()
+            || !glyph.settings.budget.may_nest(glyph.nesting_depth)
+        {
+            return None;
+        }
+
         let mut state = glyph.state.clone();
         let root_transform =
             transform * glyph_transform * self.matrix * Affine::scale(UNITS_PER_EM as f64);

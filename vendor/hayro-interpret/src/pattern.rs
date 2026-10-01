@@ -228,6 +228,14 @@ impl<'a> TilingPattern<'a> {
         initial_transform: Affine,
         is_stroke: bool,
     ) -> Option<()> {
+        // Devices call this after the interpreter may have run out of budget; return before
+        // decoding the pattern's content stream. A pattern can fill with itself, so the
+        // nesting cap is what bounds the recursion.
+        if self.settings.budget.is_exhausted() || !self.settings.budget.may_nest(self.nesting_depth)
+        {
+            return None;
+        }
+
         let state = State::new(initial_transform);
 
         let mut context = Context::new_with(

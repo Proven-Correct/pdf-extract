@@ -148,6 +148,13 @@ impl<'a> SoftMask<'a> {
 
     /// Interpret the contents of the mask into the given device.
     pub fn interpret(&self, device: &mut impl Device<'a>) {
+        // Devices call this after the interpreter may have run out of budget. A mask's group
+        // can install the same mask again, so the nesting cap is what bounds the recursion.
+        let budget = &self.0.settings.budget;
+        if budget.is_exhausted() || !budget.may_nest(self.0.nesting_depth) {
+            return;
+        }
+
         let state = State::new(self.0.root_transform);
         let mut ctx = Context::new_with(
             self.0.root_transform,

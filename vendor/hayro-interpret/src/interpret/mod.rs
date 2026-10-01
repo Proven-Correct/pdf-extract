@@ -1,6 +1,6 @@
 use crate::FillRule;
 use crate::color::ColorSpace;
-use crate::context::Context;
+use crate::context::{Context, MAX_NESTED_INTERPRETATION_DEPTH};
 use crate::convert::{convert_line_cap, convert_line_join};
 use crate::device::Device;
 use crate::font::{Font, FontData, FontQuery, StandardFont};
@@ -23,6 +23,8 @@ use hayro_syntax::page::{Page, Resources};
 use kurbo::{Affine, Point, Shape};
 use smallvec::smallvec;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, AtomicU32, AtomicU64, Ordering};
+use std::time::Instant;
 
 pub(crate) mod path;
 pub(crate) mod state;
@@ -101,6 +103,14 @@ pub struct InterpreterSettings {
     /// Note that this feature is currently not fully implemented yet, so some
     /// annotations might be missing.
     pub render_annotations: bool,
+    /// Limits on the work done while interpreting, and the counters behind them.
+    ///
+    /// Every content-stream operator counts against the budget, including the operators of
+    /// Form XObjects, Type3 glyph procedures, tiling patterns and soft masks. Once the budget
+    /// is exhausted, interpretation stops at the next operator and nothing further is drawn;
+    /// use [`Context::stats`] to find out afterwards whether the output is complete. The
+    /// default budget has no limits and only counts.
+    pub budget: InterpretBudget,
 }
 
 impl Default for InterpreterSettings {
@@ -119,6 +129,7 @@ impl Default for InterpreterSettings {
             cmap_resolver: Arc::new(|_| None),
             warning_sink: Arc::new(|_| {}),
             render_annotations: true,
+            budget: InterpretBudget::default(),
         }
     }
 }
@@ -132,6 +143,164 @@ pub enum InterpreterWarning {
     UnsupportedFont,
     /// An image failed to decode.
     ImageDecodeFailure,
+}
+
+/// Limits on the work an interpreter may do, for processing untrusted input.
+///
+/// The budget counts operators: a content stream that is small on disk can still be very
+/// expensive to interpret, for example through Form XObjects that draw each other many times,
+/// so neither file size nor nesting depth bounds the time spent on a page. The operator limit
+/// bounds work; only the deadline bounds wall-clock time.
+///
+/// Clones share one set of counters. Nested interpretations (Type3 glyphs, patterns, soft
+/// masks) run in their own [`Context`] built from a clone of the [`InterpreterSettings`], and
+/// sharing is what makes their operators count against the same limit. As a consequence, a
+/// budget should be created afresh for each unit of work it is meant to limit (typically one
+/// page).
+#[derive(Clone, Debug)]
+pub struct InterpretBudget {
+    /// The maximum number of operators to interpret. Interpretation stops before the
+    /// operator that would exceed it.
+    pub max_ops: Option<u64>,
+    /// A point in time after which interpretation stops.
+    pub deadline: Option<Instant>,
+    /// How many operators to interpret between two checks of the deadline, since reading the
+    /// clock for every operator would be needlessly expensive. A value of 0 is treated as 1.
+    pub check_interval: u32,
+    state: Arc<BudgetState>,
+}
+
+impl Default for InterpretBudget {
+    /// A budget without limits, which only counts.
+    fn default() -> Self {
+        Self::new(None, None)
+    }
+}
+
+/// The reason why an [`InterpretBudget`] was exhausted.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum BudgetExhaustion {
+    /// The operator limit was reached.
+    Ops,
+    /// The deadline passed.
+    Deadline,
+}
+
+/// What happened during interpretation, as recorded by an [`InterpretBudget`].
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct InterpretStats {
+    /// The number of operators counted. When the operator limit was hit, this includes the
+    /// operator that was refused.
+    pub ops: u64,
+    /// Why interpretation was cut short, if it was.
+    pub exhausted: Option<BudgetExhaustion>,
+    /// How often nested content (a Form XObject, Type3 glyph, tiling pattern or soft mask)
+    /// was skipped because it exceeded the maximum nesting depth.
+    pub nesting_cap_hits: u32,
+}
+
+// Atomics rather than `Cell`s so that `InterpreterSettings` stays `Send + Sync`. A budget is
+// only ever used by one interpretation at a time, so relaxed ordering is sufficient.
+#[derive(Debug, Default)]
+struct BudgetState {
+    ops: AtomicU64,
+    // 0 while the budget is available, otherwise one of the `EXHAUSTED_*` codes below.
+    exhausted: AtomicU8,
+    nesting_cap_hits: AtomicU32,
+}
+
+const EXHAUSTED_OPS: u8 = 1;
+const EXHAUSTED_DEADLINE: u8 = 2;
+
+impl InterpretBudget {
+    /// The default number of operators between two deadline checks.
+    pub const DEFAULT_CHECK_INTERVAL: u32 = 4096;
+
+    /// Create a new budget with its own counters.
+    pub fn new(max_ops: Option<u64>, deadline: Option<Instant>) -> Self {
+        Self {
+            max_ops,
+            deadline,
+            check_interval: Self::DEFAULT_CHECK_INTERVAL,
+            state: Arc::new(BudgetState::default()),
+        }
+    }
+
+    /// The counters recorded so far.
+    pub fn stats(&self) -> InterpretStats {
+        InterpretStats {
+            ops: self.state.ops.load(Ordering::Relaxed),
+            exhausted: self.exhaustion(),
+            nesting_cap_hits: self.state.nesting_cap_hits.load(Ordering::Relaxed),
+        }
+    }
+
+    fn exhaustion(&self) -> Option<BudgetExhaustion> {
+        match self.state.exhausted.load(Ordering::Relaxed) {
+            EXHAUSTED_OPS => Some(BudgetExhaustion::Ops),
+            EXHAUSTED_DEADLINE => Some(BudgetExhaustion::Deadline),
+            _ => None,
+        }
+    }
+
+    /// Whether the budget has been exhausted.
+    pub(crate) fn is_exhausted(&self) -> bool {
+        self.exhaustion().is_some()
+    }
+
+    /// Account for one operator. Returns `false` if the operator must not be interpreted.
+    ///
+    /// Once exhausted, the budget stays exhausted and the counter no longer moves, so the
+    /// recorded reason is the one that stopped interpretation.
+    pub(crate) fn tick(&self) -> bool {
+        if self.is_exhausted() {
+            return false;
+        }
+
+        let ops = self.state.ops.fetch_add(1, Ordering::Relaxed) + 1;
+
+        if self.max_ops.is_some_and(|max| ops > max) {
+            self.exhaust(EXHAUSTED_OPS);
+            return false;
+        }
+
+        if let Some(deadline) = self.deadline
+            && ops % u64::from(self.check_interval.max(1)) == 0
+            && Instant::now() >= deadline
+        {
+            self.exhaust(EXHAUSTED_DEADLINE);
+            return false;
+        }
+
+        true
+    }
+
+    fn exhaust(&self, reason: u8) {
+        warn!("interpreter budget exhausted");
+        self.state.exhausted.store(reason, Ordering::Relaxed);
+    }
+
+    /// Record that nested content was skipped at the nesting cap.
+    pub(crate) fn note_nesting_cap_hit(&self) {
+        warn!("interpreter nesting depth exceeded");
+        self.state.nesting_cap_hits.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Check whether nested content at `nesting_depth` (the depth of the context it would be
+    /// interpreted in) may run, and count a hit if not.
+    ///
+    /// Type3 glyphs, tiling patterns and soft masks record the depth of the context that
+    /// created them plus one, but interpret in a fresh context, so they cannot go through
+    /// `Context::begin_nested_interpretation`. This applies the same cap: content at depth
+    /// `MAX_NESTED_INTERPRETATION_DEPTH` still runs, as a form at that depth does.
+    pub(crate) fn may_nest(&self, nesting_depth: u32) -> bool {
+        if nesting_depth > MAX_NESTED_INTERPRETATION_DEPTH {
+            self.note_nesting_cap_hit();
+            return false;
+        }
+
+        true
+    }
 }
 
 /// interpret the contents of the page and render them into the device.
@@ -227,6 +396,13 @@ pub fn interpret<'a>(
     context.save_state();
 
     while let Some(op) = ops.next() {
+        // Stop as soon as the budget runs out. The flag is shared with every enclosing
+        // interpretation, so each of them stops at its next operator as well, while the
+        // cleanup below still restores the graphics states pushed so far.
+        if !context.budget_tick() {
+            break;
+        }
+
         match op {
             TypedInstruction::SaveState(_) => context.save_state(),
             TypedInstruction::StrokeColorDeviceRgb(s) => {
