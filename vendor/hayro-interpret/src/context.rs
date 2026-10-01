@@ -9,6 +9,7 @@ use crate::{ClipPath, Device, FillRule, InterpretStats, InterpreterSettings, Str
 use hayro_syntax::content::ops::Transform;
 use hayro_syntax::object::Dict;
 use hayro_syntax::object::Name;
+use hayro_syntax::object::ObjectIdentifier;
 use hayro_syntax::page::Resources;
 use hayro_syntax::xref::XRef;
 use kurbo::{Affine, BezPath, PathEl, Point, Rect, Shape};
@@ -59,6 +60,10 @@ pub struct Context<'a> {
     pub(crate) xref: &'a XRef,
     pub(crate) ocg_state: OcgState,
     nesting_depth: u32,
+    // The Form XObjects currently being drawn, innermost last. Forms are always indirect
+    // objects, so the identifier tells a form that draws itself (directly or through other
+    // forms) from one that is merely drawn several times.
+    form_stack: Vec<ObjectIdentifier>,
 }
 
 impl<'a> Context<'a> {
@@ -104,6 +109,7 @@ impl<'a> Context<'a> {
             interpreter_cache: cache.clone(),
             ocg_state,
             nesting_depth,
+            form_stack: Vec::new(),
         }
     }
 
@@ -321,6 +327,19 @@ impl<'a> Context<'a> {
         self.nesting_depth += 1;
 
         true
+    }
+
+    /// Whether the form `id` is currently being drawn.
+    pub(crate) fn is_drawing_form(&self, id: ObjectIdentifier) -> bool {
+        self.form_stack.contains(&id)
+    }
+
+    pub(crate) fn push_form(&mut self, id: ObjectIdentifier) {
+        self.form_stack.push(id);
+    }
+
+    pub(crate) fn pop_form(&mut self) {
+        self.form_stack.pop();
     }
 
     pub(crate) fn end_nested_interpretation(&mut self) {

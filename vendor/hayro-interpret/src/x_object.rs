@@ -112,6 +112,16 @@ pub(crate) fn draw_form_xobject<'a, 'b>(
         return;
     }
 
+    // A form that draws itself (directly or through other forms) would otherwise recurse
+    // until the nesting cap, repeating its content 50 times; skip it instead, as other PDF
+    // readers do. A form that is not an indirect object (only possible in a malformed file)
+    // cannot be tracked; the nesting cap still bounds it.
+    let form_id = x_object.dict.obj_id();
+    if form_id.is_some_and(|id| context.is_drawing_form(id)) {
+        context.settings.budget.note_form_cycle_hit();
+        return;
+    }
+
     if !context.begin_nested_interpretation() {
         return;
     }
@@ -158,12 +168,20 @@ pub(crate) fn draw_form_xobject<'a, 'b>(
         fill: FillRule::NonZero,
     });
 
+    if let Some(id) = form_id {
+        context.push_form(id);
+    }
+
     interpret(
         iter,
         &Resources::from_parent(x_object.resources.clone(), resources.clone()),
         context,
         device,
     );
+
+    if form_id.is_some() {
+        context.pop_form();
+    }
 
     device.pop_clip_path();
 

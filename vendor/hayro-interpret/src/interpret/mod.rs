@@ -197,6 +197,9 @@ pub struct InterpretStats {
     /// How often nested content (a Form XObject, Type3 glyph, tiling pattern or soft mask)
     /// was skipped because it exceeded the maximum nesting depth.
     pub nesting_cap_hits: u32,
+    /// How often a Form XObject was skipped because it was already being drawn, i.e. it
+    /// (directly or indirectly) draws itself.
+    pub form_cycle_hits: u32,
 }
 
 // Atomics rather than `Cell`s so that `InterpreterSettings` stays `Send + Sync`. A budget is
@@ -207,6 +210,7 @@ struct BudgetState {
     // 0 while the budget is available, otherwise one of the `EXHAUSTED_*` codes below.
     exhausted: AtomicU8,
     nesting_cap_hits: AtomicU32,
+    form_cycle_hits: AtomicU32,
 }
 
 const EXHAUSTED_OPS: u8 = 1;
@@ -232,6 +236,7 @@ impl InterpretBudget {
             ops: self.state.ops.load(Ordering::Relaxed),
             exhausted: self.exhaustion(),
             nesting_cap_hits: self.state.nesting_cap_hits.load(Ordering::Relaxed),
+            form_cycle_hits: self.state.form_cycle_hits.load(Ordering::Relaxed),
         }
     }
 
@@ -284,6 +289,12 @@ impl InterpretBudget {
     pub(crate) fn note_nesting_cap_hit(&self) {
         warn!("interpreter nesting depth exceeded");
         self.state.nesting_cap_hits.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record that a Form XObject was skipped because it is already being drawn.
+    pub(crate) fn note_form_cycle_hit(&self) {
+        warn!("skipping cyclic form xobject");
+        self.state.form_cycle_hits.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Check whether nested content at `nesting_depth` (the depth of the context it would be
