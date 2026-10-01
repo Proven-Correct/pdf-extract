@@ -105,6 +105,130 @@ impl Glyph<'_> {
             Glyph::Type3(g) => g.as_unicode(),
         }
     }
+
+    /// Returns the character code that selected this glyph, as read from the
+    /// shown string (one byte for simple fonts, one to four for Type0 fonts).
+    pub fn char_code(&self) -> u32 {
+        match self {
+            Glyph::Outline(g) => g.char_code(),
+            Glyph::Type3(g) => g.char_code(),
+        }
+    }
+
+    /// Returns the CID the character code maps to through the font's `CMap`.
+    ///
+    /// Only Type0 fonts have CIDs; `None` for every other kind, and for a code
+    /// the `CMap` does not map.
+    pub fn cid(&self) -> Option<u32> {
+        match self {
+            Glyph::Outline(g) => g.cid(),
+            Glyph::Type3(g) => g.cid(),
+        }
+    }
+
+    /// Returns the kind of font the glyph belongs to.
+    pub fn font_kind(&self) -> FontKind {
+        match self {
+            Glyph::Outline(g) => g.font_kind(),
+            Glyph::Type3(g) => g.font_kind(),
+        }
+    }
+
+    /// Returns whether the font uses vertical writing mode (a Type0 font
+    /// with a vertical `CMap`, such as `Identity-V`).
+    pub fn is_vertical(&self) -> bool {
+        match self {
+            Glyph::Outline(g) => g.is_vertical(),
+            Glyph::Type3(g) => g.is_vertical(),
+        }
+    }
+
+    /// Returns the glyph name the character code maps to in a simple font:
+    /// the `/Differences` entry, else the base encoding's name, else the
+    /// name in the font's built-in encoding.
+    ///
+    /// `None` for Type0 fonts and for codes that no encoding names.
+    pub fn glyph_name(&self) -> Option<&str> {
+        match self {
+            Glyph::Outline(g) => g.glyph_name(),
+            Glyph::Type3(g) => g.glyph_name(),
+        }
+    }
+
+    /// Returns whether the font has a usable `ToUnicode` `CMap`.
+    ///
+    /// A `CMap` that hayro substitutes itself (such as the UCS2 `CMap` of a
+    /// CID font's character collection) does not count.
+    pub fn has_to_unicode(&self) -> bool {
+        match self {
+            Glyph::Outline(g) => g.has_to_unicode(),
+            Glyph::Type3(g) => g.has_to_unicode(),
+        }
+    }
+
+    /// Returns whether the glyph comes from a font program embedded in the
+    /// PDF, as opposed to a substitute font (standard or fallback) supplied
+    /// by the font resolver. Type3 glyphs are always embedded.
+    pub fn is_embedded(&self) -> bool {
+        match self {
+            Glyph::Outline(g) => g.is_embedded(),
+            Glyph::Type3(g) => g.is_embedded(),
+        }
+    }
+
+    /// Returns the character collection (registry, ordering and supplement)
+    /// of a Type0 font, from its `CMap` or else its `/CIDSystemInfo`.
+    ///
+    /// `None` for other font kinds.
+    pub fn character_collection(&self) -> Option<&CharacterCollection> {
+        match self {
+            Glyph::Outline(g) => g.character_collection(),
+            Glyph::Type3(g) => g.character_collection(),
+        }
+    }
+
+    /// Returns the glyph's advance in text space units multiplied by 1000
+    /// (the units of `/Widths`), before font size, character spacing, word
+    /// spacing and horizontal scaling are applied.
+    ///
+    /// The advance is horizontal (`y == 0`) except for Type0 fonts in vertical
+    /// writing mode, where it is vertical (`x == 0`, normally negative). For
+    /// Type3 fonts the width is mapped through the `/FontMatrix`.
+    pub fn advance(&self) -> Vec2 {
+        match self {
+            Glyph::Outline(g) => g.advance(),
+            Glyph::Type3(g) => g.advance(),
+        }
+    }
+
+    /// Returns the font's ascent and descent in text space units (that is, as
+    /// a fraction of the font size), descent normally negative.
+    ///
+    /// The values come from the font descriptor's `/Ascent` and `/Descent`;
+    /// for Type3 fonts from the `/FontBBox` mapped through the `/FontMatrix`;
+    /// for standard fonts without these entries from the font's Adobe AFM
+    /// metrics. `None` when none of these is available or the values are not
+    /// a valid range (ascent not above descent).
+    pub fn ascent_descent(&self) -> Option<(f32, f32)> {
+        match self {
+            Glyph::Outline(g) => g.ascent_descent(),
+            Glyph::Type3(g) => g.ascent_descent(),
+        }
+    }
+}
+
+/// The kind of PDF font a glyph is drawn with.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum FontKind {
+    /// A `/Type1` or `/MMType1` font, including the standard fonts and the
+    /// substitute used when text is shown without a valid font.
+    Type1,
+    /// A `/TrueType` font (or `/OpenType` used as a simple font).
+    TrueType,
+    /// A `/Type0` (composite, CID-keyed) font.
+    Type0,
+    /// A `/Type3` font, whose glyphs are content streams.
+    Type3,
 }
 
 /// An identifier that uniquely identifies a glyph, for caching purposes.
@@ -180,6 +304,86 @@ impl OutlineGlyph {
     pub fn font_cache_key(&self) -> u128 {
         self.font.cache_key()
     }
+
+    /// See [`Glyph::char_code`].
+    pub fn char_code(&self) -> u32 {
+        self.char_code
+    }
+
+    /// See [`Glyph::cid`].
+    pub fn cid(&self) -> Option<u32> {
+        match &self.font {
+            OutlineFont::Type0(t) => t.code_to_cid(self.char_code),
+            OutlineFont::Type1(_) | OutlineFont::TrueType(_) => None,
+        }
+    }
+
+    /// See [`Glyph::font_kind`].
+    pub fn font_kind(&self) -> FontKind {
+        match &self.font {
+            OutlineFont::Type1(_) => FontKind::Type1,
+            OutlineFont::TrueType(_) => FontKind::TrueType,
+            OutlineFont::Type0(_) => FontKind::Type0,
+        }
+    }
+
+    /// See [`Glyph::is_vertical`].
+    pub fn is_vertical(&self) -> bool {
+        match &self.font {
+            OutlineFont::Type0(t) => !t.is_horizontal(),
+            OutlineFont::Type1(_) | OutlineFont::TrueType(_) => false,
+        }
+    }
+
+    /// See [`Glyph::glyph_name`].
+    pub fn glyph_name(&self) -> Option<&str> {
+        // Simple fonts read one-byte codes, so the cast is lossless there.
+        match &self.font {
+            OutlineFont::Type1(t) => t.glyph_name(self.char_code as u8),
+            OutlineFont::TrueType(t) => t.glyph_name(self.char_code as u8),
+            OutlineFont::Type0(_) => None,
+        }
+    }
+
+    /// See [`Glyph::has_to_unicode`].
+    pub fn has_to_unicode(&self) -> bool {
+        match &self.font {
+            OutlineFont::Type1(t) => t.has_to_unicode(),
+            OutlineFont::TrueType(t) => t.has_to_unicode(),
+            OutlineFont::Type0(t) => t.has_to_unicode(),
+        }
+    }
+
+    /// See [`Glyph::is_embedded`].
+    pub fn is_embedded(&self) -> bool {
+        match &self.font {
+            OutlineFont::Type1(t) => t.is_embedded(),
+            OutlineFont::TrueType(t) => t.is_embedded(),
+            OutlineFont::Type0(t) => t.is_embedded(),
+        }
+    }
+
+    /// See [`Glyph::character_collection`].
+    pub fn character_collection(&self) -> Option<&CharacterCollection> {
+        match &self.font {
+            OutlineFont::Type0(t) => t.character_collection(),
+            OutlineFont::Type1(_) | OutlineFont::TrueType(_) => None,
+        }
+    }
+
+    /// See [`Glyph::advance`].
+    pub fn advance(&self) -> Vec2 {
+        self.font.code_advance(self.char_code)
+    }
+
+    /// See [`Glyph::ascent_descent`].
+    pub fn ascent_descent(&self) -> Option<(f32, f32)> {
+        match &self.font {
+            OutlineFont::Type1(t) => t.ascent_descent(),
+            OutlineFont::TrueType(t) => t.ascent_descent(),
+            OutlineFont::Type0(t) => t.ascent_descent(),
+        }
+    }
 }
 
 /// A type3 glyph.
@@ -215,6 +419,58 @@ impl<'a> Type3Glyph<'a> {
     /// Note: Type3 fonts can only provide Unicode via `ToUnicode` cmap.
     pub fn as_unicode(&self) -> Option<BfString> {
         self.font.char_code_to_unicode(self.char_code)
+    }
+
+    /// See [`Glyph::char_code`].
+    pub fn char_code(&self) -> u32 {
+        self.char_code
+    }
+
+    /// See [`Glyph::cid`]. Always `None`.
+    pub fn cid(&self) -> Option<u32> {
+        None
+    }
+
+    /// See [`Glyph::font_kind`]. Always [`FontKind::Type3`].
+    pub fn font_kind(&self) -> FontKind {
+        FontKind::Type3
+    }
+
+    /// See [`Glyph::is_vertical`]. Always `false`.
+    pub fn is_vertical(&self) -> bool {
+        false
+    }
+
+    /// See [`Glyph::glyph_name`].
+    pub fn glyph_name(&self) -> Option<&str> {
+        // Type3 fonts read one-byte codes, so the cast is lossless.
+        self.font.glyph_name(self.char_code as u8)
+    }
+
+    /// See [`Glyph::has_to_unicode`].
+    pub fn has_to_unicode(&self) -> bool {
+        self.font.has_to_unicode()
+    }
+
+    /// See [`Glyph::is_embedded`]. Always `true`: the glyph procedures are
+    /// part of the PDF.
+    pub fn is_embedded(&self) -> bool {
+        true
+    }
+
+    /// See [`Glyph::character_collection`]. Always `None`.
+    pub fn character_collection(&self) -> Option<&CharacterCollection> {
+        None
+    }
+
+    /// See [`Glyph::advance`].
+    pub fn advance(&self) -> Vec2 {
+        Vec2::new(self.font.glyph_width(self.char_code as u8) as f64, 0.0)
+    }
+
+    /// See [`Glyph::ascent_descent`].
+    pub fn ascent_descent(&self) -> Option<(f32, f32)> {
+        self.font.ascent_descent()
     }
 }
 
@@ -661,6 +917,25 @@ pub(crate) fn read_to_unicode(dict: &Dict<'_>, cmap_resolver: &CMapResolverFn) -
             let cmap_resolver = cmap_resolver.clone();
             CMap::parse(&data, move |name| (cmap_resolver)(name))
         })
+}
+
+/// Read `/Ascent` and `/Descent` from a font descriptor, in text space units.
+///
+/// Descriptor metrics are in thousandths of text space for every font kind
+/// that reads them here (Type3 fonts use their `/FontBBox` instead).
+pub(crate) fn read_ascent_descent(descriptor: &Dict<'_>) -> Option<(f32, f32)> {
+    let ascent = descriptor.get::<f32>(ASCENT)?;
+    let descent = descriptor.get::<f32>(DESCENT)?;
+
+    valid_ascent_descent(ascent / UNITS_PER_EM, descent / UNITS_PER_EM)
+}
+
+/// Accept an ascent/descent pair only if it describes a non-empty vertical
+/// range. Producers write `/Ascent 0 /Descent 0` (or worse) when they do not
+/// know the metrics; reporting `None` lets the caller fall back to something
+/// better than a zero-height glyph box.
+pub(crate) fn valid_ascent_descent(ascent: f32, descent: f32) -> Option<(f32, f32)> {
+    (ascent.is_finite() && descent.is_finite() && ascent > descent).then_some((ascent, descent))
 }
 
 // When mapping to glyphs, some fonts might only have a glyph for the "normalized"

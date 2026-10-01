@@ -3,7 +3,7 @@ use crate::font::cid::Type0Font;
 use crate::font::true_type::TrueTypeFont;
 use crate::font::type1::Type1Font;
 use hayro_cmap::BfString;
-use kurbo::BezPath;
+use kurbo::{BezPath, Vec2};
 use skrifa::GlyphId;
 use skrifa::outline::OutlinePen;
 use std::rc::Rc;
@@ -105,6 +105,16 @@ impl OutlineFont {
             Self::Type1(t) => t.char_code_to_unicode(char_code),
             Self::TrueType(t) => t.char_code_to_unicode(char_code),
             Self::Type0(t) => t.char_code_to_unicode(char_code),
+        }
+    }
+
+    /// Get the advance for a character code in text space units times 1000,
+    /// as the interpreter applies it (zero where no width is known).
+    pub(crate) fn code_advance(&self, char_code: u32) -> Vec2 {
+        match self {
+            Self::Type1(t) => Vec2::new(t.glyph_width(char_code as u8).unwrap_or(0.0) as f64, 0.0),
+            Self::TrueType(t) => Vec2::new(t.glyph_width(char_code as u8) as f64, 0.0),
+            Self::Type0(t) => t.code_advance(char_code),
         }
     }
 

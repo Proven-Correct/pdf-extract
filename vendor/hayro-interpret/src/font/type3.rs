@@ -3,7 +3,9 @@ use crate::context::Context;
 use crate::device::Device;
 use crate::font::glyph_simulator::GlyphSimulator;
 use crate::font::true_type::{Width, read_encoding, read_widths};
-use crate::font::{Encoding, Glyph, Type3Glyph, UNITS_PER_EM, read_to_unicode};
+use crate::font::{
+    Encoding, Glyph, Type3Glyph, UNITS_PER_EM, read_to_unicode, valid_ascent_descent,
+};
 use crate::interpret::state::TextState;
 use crate::soft_mask::SoftMask;
 use crate::util::RectExt;
@@ -33,6 +35,8 @@ pub(crate) struct Type3<'a> {
     font_bbox: Rect,
     matrix: Affine,
     to_unicode: Option<CMap>,
+    /// `/FontBBox` mapped through `/FontMatrix`: top and bottom in text space units.
+    ascent_descent: Option<(f32, f32)>,
 }
 
 impl<'a> Type3<'a> {
@@ -64,6 +68,12 @@ impl<'a> Type3<'a> {
 
         let to_unicode = read_to_unicode(dict, cmap_resolver);
 
+        // A Type3 font has no ascent or descent of its own; the glyph bounding box in text
+        // space is the closest equivalent. An all-zero `/FontBBox` (which the specification
+        // allows) gives an empty range and hence `None`.
+        let text_bbox = matrix.transform_rect_bbox(font_bbox);
+        let ascent_descent = valid_ascent_descent(text_bbox.y1 as f32, text_bbox.y0 as f32);
+
         Some(Self {
             glyph_simulator: GlyphSimulator::new(),
             encoding,
@@ -75,6 +85,7 @@ impl<'a> Type3<'a> {
             matrix,
             dict: dict.clone(),
             to_unicode,
+            ascent_descent,
         })
     }
 
@@ -93,6 +104,21 @@ impl<'a> Type3<'a> {
             _ => self.missing_width,
         };
         (w * self.matrix.as_coeffs()[0] as f32) * UNITS_PER_EM
+    }
+
+    pub(crate) fn glyph_name(&self, code: u8) -> Option<&str> {
+        self.encodings
+            .get(&code)
+            .map(String::as_str)
+            .or_else(|| self.encoding.map_code(code))
+    }
+
+    pub(crate) fn has_to_unicode(&self) -> bool {
+        self.to_unicode.is_some()
+    }
+
+    pub(crate) fn ascent_descent(&self) -> Option<(f32, f32)> {
+        self.ascent_descent
     }
 
     pub(crate) fn char_code_to_unicode(&self, char_code: u32) -> Option<BfString> {

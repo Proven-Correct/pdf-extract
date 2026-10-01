@@ -85,6 +85,24 @@ impl StandardFont {
         }
     }
 
+    /// The `Ascender` and `Descender` of the font's Adobe Core 14 AFM file, in
+    /// text space units. The Symbol and `ZapfDingbats` AFM files have neither.
+    pub(crate) fn ascent_descent(&self) -> Option<(f32, f32)> {
+        match self {
+            Self::Helvetica
+            | Self::HelveticaBold
+            | Self::HelveticaOblique
+            | Self::HelveticaBoldOblique => Some((0.718, -0.207)),
+            Self::Courier | Self::CourierBold | Self::CourierOblique | Self::CourierBoldOblique => {
+                Some((0.629, -0.157))
+            }
+            Self::TimesRoman | Self::TimesBold | Self::TimesItalic | Self::TimesBoldItalic => {
+                Some((0.683, -0.217))
+            }
+            Self::ZapfDingBats | Self::Symbol => None,
+        }
+    }
+
     pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::Helvetica => "Helvetica",
@@ -397,7 +415,12 @@ impl StandardKind {
         })
     }
 
-    fn code_to_ps_name(&self, code: u8) -> Option<&str> {
+    /// The standard font whose program and metrics are used.
+    pub(crate) fn base_font(&self) -> StandardFont {
+        self.base_font
+    }
+
+    pub(crate) fn code_to_ps_name(&self, code: u8) -> Option<&str> {
         let bf = self.base_font;
 
         self.encodings

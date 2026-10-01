@@ -2,7 +2,8 @@ use crate::font::blob::{CffFontBlob, Type1FontBlob};
 use crate::font::standard_font::{StandardFont, StandardKind, select_standard_font};
 use crate::font::true_type::{Width, read_encoding, read_widths};
 use crate::font::{
-    Encoding, FallbackFontQuery, glyph_name_to_unicode, normalized_glyph_name, read_to_unicode,
+    Encoding, FallbackFontQuery, glyph_name_to_unicode, normalized_glyph_name, read_ascent_descent,
+    read_to_unicode,
 };
 use crate::{CMapResolverFn, CacheKey, FontResolverFn};
 use hayro_cmap::{BfString, CMap};
@@ -14,8 +15,9 @@ use skrifa::GlyphId;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// Cache key, font program, `ToUnicode` map, and ascent/descent in text space units.
 #[derive(Debug)]
-pub(crate) struct Type1Font(u128, Kind, Option<CMap>);
+pub(crate) struct Type1Font(u128, Kind, Option<CMap>, Option<(f32, f32)>);
 
 impl Type1Font {
     pub(crate) fn new(
@@ -26,6 +28,15 @@ impl Type1Font {
         let cache_key = dict.cache_key();
 
         let to_unicode = read_to_unicode(dict, cmap_resolver);
+
+        // The descriptor's metrics win; a standard font without them uses its AFM metrics.
+        let descriptor_metrics = dict
+            .get::<Dict<'_>>(FONT_DESC)
+            .and_then(|d| read_ascent_descent(&d));
+        let assemble = |kind: Kind, to_unicode: Option<CMap>| {
+            let metrics = descriptor_metrics.or_else(|| kind.standard_ascent_descent());
+            Self(cache_key, kind, to_unicode, metrics)
+        };
 
         let fallback = || {
             // TODO: Actually use fallback fonts
@@ -40,8 +51,7 @@ impl Type1Font {
                 standard_font.as_str()
             );
 
-            Some(Self(
-                cache_key,
+            Some(assemble(
                 Kind::Standard(StandardKind::new_with_standard(
                     dict,
                     standard_font,
@@ -54,18 +64,18 @@ impl Type1Font {
 
         let inner = if is_cff(dict) {
             if let Some(cff) = CffKind::new(dict) {
-                Self(cache_key, Kind::Cff(cff), to_unicode)
+                assemble(Kind::Cff(cff), to_unicode)
             } else {
                 return fallback();
             }
         } else if is_type1(dict) {
             if let Some(f) = Type1Kind::new(dict) {
-                Self(cache_key, Kind::Type1(f), to_unicode)
+                assemble(Kind::Type1(f), to_unicode)
             } else {
                 return fallback();
             }
         } else if let Some(standard) = StandardKind::new(dict, resolver) {
-            Self(cache_key, Kind::Standard(standard), to_unicode)
+            assemble(Kind::Standard(standard), to_unicode)
         } else {
             return fallback();
         };
@@ -77,7 +87,12 @@ impl Type1Font {
         let dict = Dict::default();
         let standard = StandardKind::new_with_standard(&dict, font, true, resolver)?;
 
-        Some(Self(0, Kind::Standard(standard), None))
+        Some(Self(
+            0,
+            Kind::Standard(standard),
+            None,
+            font.ascent_descent(),
+        ))
     }
 
     pub(crate) fn map_code(&self, code: u8) -> GlyphId {
@@ -102,6 +117,26 @@ impl Type1Font {
             Kind::Cff(c) => c.glyph_width(code),
             Kind::Type1(t) => t.glyph_width(code),
         }
+    }
+
+    pub(crate) fn glyph_name(&self, code: u8) -> Option<&str> {
+        match &self.1 {
+            Kind::Standard(s) => s.code_to_ps_name(code),
+            Kind::Cff(c) => c.code_to_ps_name(code),
+            Kind::Type1(t) => t.code_to_ps_name(code),
+        }
+    }
+
+    pub(crate) fn has_to_unicode(&self) -> bool {
+        self.2.is_some()
+    }
+
+    pub(crate) fn is_embedded(&self) -> bool {
+        !matches!(self.1, Kind::Standard(_))
+    }
+
+    pub(crate) fn ascent_descent(&self) -> Option<(f32, f32)> {
+        self.3
     }
 
     pub(crate) fn char_code_to_unicode(&self, char_code: u32) -> Option<BfString> {
@@ -136,6 +171,17 @@ enum Kind {
     Standard(StandardKind),
     Cff(CffKind),
     Type1(Type1Kind),
+}
+
+impl Kind {
+    /// The AFM metrics of the standard font in use, for non-embedded fonts only: an
+    /// embedded program's metrics need not match the standard font it imitates.
+    fn standard_ascent_descent(&self) -> Option<(f32, f32)> {
+        match self {
+            Self::Standard(s) => s.base_font().ascent_descent(),
+            Self::Cff(_) | Self::Type1(_) => None,
+        }
+    }
 }
 
 fn is_cff(dict: &Dict<'_>) -> bool {

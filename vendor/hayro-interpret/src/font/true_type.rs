@@ -2,8 +2,8 @@ use crate::font::blob::{CffFontBlob, OpenTypeFontBlob};
 use crate::font::generated::{glyph_names, mac_os_roman, mac_roman, standard};
 use crate::font::standard_font::StandardKind;
 use crate::font::{
-    Encoding, FallbackFontQuery, FontFlags, glyph_name_to_unicode, read_to_unicode,
-    strip_subset_prefix, unicode_from_name,
+    Encoding, FallbackFontQuery, FontFlags, glyph_name_to_unicode, read_ascent_descent,
+    read_to_unicode, strip_subset_prefix, unicode_from_name,
 };
 use crate::util::OptionLog;
 use crate::{CMapResolverFn, CacheKey, FontResolverFn};
@@ -29,6 +29,9 @@ pub(crate) struct TrueTypeFont {
     cache_key: u128,
     kind: Kind,
     to_unicode: Option<CMap>,
+    /// Ascent and descent in text space units: the descriptor's, else the AFM
+    /// metrics of the standard font substituted for a non-embedded font.
+    ascent_descent: Option<(f32, f32)>,
 }
 
 #[derive(Debug)]
@@ -45,12 +48,18 @@ impl TrueTypeFont {
     ) -> Option<Self> {
         let cache_key = dict.cache_key();
         let to_unicode = read_to_unicode(dict, cmap_resolver);
+        let descriptor_metrics = dict
+            .get::<Dict<'_>>(FONT_DESC)
+            .and_then(|d| read_ascent_descent(&d));
+        let standard_metrics =
+            |s: &StandardKind| descriptor_metrics.or_else(|| s.base_font().ascent_descent());
 
         if let Some(embedded) = EmbeddedKind::new(dict) {
             return Some(Self {
                 cache_key,
                 kind: Kind::Embedded(embedded),
                 to_unicode,
+                ascent_descent: descriptor_metrics,
             });
         }
 
@@ -66,14 +75,13 @@ impl TrueTypeFont {
                 standard_font.as_str()
             );
 
+            let standard =
+                StandardKind::new_with_standard(dict, standard_font, true, font_resolver)?;
+
             Some(Self {
                 cache_key,
-                kind: Kind::Standard(StandardKind::new_with_standard(
-                    dict,
-                    standard_font,
-                    true,
-                    font_resolver,
-                )?),
+                ascent_descent: standard_metrics(&standard),
+                kind: Kind::Standard(standard),
                 to_unicode: to_unicode.clone(),
             })
         };
@@ -81,6 +89,7 @@ impl TrueTypeFont {
         if let Some(standard) = StandardKind::new(dict, font_resolver) {
             Some(Self {
                 cache_key,
+                ascent_descent: standard_metrics(&standard),
                 kind: Kind::Standard(standard),
                 to_unicode,
             })
@@ -180,6 +189,25 @@ impl TrueTypeFont {
             Kind::Embedded(e) => e.glyph_width(code),
             Kind::Standard(s) => s.glyph_width(code).unwrap_or(0.0),
         }
+    }
+
+    pub(crate) fn glyph_name(&self, code: u8) -> Option<&str> {
+        match &self.kind {
+            Kind::Embedded(e) => e.code_to_name(code),
+            Kind::Standard(s) => s.code_to_ps_name(code),
+        }
+    }
+
+    pub(crate) fn has_to_unicode(&self) -> bool {
+        self.to_unicode.is_some()
+    }
+
+    pub(crate) fn is_embedded(&self) -> bool {
+        matches!(self.kind, Kind::Embedded(_))
+    }
+
+    pub(crate) fn ascent_descent(&self) -> Option<(f32, f32)> {
+        self.ascent_descent
     }
 
     pub(crate) fn char_code_to_unicode(&self, code: u32) -> Option<BfString> {

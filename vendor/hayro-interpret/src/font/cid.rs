@@ -2,7 +2,8 @@ use crate::font::blob::{CffFontBlob, OpenTypeFontBlob, Type1FontBlob};
 use crate::font::generated::glyph_names;
 use crate::font::standard_font::select_standard_font;
 use crate::font::{
-    FallbackFontQuery, FontFlags, FontQuery, read_to_unicode, stretch_glyph, strip_subset_prefix,
+    FallbackFontQuery, FontFlags, FontQuery, read_ascent_descent, read_to_unicode, stretch_glyph,
+    strip_subset_prefix,
 };
 use crate::{CMapResolverFn, CacheKey, FontResolverFn};
 use hayro_cmap::{BfString, CMap, CharacterCollection, CidFamily, WritingMode};
@@ -41,6 +42,10 @@ pub(crate) struct Type0Font {
     /// Whether the `to_unicode` map is a UCS2 `CMap` (CID-indexed) rather than
     /// a `ToUnicode` `CMap` (code-indexed).
     to_unicode_is_cid_indexed: bool,
+    /// The character collection, from the encoding `CMap` or `/CIDSystemInfo`.
+    character_collection: Option<CharacterCollection>,
+    /// Ascent and descent in text space units, from the descendant font's descriptor.
+    ascent_descent: Option<(f32, f32)>,
 }
 
 impl Type0Font {
@@ -137,6 +142,7 @@ impl Type0Font {
         let font_flags = font_descriptor
             .get::<u32>(FLAGS)
             .and_then(FontFlags::from_bits);
+        let ascent_descent = read_ascent_descent(&font_descriptor);
 
         Some(Self {
             cache_key,
@@ -153,6 +159,8 @@ impl Type0Font {
             font_flags,
             fallback,
             to_unicode_is_cid_indexed,
+            character_collection,
+            ascent_descent,
         })
     }
 
@@ -248,7 +256,7 @@ impl Type0Font {
         }
     }
 
-    fn code_to_cid(&self, code: u32) -> Option<u32> {
+    pub(crate) fn code_to_cid(&self, code: u32) -> Option<u32> {
         for byte_len in 1..=4_u8 {
             if let Some(cid) = self.encoding.lookup_cid_code(code, byte_len) {
                 return Some(cid);
@@ -362,6 +370,24 @@ impl Type0Font {
 
     pub(crate) fn is_horizontal(&self) -> bool {
         self.horizontal
+    }
+
+    /// Whether the font dictionary supplied a `ToUnicode` map (a UCS2 `CMap`
+    /// substituted for a missing one does not count).
+    pub(crate) fn has_to_unicode(&self) -> bool {
+        self.to_unicode.is_some() && !self.to_unicode_is_cid_indexed
+    }
+
+    pub(crate) fn is_embedded(&self) -> bool {
+        !self.fallback
+    }
+
+    pub(crate) fn character_collection(&self) -> Option<&CharacterCollection> {
+        self.character_collection.as_ref()
+    }
+
+    pub(crate) fn ascent_descent(&self) -> Option<(f32, f32)> {
+        self.ascent_descent
     }
 
     pub(crate) fn read_code(&self, bytes: &[u8], offset: usize) -> (u32, usize) {
