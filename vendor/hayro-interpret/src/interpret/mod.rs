@@ -690,7 +690,14 @@ pub fn interpret<'a>(
                     context.ocg_state.begin_marked_content();
                 }
 
-                device.begin_marked_content(bdc.0, mcid);
+                // The property list itself, for the device: a name refers to an entry of
+                // the resources' `/Properties` dictionary, anything else is used inline.
+                let properties = match bdc.1.clone().into_name() {
+                    Some(name) => resources.properties.get::<Dict<'_>>(name),
+                    None => dict_or_stream(bdc.1).map(|(props, _)| props.clone()),
+                };
+
+                device.begin_marked_content(bdc.0, mcid, properties.as_ref());
             }
             TypedInstruction::MarkedContentPointWithProperties(_) => {}
             TypedInstruction::EndMarkedContent(_) => {
@@ -700,7 +707,7 @@ pub fn interpret<'a>(
             TypedInstruction::MarkedContentPoint(_) => {}
             TypedInstruction::BeginMarkedContent(bmc) => {
                 context.ocg_state.begin_marked_content();
-                device.begin_marked_content(bmc.0, None);
+                device.begin_marked_content(bmc.0, None, None);
             }
             TypedInstruction::BeginText(_) => {
                 context.get_mut().text_state.text_matrix = Affine::IDENTITY;

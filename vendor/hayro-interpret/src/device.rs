@@ -2,6 +2,7 @@ use crate::font::Glyph;
 use crate::soft_mask::SoftMask;
 use crate::{BlendMode, ClipPath, Image};
 use crate::{GlyphDrawMode, Paint, PathDrawMode};
+use hayro_syntax::object::Dict;
 use kurbo::{Affine, BezPath, Rect, Shape};
 
 /// A trait for a device that can be used to process PDF drawing instructions.
@@ -58,7 +59,22 @@ pub trait Device<'a> {
     ///
     /// The tag is the marked content tag (e.g. b"P", b"Span"). The mcid is
     /// the marked content identifier from the properties dict, if present.
-    fn begin_marked_content(&mut self, _tag: &[u8], _mcid: Option<i32>) {}
+    ///
+    /// `properties` is the property list of a `BDC` operator: the inline
+    /// dictionary, or the entry of the resources' `/Properties` dictionary
+    /// that a name operand refers to. It is `None` for `BMC` and when a name
+    /// does not resolve to a dictionary. Devices use it for entries such as
+    /// `/ActualText`, `/Alt` or `/Lang`. An inline dictionary lives in the
+    /// content stream being interpreted, which may be shorter-lived than the
+    /// document, so the dictionary is only borrowed for the duration of the
+    /// call.
+    fn begin_marked_content(
+        &mut self,
+        _tag: &[u8],
+        _mcid: Option<i32>,
+        _properties: Option<&Dict<'_>>,
+    ) {
+    }
     /// Called at the end of a marked content sequence (EMC).
     fn end_marked_content(&mut self) {}
 }
