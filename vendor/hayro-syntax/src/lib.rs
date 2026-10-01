@@ -108,6 +108,7 @@ pub mod byte_reader;
 #[doc(hidden)]
 pub mod reader;
 
+pub use byte_reader::{MAX_OBJECT_DEPTH, note_object_depth_limit_hit, object_depth_limit_hits};
 pub use data::PdfData;
 pub use filter::*;
 pub use pdf::*;

@@ -70,6 +70,15 @@ object!(Array<'a>, Array);
 
 impl Skippable for Array<'_> {
     fn skip(r: &mut Reader<'_>, is_content_stream: bool) -> Option<()> {
+        // `Array::read` goes through here too, so this bounds the recursion
+        // into nested values for both reading and skipping.
+        r.nested(|r| Self::skip_unbounded(r, is_content_stream))
+    }
+}
+
+impl Array<'_> {
+    /// The body of [`Skippable::skip`], without the nesting check.
+    fn skip_unbounded(r: &mut Reader<'_>, is_content_stream: bool) -> Option<()> {
         r.forward_tag(b"[")?;
 
         loop {

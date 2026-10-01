@@ -4,6 +4,7 @@ use hayro_syntax::object::Number;
 use hayro_syntax::object::Stream;
 use hayro_syntax::reader::Reader;
 use hayro_syntax::reader::{ReaderContext, ReaderExt};
+use hayro_syntax::{MAX_OBJECT_DEPTH, note_object_depth_limit_hit};
 use smallvec::SmallVec;
 use std::array;
 use std::ops::Rem;
@@ -416,10 +417,23 @@ fn eval_inner(procedure: &[PostScriptOp], arg_stack: &mut InterpreterStack) -> O
 
 fn parse_procedure(data: &[u8]) -> Option<Vec<PostScriptOp>> {
     let mut r = Reader::new(data);
-    parse_procedure_inner(&mut r)
+    parse_procedure_inner(&mut r, 1)
 }
 
-fn parse_procedure_inner(r: &mut Reader<'_>) -> Option<Vec<PostScriptOp>> {
+/// Parse one `{ ... }` procedure; `depth` is its nesting level, starting at 1
+/// for the outermost one.
+fn parse_procedure_inner(r: &mut Reader<'_>, depth: u32) -> Option<Vec<PostScriptOp>> {
+    // Nested procedures are parsed recursively (and later evaluated
+    // recursively), so a crafted function could otherwise overflow the stack.
+    // The cap is the one hayro-syntax applies to PDF objects; refusals are
+    // reported through the same counter.
+    if depth > MAX_OBJECT_DEPTH {
+        warn!("type 4 function nests deeper than {MAX_OBJECT_DEPTH} procedures");
+        note_object_depth_limit_hit();
+
+        return None;
+    }
+
     let mut stack = ParseStack::new();
 
     let mut ops = vec![];
@@ -434,7 +448,7 @@ fn parse_procedure_inner(r: &mut Reader<'_>) -> Option<Vec<PostScriptOp>> {
 
             break;
         } else if r.peek_byte()? == b'{' {
-            stack.push(parse_procedure_inner(r)?);
+            stack.push(parse_procedure_inner(r, depth + 1)?);
         } else {
             let op = PostScriptOp::from_reader(r, &mut stack)?;
             ops.push(op);

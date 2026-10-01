@@ -37,6 +37,12 @@ fn skip_array(r: &mut Reader<'_>) -> Result<()> {
     while depth > 0 {
         match r.peek_byte().ok_or(Error::SyntaxError)? {
             b'[' => {
+                // Skipping is iterative, but consumers walk nested arrays
+                // level by level through `Array::objects`, typically by
+                // recursion, so bound the depth they can be handed.
+                if depth >= object::MAX_NESTING_DEPTH {
+                    return Err(Error::LimitCheck);
+                }
                 r.forward();
                 depth += 1;
             }

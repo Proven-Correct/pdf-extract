@@ -18,7 +18,19 @@ pub enum Object<'a> {
     Array(Array<'a>),
 }
 
+/// The maximum number of nested `<<`/`>>` delimiters (skipped by [`read`]) and
+/// of nested arrays (see `array::parse`) the scanner accepts.
+///
+/// Deeper input fails with [`Error::LimitCheck`], PostScript's error for an
+/// exceeded implementation limit, instead of overflowing the stack.
+pub(crate) const MAX_NESTING_DEPTH: u32 = 256;
+
 pub(crate) fn read<'a>(r: &mut Reader<'a>) -> Result<Object<'a>> {
+    read_nested(r, 0)
+}
+
+/// [`read`], after `depth` dictionary delimiters have already been skipped.
+fn read_nested<'a>(r: &mut Reader<'a>, depth: u32) -> Result<Object<'a>> {
     skip_whitespace_and_comments(r);
 
     let b = r.peek_byte().ok_or(Error::SyntaxError)?;
@@ -35,10 +47,12 @@ pub(crate) fn read<'a>(r: &mut Reader<'a>) -> Result<Object<'a>> {
             } else if r.peek_bytes(2) == Some(b"<<") {
                 // TODO: Proper dict support. For now, skip `<<` and return
                 // the next object so callers see the inner tokens.
+                if depth >= MAX_NESTING_DEPTH {
+                    return Err(Error::LimitCheck);
+                }
                 r.forward();
                 r.forward();
-                // TODO: This can easily overflow the stack if we have nested <<<<<.
-                read(r)
+                read_nested(r, depth + 1)
             } else {
                 string::parse_hex(r)
                     .map(|s| Object::String(String::from_hex(s)))
@@ -52,9 +66,12 @@ pub(crate) fn read<'a>(r: &mut Reader<'a>) -> Result<Object<'a>> {
         b'>' => {
             if r.peek_bytes(2) == Some(b">>") {
                 // TODO: Proper dict support. Skip `>>` closing delimiter.
+                if depth >= MAX_NESTING_DEPTH {
+                    return Err(Error::LimitCheck);
+                }
                 r.forward();
                 r.forward();
-                read(r)
+                read_nested(r, depth + 1)
             } else {
                 Err(Error::SyntaxError)
             }

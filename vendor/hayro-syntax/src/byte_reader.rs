@@ -2,6 +2,53 @@
 
 use core::ops::Range;
 
+/// The maximum nesting depth of arrays and dictionaries that the object parser
+/// accepts.
+///
+/// Arrays and dictionaries are parsed recursively, so without a cap a crafted
+/// file (for example 200,000 nested `[`) overflows the stack and aborts the
+/// process. Real documents nest a handful of levels; an object that nests
+/// deeper than this fails to parse, as any other malformed object does, and
+/// [`object_depth_limit_hits`] records that it happened.
+pub const MAX_OBJECT_DEPTH: u32 = 256;
+
+#[cfg(feature = "std")]
+std::thread_local! {
+    // Thread-local rather than per-document: content streams are parsed with
+    // no reference to their document, so this is the one place every parse
+    // site can report to. A `Cell` makes the hot path a plain load and store.
+    static OBJECT_DEPTH_LIMIT_HITS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
+}
+
+/// Return how many times, on the current thread, a parse was refused because
+/// it would have nested deeper than [`MAX_OBJECT_DEPTH`].
+///
+/// The counter only ever increases. To learn whether an operation ran into the
+/// limit, read it before and after the operation, on the same thread. Without
+/// the `std` feature nothing is counted and this always returns 0.
+pub fn object_depth_limit_hits() -> u64 {
+    #[cfg(feature = "std")]
+    {
+        OBJECT_DEPTH_LIMIT_HITS.with(core::cell::Cell::get)
+    }
+
+    #[cfg(not(feature = "std"))]
+    {
+        0
+    }
+}
+
+/// Record that a parse was refused because of a nesting limit.
+///
+/// Called by this crate when [`MAX_OBJECT_DEPTH`] is reached; public so that
+/// parsers built on top of it (such as the PostScript calculator functions in
+/// `hayro-interpret`) report their own nesting limits through the same
+/// counter, see [`object_depth_limit_hits`].
+pub fn note_object_depth_limit_hit() {
+    #[cfg(feature = "std")]
+    OBJECT_DEPTH_LIMIT_HITS.with(|hits| hits.set(hits.get().saturating_add(1)));
+}
+
 /// A reader for reading bytes and PDF objects.
 #[derive(Clone, Debug)]
 pub struct Reader<'a> {
@@ -9,19 +56,47 @@ pub struct Reader<'a> {
     pub data: &'a [u8],
     /// The current byte-offset.
     pub offset: usize,
+    /// How many arrays and dictionaries are currently being parsed, one inside
+    /// the other. Bounded by [`MAX_OBJECT_DEPTH`].
+    depth: u32,
 }
 
 impl<'a> Reader<'a> {
     /// Create a new reader.
     #[inline]
     pub fn new(data: &'a [u8]) -> Self {
-        Self { data, offset: 0 }
+        Self::new_with(data, 0)
     }
 
     /// Create a new reader at the given offset.
     #[inline]
     pub fn new_with(data: &'a [u8], offset: usize) -> Self {
-        Self { data, offset }
+        Self {
+            data,
+            offset,
+            depth: 0,
+        }
+    }
+
+    /// Run `f`, which parses one array or dictionary, one nesting level deeper.
+    ///
+    /// Returns `None` without calling `f` if that level would exceed
+    /// [`MAX_OBJECT_DEPTH`], and records the refusal (see
+    /// [`object_depth_limit_hits`]).
+    #[inline]
+    pub(crate) fn nested<T>(&mut self, f: impl FnOnce(&mut Self) -> Option<T>) -> Option<T> {
+        if self.depth >= MAX_OBJECT_DEPTH {
+            warn!("object nesting exceeds the maximum depth of {MAX_OBJECT_DEPTH}");
+            note_object_depth_limit_hit();
+
+            return None;
+        }
+
+        self.depth += 1;
+        let result = f(self);
+        self.depth -= 1;
+
+        result
     }
 
     /// Returns `true` if the reader has reached the end of the data.

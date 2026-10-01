@@ -158,6 +158,13 @@ impl Debug for Dict<'_> {
 
 impl Skippable for Dict<'_> {
     fn skip(r: &mut Reader<'_>, is_content_stream: bool) -> Option<()> {
+        r.nested(|r| Self::skip_unbounded(r, is_content_stream))
+    }
+}
+
+impl Dict<'_> {
+    /// The body of [`Skippable::skip`], without the nesting check.
+    fn skip_unbounded(r: &mut Reader<'_>, is_content_stream: bool) -> Option<()> {
         r.forward_tag(b"<<")?;
 
         loop {
@@ -267,6 +274,22 @@ pub(crate) fn probe_dict<'a>(
 }
 
 fn parse_dict_with<'a, F>(
+    r: &mut Reader<'a>,
+    ctx: &ReaderContext<'a>,
+    start_tag: Option<&[u8]>,
+    end_tag: &[u8],
+    on_entry: F,
+) -> Option<&'a [u8]>
+where
+    F: FnMut(Name<'a>, usize, &Reader<'a>) -> Option<()>,
+{
+    // Every way of reading a dictionary (`Dict::read`, inline image
+    // dictionaries, the fallback xref scan) goes through here, so this bounds
+    // the recursion into nested values for all of them.
+    r.nested(|r| parse_dict_entries(r, ctx, start_tag, end_tag, on_entry))
+}
+
+fn parse_dict_entries<'a, F>(
     r: &mut Reader<'a>,
     ctx: &ReaderContext<'a>,
     start_tag: Option<&[u8]>,
