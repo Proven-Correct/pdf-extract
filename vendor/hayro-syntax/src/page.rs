@@ -36,6 +36,27 @@ impl PagesContext {
     }
 }
 
+/// The attributes a page inherits from its ancestors in the page tree, as
+/// input to [`Page::from_dict`].
+///
+/// `media_box`, `crop_box` and `rotate` are the values of the nearest ancestor
+/// that defines each key (`None` if no ancestor does). `resources` holds the
+/// `Resources` dictionary of every ancestor that has one, ordered from the
+/// root of the page tree to the page's direct parent; resource names are
+/// looked up from the page outwards, so a nearer ancestor's entry shadows an
+/// outer one, as in the eager walk.
+#[derive(Debug, Clone, Default)]
+pub struct InheritedAttributes<'a> {
+    /// The inherited `MediaBox`.
+    pub media_box: Option<Rect>,
+    /// The inherited `CropBox`.
+    pub crop_box: Option<Rect>,
+    /// The inherited `Rotate` value, in degrees.
+    pub rotate: Option<i32>,
+    /// The ancestors' `Resources` dictionaries, from the root to the parent.
+    pub resources: Vec<Dict<'a>>,
+}
+
 /// A structure holding the pages of a PDF document.
 pub struct Pages<'a> {
     pages: Vec<Page<'a>>,
@@ -69,15 +90,16 @@ impl<'a> Pages<'a> {
         let mut pages = vec![];
 
         for object in xref.objects() {
+            // In general, pages without content are allowed, but in case we are brute-forcing
+            // we ignore them.
             if let Some(dict) = object.into_dict()
-                && let Some(page) = Page::new(
+                && dict.contains_key(CONTENTS)
+            {
+                pages.push(Page::new(
                     &dict,
                     &PagesContext::new(),
                     Resources::new(Dict::empty(), None, ctx),
-                    true,
-                )
-            {
-                pages.push(page);
+                ));
             }
         }
 
@@ -86,6 +108,14 @@ impl<'a> Pages<'a> {
         }
 
         Some(Self { pages, xref })
+    }
+
+    /// A document without readable pages.
+    pub(crate) fn empty(xref: &'a XRef) -> Self {
+        Self {
+            pages: vec![],
+            xref,
+        }
     }
 
     /// Return the xref table (of the document the pages belong to).   
@@ -135,9 +165,7 @@ fn resolve_pages<'a>(
             // Let's be lenient and assume it's a `Page` in case it's `None` or something else
             // (see corpus test case 0083781).
             _ => {
-                if let Some(page) = Page::new(&dict, &ctx, resources.clone(), false) {
-                    entries.push(page);
-                }
+                entries.push(Page::new(&dict, &ctx, resources.clone()));
             }
         }
     }
@@ -170,18 +198,7 @@ pub struct Page<'a> {
 }
 
 impl<'a> Page<'a> {
-    fn new(
-        dict: &Dict<'a>,
-        ctx: &PagesContext,
-        resources: Resources<'a>,
-        brute_force: bool,
-    ) -> Option<Self> {
-        // In general, pages without content are allowed, but in case we are brute-forcing
-        // we ignore them.
-        if brute_force && !dict.contains_key(CONTENTS) {
-            return None;
-        }
-
+    fn new(dict: &Dict<'a>, ctx: &PagesContext, resources: Resources<'a>) -> Self {
         let media_box = dict.get::<Rect>(MEDIA_BOX).or(ctx.media_box).unwrap_or(A4);
 
         let crop_box = dict
@@ -208,7 +225,7 @@ impl<'a> Page<'a> {
             resources,
         );
 
-        Some(Self {
+        Self {
             inner: dict.clone(),
             media_box,
             crop_box,
@@ -216,7 +233,46 @@ impl<'a> Page<'a> {
             page_streams: OnceLock::new(),
             resources,
             ctx,
-        })
+        }
+    }
+
+    /// Create a page from its dictionary and the attributes it inherits from
+    /// its ancestors in the page tree.
+    ///
+    /// This is the building block for callers that walk the page tree
+    /// themselves (for example, to index a large document without building
+    /// every page up front, or to bound the walk's depth) and then construct
+    /// only the pages they need. The result is the same page that
+    /// [`Pdf::pages`](crate::Pdf::pages) yields for `dict`, provided
+    /// `inherited` holds what the eager walk would have collected on the way
+    /// down: the nearest ancestor's `MediaBox`, `CropBox` and `Rotate`, and the
+    /// `Resources` dictionaries of all ancestors.
+    ///
+    /// Entries in `dict` itself take precedence over `inherited`, exactly as in
+    /// the eager walk. `dict` is not checked to be a `/Type /Page` dictionary;
+    /// like the eager walk, any leaf of the page tree is accepted.
+    pub fn from_dict(dict: &Dict<'a>, inherited: &InheritedAttributes<'a>) -> Self {
+        // A fresh context for the document, as the eager walk uses, rather
+        // than `dict`'s own one: that one may carry the dictionary's object
+        // number and the reference chain it was resolved through, which
+        // belong to the dictionary, not to everything later read via the page.
+        let ctx = ReaderContext::new(dict.ctx().xref(), false);
+        let pages_ctx = PagesContext {
+            media_box: inherited.media_box,
+            crop_box: inherited.crop_box,
+            rotate: inherited.rotate,
+        };
+        // Rebuild the same parent chain `resolve_pages` builds: an empty root,
+        // then one link per ancestor, outermost first. `Page::new` appends the
+        // page's own `/Resources` as the innermost link.
+        let resources = inherited
+            .resources
+            .iter()
+            .fold(Resources::new(Dict::empty(), None, &ctx), |parent, dict| {
+                Resources::from_parent(dict.clone(), parent)
+            });
+
+        Self::new(dict, &pages_ctx, resources)
     }
 
     fn operations_impl(&self) -> Option<UntypedIter<'_>> {
@@ -518,7 +574,13 @@ pub(crate) mod cached {
     }
 
     impl CachedPages {
-        pub(crate) fn new(xref: Arc<XRef>) -> Option<Self> {
+        /// Walk the page tree and build every page.
+        ///
+        /// Falls back to a brute-force search for page objects when the tree
+        /// cannot be read, and to an empty page list when that finds nothing:
+        /// this runs lazily on the first call to `Pdf::pages`, after the
+        /// document has been opened, so there is no error left to report.
+        pub(crate) fn new(xref: Arc<XRef>) -> Self {
             // SAFETY:
             // - The XRef's location is stable in memory:
             //   - We wrapped it in a `Arc` (or `Rc` in `no_std`), which implements `StableDeref`.
@@ -532,9 +594,10 @@ pub(crate) mod cached {
             let pages = xref_reference
                 .get_with(xref.trailer_data().pages_ref, &ctx)
                 .and_then(|p| Pages::new(&p, &ctx, xref_reference))
-                .or_else(|| Pages::new_brute_force(&ctx, xref_reference))?;
+                .or_else(|| Pages::new_brute_force(&ctx, xref_reference))
+                .unwrap_or_else(|| Pages::empty(xref_reference));
 
-            Some(Self { pages, _xref: xref })
+            Self { pages, _xref: xref }
         }
 
         pub(crate) fn get(&self) -> &Pages<'_> {

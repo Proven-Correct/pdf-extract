@@ -3,10 +3,11 @@
 use crate::PdfData;
 use crate::filter::{DecodeBudget, DecodeLimits, DecodeStats};
 use crate::object::Object;
+use crate::object::ObjectIdentifier;
 use crate::page::Pages;
 use crate::page::cached::CachedPages;
 use crate::reader::Reader;
-use crate::sync::Arc;
+use crate::sync::{Arc, OnceLock};
 use crate::xref::{XRef, XRefError, fallback, root_xref};
 
 pub use crate::crypto::DecryptionError;
@@ -16,7 +17,12 @@ use crate::metadata::Metadata;
 pub struct Pdf {
     xref: Arc<XRef>,
     header_version: PdfVersion,
-    pages: CachedPages,
+    // Built on the first call to `pages()`, not when the document is opened:
+    // walking the tree resolves every page dictionary and holds a `Page` for
+    // each, which dominates the cost of opening a large document and is
+    // wasted on callers that only need a few pages (or build them with
+    // `Page::from_dict`). Once built, the pages live as long as the `Pdf`.
+    pages: OnceLock<CachedPages>,
     data: PdfData,
 }
 
@@ -72,12 +78,14 @@ impl Pdf {
         };
         let xref = Arc::new(xref);
 
-        let pages = CachedPages::new(xref.clone()).ok_or(LoadPdfError::Invalid)?;
-
+        // The page tree is not read here (see `pages`), so a document whose
+        // tree is unreadable opens and has no pages. The catalog and its
+        // `/Pages` reference are still required: resolving the trailer above
+        // fails without them.
         Ok(Self {
             xref,
             header_version: version,
-            pages,
+            pages: OnceLock::new(),
             data,
         })
     }
@@ -106,8 +114,41 @@ impl Pdf {
     }
 
     /// Return the pages of the PDF file.
+    ///
+    /// The page tree is walked on the first call and the result is cached, so
+    /// the first call costs time and memory proportional to the number of
+    /// pages. If neither the page tree nor a search for page objects yields a
+    /// page, the result is empty.
     pub fn pages(&self) -> &Pages<'_> {
-        self.pages.get()
+        self.pages
+            .get_or_init(|| CachedPages::new(self.xref.clone()))
+            .get()
+    }
+
+    /// Return whether the pages have been built, i.e. whether
+    /// [`Pdf::pages`] has been called.
+    pub fn pages_built(&self) -> bool {
+        self.pages.get().is_some()
+    }
+
+    /// Return the object identifier of the root of the page tree (the
+    /// catalog's `/Pages` entry).
+    ///
+    /// Together with [`XRef::get`] and [`Page::from_dict`](crate::page::Page::from_dict),
+    /// this lets a caller walk the page tree on its own terms instead of
+    /// calling [`Pdf::pages`].
+    pub fn pages_root(&self) -> ObjectIdentifier {
+        self.xref.trailer_data().pages_ref
+    }
+
+    /// Return whether the xref table was broken and had to be rebuilt by
+    /// scanning the file.
+    ///
+    /// A broken table is usually detected while opening, but can also be
+    /// detected later, the first time an object is not found where the table
+    /// says it is; the result reflects the state at the time of the call.
+    pub fn xref_was_repaired(&self) -> bool {
+        self.xref.is_repaired()
     }
 
     /// Return the xref of the PDF file.

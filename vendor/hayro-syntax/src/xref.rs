@@ -395,7 +395,7 @@ impl XRef {
         Ok(xref)
     }
 
-    fn is_repaired(&self) -> bool {
+    pub(crate) fn is_repaired(&self) -> bool {
         match &self.0 {
             Inner::Dummy => false,
             Inner::Some(r) => {
