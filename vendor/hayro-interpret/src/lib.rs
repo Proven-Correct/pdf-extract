@@ -52,6 +52,7 @@ pub mod util;
 pub use cache::CacheKey;
 pub use context::*;
 pub use device::*;
+pub use font::font_substitutions;
 pub use function::Function;
 pub use hayro_cmap;
 pub use hayro_syntax;

@@ -410,6 +410,19 @@ pub fn interpret_page<'a>(
     }
 }
 
+/// Whether `name` is a key of the `/Font` dictionary of `resources` or of one of its
+/// ancestors, whatever the entry resolves to.
+fn has_font_entry(resources: &Resources<'_>, name: &Name<'_>) -> bool {
+    let mut level = Some(resources);
+    while let Some(r) = level {
+        if r.fonts.contains_key(name.as_ref()) {
+            return true;
+        }
+        level = r.parent();
+    }
+    false
+}
+
 /// Interpret the instructions from `ops` and render them into the device.
 pub fn interpret<'a>(
     mut ops: TypedIter<'_>,
@@ -775,8 +788,16 @@ pub fn interpret<'a>(
                 let font = if let Some(font_dict) = resources.get_font(name) {
                     context.resolve_font(&font_dict)
                 } else {
-                    Font::new_standard(StandardFont::Helvetica, &context.settings.font_resolver)
-                        .map(TextStateFont::Fallback)
+                    let fallback =
+                        Font::new_standard(StandardFont::Helvetica, &context.settings.font_resolver)
+                            .map(TextStateFont::Fallback);
+                    // A name that is present in the resources but does not resolve to a
+                    // dictionary is a broken font, substituted like one that fails to
+                    // load (`font_substitutions`); a missing name is Helvetica by design.
+                    if fallback.is_some() && has_font_entry(resources, name) {
+                        crate::font::note_font_substitution();
+                    }
+                    fallback
                 };
 
                 context.get_mut().text_state.font_size = t.1.as_f32();

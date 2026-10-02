@@ -2,8 +2,8 @@ use crate::font::blob::{CffFontBlob, OpenTypeFontBlob, Type1FontBlob};
 use crate::font::generated::glyph_names;
 use crate::font::standard_font::select_standard_font;
 use crate::font::{
-    FallbackFontQuery, FontFlags, FontQuery, read_ascent_descent, read_to_unicode, stretch_glyph,
-    strip_subset_prefix,
+    FallbackFontQuery, FontFlags, FontQuery, has_font_program, note_font_substitution,
+    read_ascent_descent, read_to_unicode, stretch_glyph, strip_subset_prefix,
 };
 use crate::{CMapResolverFn, CacheKey, FontResolverFn};
 use hayro_cmap::{BfString, CMap, CharacterCollection, CidFamily, WritingMode};
@@ -99,6 +99,13 @@ impl Type0Font {
                 let blob = OpenTypeFontBlob::new(data.clone(), index)
                     .map(FontType::OpenType)
                     .or_else(|| CffFontBlob::new(data).map(FontType::Cff))?;
+
+                // An embedded program that could not be used is replaced by this
+                // substitute (`font_substitutions`); a non-embedded font is not counted.
+                if has_font_program(&font_descriptor) {
+                    note_font_substitution();
+                }
+
                 (blob, true, is_standard)
             }
         };

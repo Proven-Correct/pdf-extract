@@ -2,8 +2,9 @@ use crate::font::blob::{CffFontBlob, OpenTypeFontBlob};
 use crate::font::generated::{glyph_names, mac_os_roman, mac_roman, standard};
 use crate::font::standard_font::StandardKind;
 use crate::font::{
-    Encoding, FallbackFontQuery, FontFlags, glyph_name_to_unicode, read_ascent_descent,
-    read_to_unicode, strip_subset_prefix, unicode_from_name,
+    Encoding, FallbackFontQuery, FontFlags, glyph_name_to_unicode, has_font_program,
+    note_font_substitution, read_ascent_descent, read_to_unicode, strip_subset_prefix,
+    unicode_from_name,
 };
 use crate::util::OptionLog;
 use crate::{CMapResolverFn, CacheKey, FontResolverFn};
@@ -63,6 +64,18 @@ impl TrueTypeFont {
             });
         }
 
+        // An embedded program that could not be used: whatever is drawn below is a
+        // substitute (`font_substitutions`). A font that is merely not embedded is not.
+        let program_failed = dict
+            .get::<Dict<'_>>(FONT_DESC)
+            .is_some_and(|d| has_font_program(&d));
+        let substituted = |font: Self| {
+            if program_failed {
+                note_font_substitution();
+            }
+            Some(font)
+        };
+
         let fallback = || {
             let fallback_query = FallbackFontQuery::new(dict);
             let standard_font = fallback_query.pick_standard_font();
@@ -78,7 +91,7 @@ impl TrueTypeFont {
             let standard =
                 StandardKind::new_with_standard(dict, standard_font, true, font_resolver)?;
 
-            Some(Self {
+            substituted(Self {
                 cache_key,
                 ascent_descent: standard_metrics(&standard),
                 kind: Kind::Standard(standard),
@@ -87,7 +100,7 @@ impl TrueTypeFont {
         };
 
         if let Some(standard) = StandardKind::new(dict, font_resolver) {
-            Some(Self {
+            substituted(Self {
                 cache_key,
                 ascent_descent: standard_metrics(&standard),
                 kind: Kind::Standard(standard),

@@ -2,8 +2,8 @@ use crate::font::blob::{CffFontBlob, Type1FontBlob};
 use crate::font::standard_font::{StandardFont, StandardKind, select_standard_font};
 use crate::font::true_type::{Width, read_encoding, read_widths};
 use crate::font::{
-    Encoding, FallbackFontQuery, glyph_name_to_unicode, normalized_glyph_name, read_ascent_descent,
-    read_to_unicode,
+    Encoding, FallbackFontQuery, glyph_name_to_unicode, normalized_glyph_name,
+    note_font_substitution, read_ascent_descent, read_to_unicode,
 };
 use crate::{CMapResolverFn, CacheKey, FontResolverFn};
 use hayro_cmap::{BfString, CMap};
@@ -38,7 +38,10 @@ impl Type1Font {
             Self(cache_key, kind, to_unicode, metrics)
         };
 
-        let fallback = || {
+        // `program_failed`: the font has an embedded program that could not be used, so
+        // the substitute counts as one (`font_substitutions`); a font that is merely not
+        // embedded and not a standard font is not counted.
+        let fallback = |program_failed: bool| {
             // TODO: Actually use fallback fonts
             let fallback_query = FallbackFontQuery::new(dict);
             let standard_font = fallback_query.pick_standard_font();
@@ -51,7 +54,7 @@ impl Type1Font {
                 standard_font.as_str()
             );
 
-            Some(assemble(
+            let substitute = assemble(
                 Kind::Standard(StandardKind::new_with_standard(
                     dict,
                     standard_font,
@@ -59,25 +62,31 @@ impl Type1Font {
                     resolver,
                 )?),
                 to_unicode.clone(),
-            ))
+            );
+
+            if program_failed {
+                note_font_substitution();
+            }
+
+            Some(substitute)
         };
 
         let inner = if is_cff(dict) {
             if let Some(cff) = CffKind::new(dict) {
                 assemble(Kind::Cff(cff), to_unicode)
             } else {
-                return fallback();
+                return fallback(true);
             }
         } else if is_type1(dict) {
             if let Some(f) = Type1Kind::new(dict) {
                 assemble(Kind::Type1(f), to_unicode)
             } else {
-                return fallback();
+                return fallback(true);
             }
         } else if let Some(standard) = StandardKind::new(dict, resolver) {
             assemble(Kind::Standard(standard), to_unicode)
         } else {
-            return fallback();
+            return fallback(false);
         };
 
         Some(inner)

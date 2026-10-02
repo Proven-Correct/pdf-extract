@@ -876,6 +876,44 @@ impl Default for FallbackFontQuery {
     }
 }
 
+std::thread_local! {
+    // Per thread, like the counters of `hayro-syntax`: fonts are loaded synchronously
+    // inside the operator that selects them, so a caller can attribute the events to its
+    // own operation by sampling around it.
+    static FONT_SUBSTITUTIONS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Return how many times, on the current thread, a font that could not be loaded was
+/// replaced by a substitute.
+///
+/// This counts fonts whose embedded program (`/FontFile`, `/FontFile2` or `/FontFile3`)
+/// is present but cannot be used, and which are therefore drawn with a standard or
+/// fallback font instead, and font resources that do not describe a usable font at all (a
+/// reference to nothing, a non-dictionary, an unknown or missing `/Subtype`, a Type0 font
+/// without `/DescendantFonts`), which are drawn with Helvetica. The text of such fonts is
+/// still drawn. A font that is simply not embedded is not counted, nor is a font name
+/// missing from the resources (Helvetica is used for those by design).
+///
+/// Fonts are cached per [`InterpreterCache`], so a broken font
+/// is counted when it is loaded, not each time it is selected; a font resource that does
+/// not resolve to a dictionary cannot be cached and is counted at each selection. The
+/// counter only ever increases: read it before and after an operation, on the same
+/// thread.
+pub fn font_substitutions() -> u64 {
+    FONT_SUBSTITUTIONS.with(std::cell::Cell::get)
+}
+
+pub(crate) fn note_font_substitution() {
+    FONT_SUBSTITUTIONS.with(|n| n.set(n.get().saturating_add(1)));
+}
+
+/// Whether a font descriptor carries an embedded font program.
+pub(crate) fn has_font_program(descriptor: &Dict<'_>) -> bool {
+    [FONT_FILE, FONT_FILE2, FONT_FILE3]
+        .iter()
+        .any(|key| descriptor.contains_key(key))
+}
+
 /// Convert a glyph name to a Unicode character, if possible.
 /// An incomplete implementation of the Adobe Glyph List Specification
 /// <https://github.com/adobe-type-tools/agl-specification>

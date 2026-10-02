@@ -388,11 +388,13 @@ impl<'a> Context<'a> {
     pub(crate) fn resolve_font(&mut self, font_dict: &Dict<'a>) -> Option<TextStateFont<'a>> {
         let cache_key = font_dict.cache_key();
 
+        let mut loaded_now = false;
         let resolved = {
             let mut font_cache = self.interpreter_cache.font_cache.borrow_mut();
             font_cache
                 .entry(cache_key)
                 .or_insert_with(|| {
+                    loaded_now = true;
                     Font::new(
                         font_dict,
                         &self.settings.font_resolver,
@@ -405,8 +407,14 @@ impl<'a> Context<'a> {
         if let Some(resolved) = resolved {
             Some(TextStateFont::Font(resolved))
         } else {
-            Font::new_standard(StandardFont::Helvetica, &self.settings.font_resolver)
-                .map(TextStateFont::Fallback)
+            let fallback = Font::new_standard(StandardFont::Helvetica, &self.settings.font_resolver)
+                .map(TextStateFont::Fallback);
+            // Counted once per font, when it failed to load, like the substitutions
+            // inside the font constructors.
+            if loaded_now && fallback.is_some() {
+                crate::font::note_font_substitution();
+            }
+            fallback
         }
     }
 }
