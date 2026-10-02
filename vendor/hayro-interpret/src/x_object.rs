@@ -135,6 +135,9 @@ pub(crate) fn draw_form_xobject<'a, 'b>(
         return;
     }
 
+    // From here on the form is drawn; see `Device::begin_form`.
+    device.begin_form(form_id);
+
     let iter = TypedIter::new(x_object.decoded.as_ref());
 
     context.path_mut().truncate(0);
@@ -195,6 +198,8 @@ pub(crate) fn draw_form_xobject<'a, 'b>(
     if has_oc {
         context.ocg_state.end_marked_content();
     }
+
+    device.end_form();
 
     context.end_nested_interpretation();
 }

@@ -2,7 +2,7 @@ use crate::font::Glyph;
 use crate::soft_mask::SoftMask;
 use crate::{BlendMode, ClipPath, Image};
 use crate::{GlyphDrawMode, Paint, PathDrawMode};
-use hayro_syntax::object::Dict;
+use hayro_syntax::object::{Dict, ObjectIdentifier};
 use kurbo::{Affine, BezPath, Rect, Shape};
 
 /// A trait for a device that can be used to process PDF drawing instructions.
@@ -77,6 +77,31 @@ pub trait Device<'a> {
     }
     /// Called at the end of a marked content sequence (EMC).
     fn end_marked_content(&mut self) {}
+    /// Called before the content of a Form `XObject` is drawn, with the form's object
+    /// identifier (`None` for a form that is not an indirect object).
+    ///
+    /// Every call is matched by one [`end_form`](Device::end_form) after the form's
+    /// content; forms drawn inside the form (and annotation appearance streams, which are
+    /// forms) nest. A form that is not drawn at all (hidden by optional content, skipped
+    /// because it draws itself or is nested too deeply, or after the interpretation
+    /// budget ran out) causes no call. Text extraction uses the pair as a boundary
+    /// between the text inside the form and the text around it.
+    fn begin_form(&mut self, _id: Option<ObjectIdentifier>) {}
+    /// Called after the content of a Form `XObject` announced by
+    /// [`begin_form`](Device::begin_form) was drawn.
+    fn end_form(&mut self) {}
+    /// Called before the appearance stream of an annotation is drawn, with the
+    /// annotation's `/Subtype` (empty if it has none).
+    ///
+    /// Matched by one [`end_annotation`](Device::end_annotation). The appearance stream
+    /// itself is a form, so a [`begin_form`](Device::begin_form)/
+    /// [`end_form`](Device::end_form) pair normally follows inside, unless the form is
+    /// not drawn. Annotations that are not drawn (hidden, without an appearance stream,
+    /// or of a subtype that is never drawn) cause no call.
+    fn begin_annotation(&mut self, _subtype: &[u8]) {}
+    /// Called after the appearance stream of an annotation announced by
+    /// [`begin_annotation`](Device::begin_annotation) was drawn.
+    fn end_annotation(&mut self) {}
 }
 
 /// A device that discards all drawing operations.

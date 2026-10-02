@@ -393,6 +393,9 @@ pub fn interpret_page<'a>(
                 // 3) Matrix shall be concatenated with A to form a matrix
                 // AA that maps from the appearance’s coordinate system to
                 // the annotation’s rectangle in default user space.
+                let subtype = annot.get::<Name<'_>>(SUBTYPE);
+                device.begin_annotation(subtype.as_ref().map_or(&[][..], |s| s.as_ref()));
+
                 context.save_state();
                 context.pre_concat_affine(affine);
                 context.push_root_transform();
@@ -400,6 +403,8 @@ pub fn interpret_page<'a>(
                 draw_form_xobject(resources, &apx, context, device);
                 context.pop_root_transform();
                 context.restore_state(device);
+
+                device.end_annotation();
             }
         }
     }
