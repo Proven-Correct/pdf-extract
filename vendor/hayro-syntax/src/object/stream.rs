@@ -207,8 +207,11 @@ impl<'a> Stream<'a> {
                     limit,
                 )
                 .inspect_err(|e| {
-                    if let (DecodeFailure::LimitExceeded, Some(budget)) = (e, budget) {
-                        budget.note_over_limit();
+                    if let DecodeFailure::LimitExceeded = e {
+                        crate::filter::note_stream_decode_limit_hit();
+                        if let Some(budget) = budget {
+                            budget.note_over_limit();
+                        }
                     }
                 })?;
             current = Some(new);

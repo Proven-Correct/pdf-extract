@@ -88,6 +88,40 @@ impl DecodeBudget {
     }
 }
 
+#[cfg(feature = "std")]
+std::thread_local! {
+    // Per thread rather than per document: [`DecodeStats`] belong to the document, so
+    // two threads working on different pages of one document cannot tell their own
+    // events apart in them. A caller samples this before and after an operation on the
+    // same thread instead.
+    static STREAM_DECODE_LIMIT_HITS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
+}
+
+/// Return how many stream decodes on the current thread failed with
+/// [`DecodeFailure::LimitExceeded`](crate::object::stream::DecodeFailure::LimitExceeded).
+///
+/// The same events are counted per document in [`DecodeStats`]; this counter tells
+/// them apart by thread, so that an operation can learn about its own decodes while
+/// other threads decode streams of the same document. It only ever increases: read it
+/// before and after the operation, on the same thread. Without the `std` feature
+/// nothing is counted and this always returns 0.
+pub fn stream_decode_limit_hits() -> u64 {
+    #[cfg(feature = "std")]
+    {
+        STREAM_DECODE_LIMIT_HITS.with(core::cell::Cell::get)
+    }
+
+    #[cfg(not(feature = "std"))]
+    {
+        0
+    }
+}
+
+pub(crate) fn note_stream_decode_limit_hit() {
+    #[cfg(feature = "std")]
+    STREAM_DECODE_LIMIT_HITS.with(|n| n.set(n.get().saturating_add(1)));
+}
+
 /// A data filter.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Filter {
