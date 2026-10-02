@@ -131,6 +131,9 @@ pub struct UntypedIter<'a> {
     reader: Reader<'a>,
     stack: Stack<'a>,
     operator: Option<Operator<'a>>,
+    // Whether bytes that start no token are skipped (and counted) or end the stream. Only
+    // the inline-image probe below turns this off.
+    resync: bool,
 }
 
 impl<'a> UntypedIter<'a> {
@@ -140,6 +143,18 @@ impl<'a> UntypedIter<'a> {
             reader: Reader::new(data),
             stack: Stack::new(),
             operator: None,
+            resync: true,
+        }
+    }
+
+    /// An iterator that ends at the first byte that starts no token, as upstream did,
+    /// without counting it. For probing whether some bytes read as content at all: there,
+    /// skipping over garbage would make image data look like content, and the skips would
+    /// be counted as damage of a stream that is not damaged.
+    fn new_strict(data: &'a [u8]) -> Self {
+        Self {
+            resync: false,
+            ..Self::new(data)
         }
     }
 
@@ -149,6 +164,7 @@ impl<'a> UntypedIter<'a> {
             reader: Reader::new(&[]),
             stack: Stack::new(),
             operator: None,
+            resync: true,
         }
     }
 
@@ -201,6 +217,11 @@ impl<'a> UntypedIter<'a> {
                         // deeper than `MAX_OBJECT_DEPTH`, may already have scanned to the
                         // end of the stream, and retrying it at every following byte would
                         // be quadratic.
+                        if !self.resync {
+                            self.reader.jump_to_end();
+                            return None;
+                        }
+
                         warn!("skipping bytes that start no token in content stream");
 
                         let start = self.reader.offset();
@@ -290,7 +311,11 @@ impl<'a> UntypedIter<'a> {
                                     // stream and there should be at least one text-related
                                     // operator that can be parsed correctly.
 
-                                    let mut iter = TypedIter::new(tail);
+                                    // Strict: a resynchronising probe would read
+                                    // past garbage in image data and accept a false
+                                    // `EI`, and would count its skips as damage.
+                                    let mut iter =
+                                        TypedIter::from_untyped(UntypedIter::new_strict(tail));
                                     let mut found = false;
                                     let mut counter = 0;
 
