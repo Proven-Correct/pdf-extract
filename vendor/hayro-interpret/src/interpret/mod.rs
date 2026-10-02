@@ -413,6 +413,9 @@ pub fn interpret<'a>(
     device: &mut impl Device<'a>,
 ) {
     let num_states = context.num_states();
+    // Marked-content sequences (`BMC`/`BDC`) opened by this content stream and not yet
+    // closed by an `EMC` of the same stream; see the cleanup after the loop.
+    let mut open_marked_content = 0_usize;
 
     context.save_state();
 
@@ -708,16 +711,21 @@ pub fn interpret<'a>(
                 };
 
                 device.begin_marked_content(bdc.0, mcid, properties.as_ref());
+                open_marked_content += 1;
             }
             TypedInstruction::MarkedContentPointWithProperties(_) => {}
             TypedInstruction::EndMarkedContent(_) => {
                 context.ocg_state.end_marked_content();
                 device.end_marked_content();
+                // An `EMC` without a matching `BMC`/`BDC` in this stream closes a sequence
+                // of an enclosing stream, as before; it is not this stream's to account for.
+                open_marked_content = open_marked_content.saturating_sub(1);
             }
             TypedInstruction::MarkedContentPoint(_) => {}
             TypedInstruction::BeginMarkedContent(bmc) => {
                 context.ocg_state.begin_marked_content();
                 device.begin_marked_content(bmc.0, None, None);
+                open_marked_content += 1;
             }
             TypedInstruction::BeginText(_) => {
                 context.get_mut().text_state.text_matrix = Affine::IDENTITY;
@@ -941,6 +949,17 @@ pub fn interpret<'a>(
                 warn!("failed to read an operator");
             }
         }
+    }
+
+    // Close the marked-content sequences this stream left open, innermost first, as if
+    // the stream had ended with the missing `EMC`s. Otherwise an unbalanced `BDC` in a
+    // Form XObject would stay open after the form: a hidden optional-content span would
+    // hide the rest of the page, the form's own `/OC` entry would be popped in its place,
+    // and the device would see the sequence swallow content it does not belong to. This
+    // also runs when the budget cut the stream short.
+    for _ in 0..open_marked_content {
+        context.ocg_state.end_marked_content();
+        device.end_marked_content();
     }
 
     while context.num_states() > num_states {
