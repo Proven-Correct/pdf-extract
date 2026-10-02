@@ -148,6 +148,11 @@ impl Type1Font {
         self.3
     }
 
+    /// The `ToUnicode` entry for `char_code` alone, an entry for U+0000 included.
+    pub(crate) fn to_unicode(&self, char_code: u32) -> Option<BfString> {
+        self.2.as_ref()?.lookup_bf_string(char_code)
+    }
+
     pub(crate) fn char_code_to_unicode(&self, char_code: u32) -> Option<BfString> {
         if let Some(to_unicode) = &self.2
             && let Some(c) = to_unicode.lookup_bf_string(char_code)

@@ -106,6 +106,21 @@ impl Glyph<'_> {
         }
     }
 
+    /// Returns the entry of the font's `ToUnicode` `CMap` for this glyph's
+    /// character code, and nothing else.
+    ///
+    /// Unlike [`as_unicode`](Glyph::as_unicode), this never falls back to the
+    /// glyph name or to a substitute `CMap`, and returns an entry that maps to
+    /// U+0000 as it is. `None` when the font has no `ToUnicode` `CMap` or the
+    /// map has no entry for the code. Callers that want their own fallback chain
+    /// (for example their own glyph-name table) start from this.
+    pub fn to_unicode(&self) -> Option<BfString> {
+        match self {
+            Glyph::Outline(g) => g.to_unicode(),
+            Glyph::Type3(g) => g.to_unicode(),
+        }
+    }
+
     /// Returns the character code that selected this glyph, as read from the
     /// shown string (one byte for simple fonts, one to four for Type0 fonts).
     pub fn char_code(&self) -> u32 {
@@ -277,6 +292,11 @@ impl OutlineGlyph {
         self.font.char_code_to_unicode(self.char_code)
     }
 
+    /// See [`Glyph::to_unicode`].
+    pub fn to_unicode(&self) -> Option<BfString> {
+        self.font.to_unicode(self.char_code)
+    }
+
     /// Get raw font bytes and metadata for downstream use.
     ///
     /// Returns `None` for Type1 fonts.
@@ -419,6 +439,11 @@ impl<'a> Type3Glyph<'a> {
     /// Note: Type3 fonts can only provide Unicode via `ToUnicode` cmap.
     pub fn as_unicode(&self) -> Option<BfString> {
         self.font.char_code_to_unicode(self.char_code)
+    }
+
+    /// See [`Glyph::to_unicode`].
+    pub fn to_unicode(&self) -> Option<BfString> {
+        self.font.to_unicode(self.char_code)
     }
 
     /// See [`Glyph::char_code`].

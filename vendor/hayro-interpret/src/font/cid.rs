@@ -429,6 +429,16 @@ impl Type0Font {
         }
     }
 
+    /// The `ToUnicode` entry for `code` alone. A UCS2 `CMap` that stands in for a missing
+    /// `ToUnicode` map (indexed by CID) does not count.
+    pub(crate) fn to_unicode(&self, code: u32) -> Option<BfString> {
+        if self.to_unicode_is_cid_indexed {
+            return None;
+        }
+
+        self.to_unicode.as_ref()?.lookup_bf_string(code)
+    }
+
     pub(crate) fn char_code_to_unicode(&self, code: u32) -> Option<BfString> {
         if let Some(to_unicode) = &self.to_unicode {
             let key = if self.to_unicode_is_cid_indexed {

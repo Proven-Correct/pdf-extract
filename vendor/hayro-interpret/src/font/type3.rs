@@ -121,6 +121,11 @@ impl<'a> Type3<'a> {
         self.ascent_descent
     }
 
+    /// The `ToUnicode` entry for `char_code` (the only source Type3 fonts have).
+    pub(crate) fn to_unicode(&self, char_code: u32) -> Option<BfString> {
+        self.char_code_to_unicode(char_code)
+    }
+
     pub(crate) fn char_code_to_unicode(&self, char_code: u32) -> Option<BfString> {
         // Type3 fonts can only provide Unicode via ToUnicode CMap.
         self.to_unicode

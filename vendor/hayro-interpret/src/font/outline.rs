@@ -108,6 +108,15 @@ impl OutlineFont {
         }
     }
 
+    /// The entry of the font's `ToUnicode` `CMap` for `char_code`, and nothing else.
+    pub(crate) fn to_unicode(&self, char_code: u32) -> Option<BfString> {
+        match self {
+            Self::Type1(t) => t.to_unicode(char_code),
+            Self::TrueType(t) => t.to_unicode(char_code),
+            Self::Type0(t) => t.to_unicode(char_code),
+        }
+    }
+
     /// Get the advance for a character code in text space units times 1000,
     /// as the interpreter applies it (zero where no width is known).
     pub(crate) fn code_advance(&self, char_code: u32) -> Vec2 {

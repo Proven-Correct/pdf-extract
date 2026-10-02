@@ -223,6 +223,11 @@ impl TrueTypeFont {
         self.ascent_descent
     }
 
+    /// The `ToUnicode` entry for `code` alone.
+    pub(crate) fn to_unicode(&self, code: u32) -> Option<BfString> {
+        self.to_unicode.as_ref()?.lookup_bf_string(code)
+    }
+
     pub(crate) fn char_code_to_unicode(&self, code: u32) -> Option<BfString> {
         if let Some(to_unicode) = &self.to_unicode
             && let Some(c) = to_unicode.lookup_bf_string(code)
