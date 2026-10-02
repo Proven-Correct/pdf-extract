@@ -40,12 +40,46 @@ use crate::object::name::{Name, skip_name_like};
 use crate::object::{Array, Null, Number, Object, Stream};
 use crate::reader::Reader;
 use crate::reader::{Readable, ReaderContext, ReaderExt, Skippable};
-use crate::trivia::is_white_space_character;
+use crate::trivia::{is_regular_character, is_white_space_character};
 use crate::util::find_needle;
 use core::array;
 use core::fmt::{Debug, Formatter};
 use core::ops::Deref;
 use smallvec::SmallVec;
+
+#[cfg(feature = "std")]
+std::thread_local! {
+    // Thread-local for the same reason as the object-depth counter: content streams are
+    // lexed with no reference to their document. A `Cell` keeps the hot path cheap.
+    static CONTENT_DAMAGE_EVENTS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
+}
+
+/// Return how many bytes, on the current thread, the content-stream lexer has skipped
+/// because they could not start any token (a stray `)`, `]` or `>>`, for example).
+///
+/// [`UntypedIter`] skips such bytes and carries on with the rest of the stream instead
+/// of abandoning it; this counter is how a caller learns that it did. It only ever
+/// increases: read it before and after an operation, on the same thread. A well-formed
+/// stream never moves it. Without the `std` feature nothing is counted and this always
+/// returns 0.
+pub fn content_damage_events() -> u64 {
+    #[cfg(feature = "std")]
+    {
+        CONTENT_DAMAGE_EVENTS.with(core::cell::Cell::get)
+    }
+
+    #[cfg(not(feature = "std"))]
+    {
+        0
+    }
+}
+
+fn note_content_damage_events(bytes: u64) {
+    #[cfg(feature = "std")]
+    CONTENT_DAMAGE_EVENTS.with(|n| n.set(n.get().saturating_add(bytes)));
+    #[cfg(not(feature = "std"))]
+    let _ = bytes;
+}
 
 // 6 operands are used for example for ctm or cubic curves,
 // but anything above should be pretty rare (only for example for
@@ -150,10 +184,35 @@ impl<'a> UntypedIter<'a> {
                 let operator = match self.reader.read_without_context::<Operator<'_>>() {
                     Some(o) => o,
                     None => {
-                        warn!("failed to read operator in content stream");
+                        // A byte that can start neither an operand nor an operator, such as
+                        // a stray `)`, `]`, `>` or `}`. Skip it and carry on with the next
+                        // token, as other PDF readers do, instead of losing the rest of the
+                        // stream. The operands read so far belonged to an instruction that is
+                        // now known to be broken, so they are dropped.
+                        //
+                        // The only other way to get here is a run of regular characters
+                        // that is not a valid name (a malformed `#` escape); that whole run
+                        // is skipped, since retrying the operator at each of its bytes would
+                        // rescan the rest of the run every time.
+                        //
+                        // Either way the work is linear in the bytes skipped. Bytes that do
+                        // start an operand (the branch above) are not resynchronised: a
+                        // failed operand, such as an unterminated string or an array nested
+                        // deeper than `MAX_OBJECT_DEPTH`, may already have scanned to the
+                        // end of the stream, and retrying it at every following byte would
+                        // be quadratic.
+                        warn!("skipping bytes that start no token in content stream");
 
-                        self.reader.jump_to_end();
-                        return None;
+                        let start = self.reader.offset();
+                        if self.reader.peek_byte().is_some_and(is_regular_character) {
+                            self.reader.forward_while(is_regular_character);
+                        } else {
+                            self.reader.forward();
+                        }
+                        note_content_damage_events((self.reader.offset() - start) as u64);
+                        self.stack.clear();
+                        self.reader.skip_white_spaces_and_comments();
+                        continue;
                     }
                 };
 
