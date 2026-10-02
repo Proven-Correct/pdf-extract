@@ -678,24 +678,23 @@ pub fn interpret<'a>(
 
                 let mcid = dict_or_stream(bdc.1).and_then(|(props, _)| props.get::<i32>(MCID));
 
-                let oc = bdc
-                    .1
-                    .clone()
-                    .into_name()
-                    .and_then(|name| {
-                        let r = resources.properties.get_ref(name.as_ref())?;
-                        let d = resources
-                            .properties
-                            .get::<Dict<'_>>(name)
-                            .unwrap_or_default();
-                        Some((d, r))
-                    })
-                    .or_else(|| {
-                        let (props, _) = dict_or_stream(bdc.1)?;
+                // A name refers to an entry of the resources' `/Properties` dictionary,
+                // resolved through the context's cache; anything else is used inline.
+                let named = bdc.1.clone().into_name().map(|name| {
+                    (
+                        context.named_property(&resources.properties, &name),
+                        resources.properties.get_ref(name.as_ref()),
+                    )
+                });
+
+                let oc = match &named {
+                    Some((dict, r)) => r.map(|r| (dict.clone().unwrap_or_default(), r)),
+                    None => dict_or_stream(bdc.1).and_then(|(props, _)| {
                         let r = props.get_ref(OC)?;
                         let d = props.get::<Dict<'_>>(OC).unwrap_or_default();
                         Some((d, r))
-                    });
+                    }),
+                };
 
                 if let Some((dict, oc_ref)) = oc {
                     context.ocg_state.begin_ocg(&dict, oc_ref.into());
@@ -703,10 +702,9 @@ pub fn interpret<'a>(
                     context.ocg_state.begin_marked_content();
                 }
 
-                // The property list itself, for the device: a name refers to an entry of
-                // the resources' `/Properties` dictionary, anything else is used inline.
-                let properties = match bdc.1.clone().into_name() {
-                    Some(name) => resources.properties.get::<Dict<'_>>(name),
+                // The property list itself, for the device.
+                let properties = match named {
+                    Some((dict, _)) => dict,
                     None => dict_or_stream(bdc.1).map(|(props, _)| props.clone()),
                 };
 

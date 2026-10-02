@@ -46,6 +46,10 @@ impl<'a> InterpreterCache<'a> {
     }
 }
 
+/// Resolved named property lists: `/Properties` dictionary (data address, length) → name →
+/// the entry, if it resolved to a dictionary.
+type PropertyCache<'a> = HashMap<(usize, usize), HashMap<Box<[u8]>, Option<Dict<'a>>>>;
+
 /// A per-page interpretation context that borrows shared data from an [`InterpreterCache`].
 pub struct Context<'a> {
     states: Vec<State<'a>>,
@@ -64,6 +68,13 @@ pub struct Context<'a> {
     // objects, so the identifier tells a form that draws itself (directly or through other
     // forms) from one that is merely drawn several times.
     form_stack: Vec<ObjectIdentifier>,
+    // Named property lists (`/Name BDC`) already resolved, keyed by the `/Properties`
+    // dictionary they were looked up in (its data's address and length) and then by name.
+    // Resolving an entry parses the referenced object, which can be large (a long
+    // `/ActualText`), and a content stream can refer to the same entry with every `BDC`.
+    // The data is borrowed for `'a`, so its address cannot be reused by a different
+    // dictionary while this context exists.
+    property_cache: PropertyCache<'a>,
 }
 
 impl<'a> Context<'a> {
@@ -110,7 +121,36 @@ impl<'a> Context<'a> {
             ocg_state,
             nesting_depth,
             form_stack: Vec::new(),
+            property_cache: HashMap::new(),
         }
+    }
+
+    /// The dictionary that `name` refers to in the `/Properties` resource dictionary
+    /// `properties`, resolved once per context (see `property_cache`).
+    pub(crate) fn named_property(
+        &mut self,
+        properties: &Dict<'a>,
+        name: &Name<'_>,
+    ) -> Option<Dict<'a>> {
+        if properties.is_empty() {
+            return None;
+        }
+
+        let data = properties.data();
+        let by_name = self
+            .property_cache
+            .entry((data.as_ptr() as usize, data.len()))
+            .or_default();
+
+        if let Some(cached) = by_name.get(name.as_ref()) {
+            return cached.clone();
+        }
+
+        property_hooks::note_resolution();
+        let resolved = properties.get::<Dict<'_>>(name.as_ref());
+        by_name.insert(name.as_ref().into(), resolved.clone());
+
+        resolved
     }
 
     pub(crate) fn save_state(&mut self) {
@@ -408,5 +448,25 @@ pub(crate) fn path_as_rect(path: &BezPath) -> Option<Rect> {
         Some(bbox)
     } else {
         None
+    }
+}
+
+#[doc(hidden)]
+/// Instrumentation for tests: how often a named property list was resolved rather than
+/// taken from a context's cache. Not part of the supported API.
+pub mod property_hooks {
+    use std::cell::Cell;
+
+    std::thread_local! {
+        static RESOLUTIONS: Cell<u64> = const { Cell::new(0) };
+    }
+
+    /// Named property lists resolved on this thread so far.
+    pub fn resolutions() -> u64 {
+        RESOLUTIONS.with(Cell::get)
+    }
+
+    pub(crate) fn note_resolution() {
+        RESOLUTIONS.with(|n| n.set(n.get().saturating_add(1)));
     }
 }
