@@ -151,6 +151,15 @@ impl Pdf {
         self.xref.is_repaired()
     }
 
+    /// Return whether the document is encrypted.
+    ///
+    /// An encrypted document that opened (with an empty password when only
+    /// an owner password is set, or with the right password) returns `true`;
+    /// its objects are decrypted transparently when read.
+    pub fn is_encrypted(&self) -> bool {
+        self.xref.is_encrypted()
+    }
+
     /// Return the xref of the PDF file.
     pub fn xref(&self) -> &XRef {
         &self.xref

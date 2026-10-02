@@ -72,23 +72,24 @@ impl<T> MutexExt<T> for Mutex<T> {
 }
 
 pub(crate) trait RwLockExt<T> {
+    /// Block until shared access is available.
     fn get(&self) -> RwLockReadGuard<'_, T>;
-    fn try_get(&self) -> Option<RwLockReadGuard<'_, T>>;
-    fn try_put(&self) -> Option<RwLockWriteGuard<'_, T>>;
+    /// Block until exclusive access is available.
+    fn put(&self) -> RwLockWriteGuard<'_, T>;
 }
 
+// Poisoning is ignored: the only writer (the xref repair) does nothing but
+// move two fields while it holds the lock, so a panic elsewhere cannot leave
+// the protected data half-updated, and refusing to read it would turn one
+// panic into a panic on every later lookup.
 #[cfg(feature = "std")]
 impl<T> RwLockExt<T> for RwLock<T> {
     fn get(&self) -> RwLockReadGuard<'_, T> {
-        self.read().unwrap()
+        self.read().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    fn try_get(&self) -> Option<RwLockReadGuard<'_, T>> {
-        self.try_read().ok()
-    }
-
-    fn try_put(&self) -> Option<RwLockWriteGuard<'_, T>> {
-        self.try_write().ok()
+    fn put(&self) -> RwLockWriteGuard<'_, T> {
+        self.write().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -98,11 +99,7 @@ impl<T> RwLockExt<T> for RwLock<T> {
         self.borrow()
     }
 
-    fn try_get(&self) -> Option<RwLockReadGuard<'_, T>> {
-        Some(self.borrow())
-    }
-
-    fn try_put(&self) -> Option<RwLockWriteGuard<'_, T>> {
-        Some(self.borrow_mut())
+    fn put(&self) -> RwLockWriteGuard<'_, T> {
+        self.borrow_mut()
     }
 }

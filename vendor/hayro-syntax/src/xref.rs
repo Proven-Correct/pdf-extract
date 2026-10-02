@@ -506,17 +506,43 @@ impl XRef {
         }
     }
 
+    /// Rebuild the xref map by scanning the whole file, unless that has
+    /// already happened.
+    ///
+    /// Any lookup can end up here, so several threads may call this at once.
+    /// The scan reads only the immutable file bytes and runs without holding
+    /// the map lock, so lookups by other threads are not blocked for its
+    /// duration; the lock is taken only to swap the new map in. A thread that
+    /// finds the map already repaired by the time it gets the lock discards
+    /// its own (identical) result, so the map is replaced at most once.
     pub(crate) fn repair(&self) {
         let Inner::Some(r) = &self.0 else {
-            unreachable!();
+            return;
         };
 
-        let mut locked = r.map.try_put().unwrap();
-        assert!(!locked.repaired);
-
         let (xref_map, _) = fallback_xref_map(r.data.get(), &r.password, &r.decode_budget);
-        locked.xref_map = xref_map;
-        locked.repaired = true;
+        repair_hooks::scanned();
+
+        let old = {
+            let mut locked = r.map.put();
+            if locked.repaired {
+                return;
+            }
+            locked.repaired = true;
+            core::mem::replace(&mut locked.xref_map, xref_map)
+        };
+        repair_hooks::swapped();
+        // The old map is freed after the lock is released.
+        drop(old);
+    }
+
+    /// Whether the document is encrypted, i.e. whether objects are decrypted
+    /// when they are read.
+    pub(crate) fn is_encrypted(&self) -> bool {
+        match &self.0 {
+            Inner::Dummy => false,
+            Inner::Some(r) => !matches!(*r.decryptor, Decryptor::None),
+        }
     }
 
     #[inline]
@@ -570,7 +596,7 @@ impl XRef {
             return None;
         };
 
-        let locked = repr.map.try_get().unwrap();
+        let locked = repr.map.get();
 
         let mut r = Reader::new(repr.data.get().as_ref());
 
@@ -579,6 +605,10 @@ impl XRef {
             // shall be treated as a reference to the null object.
             None
         })?;
+        // Whether `entry` comes from the repaired map. Read under the same
+        // lock as the entry: another thread may repair the map as soon as the
+        // lock is released, and a stale entry must still lead to a retry.
+        let entry_repaired = locked.repaired;
         drop(locked);
 
         let mut ctx = ctx.clone();
@@ -603,7 +633,7 @@ impl XRef {
                 };
 
                 // The xref table is broken, try to repair if not already repaired.
-                if self.is_repaired() {
+                if entry_repaired {
                     error!(
                         "attempt was made at repairing xref, but object {id:?} still couldn't be read"
                     );
@@ -612,9 +642,11 @@ impl XRef {
                 } else {
                     warn!("broken xref, attempting to repair");
 
+                    // A no-op if another thread has repaired the map since
+                    // `entry` was read.
                     self.repair();
 
-                    // Now try reading again.
+                    // Now try reading again, from the repaired map.
                     self.get_with::<T>(id, &ctx)
                 }
             }
@@ -634,6 +666,83 @@ impl XRef {
                 object_stream.get(index)
             }
         }
+    }
+}
+
+/// Instrumentation of lazy xref repair, for testing concurrent use of a
+/// document. Not part of the stable API.
+///
+/// Everything here is per thread: the counters count the repairs run on the
+/// calling thread, and a hook only runs on the thread that installed it, so
+/// tests running in parallel do not see each other. Without the `std`
+/// feature nothing is counted and hooks never run.
+#[doc(hidden)]
+pub mod repair_hooks {
+    use alloc::boxed::Box;
+
+    #[cfg(feature = "std")]
+    std::thread_local! {
+        static SCANS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
+        static SWAPS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
+        static AFTER_SCAN: core::cell::RefCell<Option<Box<dyn Fn()>>> =
+            const { core::cell::RefCell::new(None) };
+    }
+
+    /// Return how many times a repair scanned the file on this thread.
+    pub fn scans() -> u64 {
+        #[cfg(feature = "std")]
+        {
+            SCANS.with(core::cell::Cell::get)
+        }
+
+        #[cfg(not(feature = "std"))]
+        {
+            0
+        }
+    }
+
+    /// Return how many of this thread's repair scans replaced the xref map
+    /// (the others found it already repaired by another thread).
+    pub fn swaps() -> u64 {
+        #[cfg(feature = "std")]
+        {
+            SWAPS.with(core::cell::Cell::get)
+        }
+
+        #[cfg(not(feature = "std"))]
+        {
+            0
+        }
+    }
+
+    /// Install `hook` (or remove it, with `None`) to run on this thread
+    /// after each repair scan and before the repaired map is swapped in.
+    ///
+    /// A test can block in the hook to hold several threads between the scan
+    /// and the swap. The hook must not call this function.
+    pub fn set_after_scan(hook: Option<Box<dyn Fn()>>) {
+        #[cfg(feature = "std")]
+        AFTER_SCAN.with(|h| *h.borrow_mut() = hook);
+
+        #[cfg(not(feature = "std"))]
+        drop(hook);
+    }
+
+    pub(super) fn scanned() {
+        #[cfg(feature = "std")]
+        {
+            SCANS.with(|c| c.set(c.get() + 1));
+            AFTER_SCAN.with(|h| {
+                if let Some(hook) = &*h.borrow() {
+                    hook();
+                }
+            });
+        }
+    }
+
+    pub(super) fn swapped() {
+        #[cfg(feature = "std")]
+        SWAPS.with(|c| c.set(c.get() + 1));
     }
 }
 
