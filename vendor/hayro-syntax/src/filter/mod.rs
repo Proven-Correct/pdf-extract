@@ -34,18 +34,28 @@ use core::sync::atomic::{AtomicU64, Ordering};
 ///
 /// Streams read without a document, such as objects parsed with
 /// [`FromBytes`](crate::object::FromBytes) or inline images in a content
-/// stream, are not limited.
+/// stream, are not limited, with one exception: an inline image decoded with
+/// [`Stream::decoded_inline_image`](crate::object::Stream::decoded_inline_image)
+/// is held to its document's `max_image_pixels`.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct DecodeLimits {
     /// The maximum number of bytes one filter may produce for one stream.
     /// The default, `u64::MAX`, means no limit.
     pub max_stream_decoded_bytes: u64,
+    /// The largest image, by the `width × height` its decode parameters
+    /// declare, that may be decoded at all. A larger one fails with
+    /// [`DecodeFailure::ImagePixelLimit`] before any filter runs, so the cap
+    /// bounds what the decoders allocate, not only what they return. Streams
+    /// decoded without image parameters declare 0 × 0 and are never refused.
+    /// The default, `None`, means no limit.
+    pub max_image_pixels: Option<u64>,
 }
 
 impl Default for DecodeLimits {
     fn default() -> Self {
         Self {
             max_stream_decoded_bytes: u64::MAX,
+            max_image_pixels: None,
         }
     }
 }
@@ -122,6 +132,54 @@ pub(crate) fn note_stream_decode_limit_hit() {
     STREAM_DECODE_LIMIT_HITS.with(|n| n.set(n.get().saturating_add(1)));
 }
 
+#[cfg(feature = "std")]
+std::thread_local! {
+    // Per thread for the same reason as `STREAM_DECODE_LIMIT_HITS`.
+    static IMAGE_PIXEL_LIMIT_HITS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
+}
+
+/// Return how many image decodes on the current thread were refused with
+/// [`DecodeFailure::ImagePixelLimit`](crate::object::stream::DecodeFailure::ImagePixelLimit)
+/// because the image declared more pixels than [`DecodeLimits::max_image_pixels`].
+///
+/// It only ever increases: read it before and after an operation, on the same thread.
+/// Without the `std` feature nothing is counted and this always returns 0.
+pub fn image_pixel_limit_hits() -> u64 {
+    #[cfg(feature = "std")]
+    {
+        IMAGE_PIXEL_LIMIT_HITS.with(core::cell::Cell::get)
+    }
+
+    #[cfg(not(feature = "std"))]
+    {
+        0
+    }
+}
+
+pub(crate) fn note_image_pixel_limit_hit() {
+    #[cfg(feature = "std")]
+    IMAGE_PIXEL_LIMIT_HITS.with(|n| n.set(n.get().saturating_add(1)));
+}
+
+/// Refuse an image of `width × height` pixels when that exceeds `max_pixels`,
+/// counting the refusal. Called wherever an image's size first becomes known
+/// before the allocation it governs: the declared dimensions, each codec's
+/// header, and the dimensions a codec reports. The product saturates, so a
+/// size too large for a `u64` is refused rather than wrapping under the cap.
+pub(crate) fn check_image_pixels(
+    width: u64,
+    height: u64,
+    max_pixels: Option<u64>,
+) -> Result<(), DecodeFailure> {
+    match max_pixels {
+        Some(max) if width.saturating_mul(height) > max => {
+            note_image_pixel_limit_hit();
+            Err(DecodeFailure::ImagePixelLimit)
+        }
+        _ => Ok(()),
+    }
+}
+
 /// A data filter.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Filter {
@@ -184,13 +242,17 @@ impl Filter {
     }
 
     /// Apply the filter. `limit` is the maximum output length of the
-    /// non-image filters (see [`DecodeLimits`]).
+    /// non-image filters (see [`DecodeLimits`]); `max_pixels` is the image
+    /// pixel cap, which the image codecs check against the size their headers
+    /// give before they allocate for it (CCITT, JBIG2 and JPEG 2000 size their
+    /// output from the encoded data, not from the image dictionary).
     pub(crate) fn apply(
         &self,
         data: &[u8],
         params: &Dict<'_>,
         #[cfg_attr(not(feature = "images"), allow(unused))] image_params: &ImageDecodeParams,
         limit: u64,
+        #[cfg_attr(not(feature = "images"), allow(unused))] max_pixels: Option<u64>,
     ) -> Result<FilterResult<'static>, DecodeFailure> {
         let limit = usize::try_from(limit).unwrap_or(usize::MAX);
 
@@ -203,19 +265,13 @@ impl Filter {
             Self::LzwDecode => limited(lzw_flate::lzw::decode(data, params, limit), limit),
             Self::FlateDecode => limited(lzw_flate::flate::decode(data, params, limit), limit),
             #[cfg(feature = "images")]
-            Self::DctDecode => {
-                dct::decode(data, params, image_params).ok_or(DecodeFailure::ImageDecode)
-            }
+            Self::DctDecode => dct::decode(data, params, image_params, max_pixels),
             #[cfg(feature = "images")]
-            Self::CcittFaxDecode => {
-                ccitt::decode(data, params, image_params).ok_or(DecodeFailure::ImageDecode)
-            }
+            Self::CcittFaxDecode => ccitt::decode(data, params, image_params, max_pixels),
             #[cfg(feature = "images")]
-            Self::Jbig2Decode => {
-                jbig2::decode(data, params, image_params).ok_or(DecodeFailure::ImageDecode)
-            }
+            Self::Jbig2Decode => jbig2::decode(data, params, image_params, max_pixels),
             #[cfg(feature = "images")]
-            Self::JpxDecode => jpx::decode(data, image_params).ok_or(DecodeFailure::ImageDecode),
+            Self::JpxDecode => jpx::decode(data, image_params, max_pixels),
             #[cfg(not(feature = "images"))]
             Self::DctDecode | Self::CcittFaxDecode | Self::Jbig2Decode | Self::JpxDecode => {
                 warn!("image decoding is not supported (enable the `images` feature)");

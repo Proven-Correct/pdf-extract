@@ -16,7 +16,10 @@ use hayro_syntax::object::Name;
 use hayro_syntax::object::Object;
 use hayro_syntax::object::Stream;
 use hayro_syntax::object::dict::keys::*;
-use hayro_syntax::object::stream::{FilterResult, ImageColorSpace, ImageDecodeParams};
+use hayro_syntax::object::stream::{
+    DecodeFailure, FilterResult, ImageColorSpace, ImageDecodeParams,
+};
+use hayro_syntax::xref::XRef;
 use hayro_syntax::page::Resources;
 use kurbo::{Affine, Rect, Shape};
 use smallvec::{SmallVec, smallvec};
@@ -300,9 +303,19 @@ pub(crate) struct ImageXObject<'a> {
     stream: Stream<'a>,
     transfer_function: Option<ActiveTransferFunction>,
     warning_sink: WarningSinkFn,
+    /// For an inline image, the document it was drawn in. Its stream was parsed
+    /// without one and so carries no decode limits; the image pixel cap is taken
+    /// from here instead.
+    inline_xref: Option<&'a XRef>,
 }
 
 impl<'a> ImageXObject<'a> {
+    /// Marks the image as an inline image of the document behind `xref`.
+    pub(crate) fn inline_in(mut self, xref: &'a XRef) -> Self {
+        self.inline_xref = Some(xref);
+        self
+    }
+
     pub(crate) fn new(
         stream: &Stream<'a>,
         resolve_cs: impl FnOnce(&Name<'_>) -> Option<ColorSpace>,
@@ -361,6 +374,7 @@ impl<'a> ImageXObject<'a> {
             stream: stream.clone(),
             is_mask,
             is_stencil_mask,
+            inline_xref: None,
         })
     }
 
@@ -441,10 +455,18 @@ fn decode_context<'a>(
         height: obj.height,
     };
 
-    let decoded = obj
-        .stream
-        .decoded_image(&decode_params)
-        .map_err(|_| (obj.warning_sink)(InterpreterWarning::ImageDecodeFailure))
+    let decoded = match obj.inline_xref {
+        Some(xref) => obj.stream.decoded_inline_image(&decode_params, xref),
+        None => obj.stream.decoded_image(&decode_params),
+    };
+    // A refusal by the pixel cap is its own warning, never also a decode failure.
+    let decoded = decoded
+        .map_err(|e| {
+            (obj.warning_sink)(match e {
+                DecodeFailure::ImagePixelLimit => InterpreterWarning::ImagePixelLimit,
+                _ => InterpreterWarning::ImageDecodeFailure,
+            })
+        })
         .ok()?;
 
     let (mut scale_x, mut scale_y) = (1.0, 1.0);

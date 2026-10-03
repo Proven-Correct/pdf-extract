@@ -2,7 +2,10 @@ use crate::object::Dict;
 use crate::object::dict::keys::{
     BLACK_IS_1, COLUMNS, ENCODED_BYTE_ALIGN, END_OF_BLOCK, END_OF_LINE, K, ROWS,
 };
-use crate::object::stream::{FilterResult, ImageColorSpace, ImageData, ImageDecodeParams};
+use crate::filter::check_image_pixels;
+use crate::object::stream::{
+    DecodeFailure, FilterResult, ImageColorSpace, ImageData, ImageDecodeParams,
+};
 use alloc::borrow::Cow;
 use alloc::vec::Vec;
 use core::iter;
@@ -12,7 +15,8 @@ pub(crate) fn decode(
     data: &[u8],
     params: &Dict<'_>,
     image_params: &ImageDecodeParams,
-) -> Option<FilterResult<'static>> {
+    max_pixels: Option<u64>,
+) -> Result<FilterResult<'static>, DecodeFailure> {
     let k = params.get::<i32>(K).unwrap_or(0);
 
     let rows = params.get::<u32>(ROWS).unwrap_or(image_params.height);
@@ -33,6 +37,17 @@ pub(crate) fn decode(
         },
         invert_black: params.get::<bool>(BLACK_IS_1).unwrap_or(false),
     };
+
+    // H13: the output is `columns` wide and `rows` high whatever the image
+    // dictionary declares. With `rows` 0, Group 3 decodes until the data runs
+    // out, at no fewer than two bits per row, so at most `4 × data.len()` rows
+    // (Group 4 decodes nothing; counting it the same way only errs high).
+    let max_rows = if rows == 0 {
+        (data.len() as u64).saturating_mul(4)
+    } else {
+        u64::from(rows)
+    };
+    check_image_pixels(u64::from(settings.columns), max_rows, max_pixels)?;
 
     // Whenever possible (if we don't have an indexed color space), we convert
     // the data as 8-bit instead of 1-bit, so that it can be easier converted
@@ -98,7 +113,7 @@ pub(crate) fn decode(
         // If we decoded at least one row, let's be lenient and return what we got.
         // See also 0001763.pdf.
         if result.is_err() && decoder.decoded_rows == 0 {
-            return None;
+            return Err(DecodeFailure::ImageDecode);
         }
 
         (decoder.output, 1)
@@ -132,13 +147,13 @@ pub(crate) fn decode(
         let result = hayro_ccitt::decode(data, &mut decoder, &mut context);
 
         if result.is_err() && decoder.decoded_rows == 0 {
-            return None;
+            return Err(DecodeFailure::ImageDecode);
         }
 
         (decoder.output, 8)
     };
 
-    Some(FilterResult {
+    Ok(FilterResult {
         data: Cow::Owned(decoded),
         image_data: Some(ImageData {
             alpha: None,

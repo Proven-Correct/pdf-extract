@@ -143,6 +143,11 @@ pub enum InterpreterWarning {
     UnsupportedFont,
     /// An image failed to decode.
     ImageDecodeFailure,
+    /// An image declared more pixels than the document's
+    /// [`DecodeLimits::max_image_pixels`](hayro_syntax::DecodeLimits::max_image_pixels)
+    /// allow and was skipped without being decoded. Raised instead of
+    /// [`Self::ImageDecodeFailure`], never as well.
+    ImagePixelLimit,
 }
 
 /// Limits on the work an interpreter may do, for processing untrusted input.
@@ -944,6 +949,9 @@ pub fn interpret<'a>(
                     false,
                     transfer_function,
                 ) {
+                    // An inline image's stream is parsed without its document, so it
+                    // must be told which document's image pixel cap applies.
+                    let x_object = x_object.inline_in(context.xref);
                     draw_image_xobject(&x_object, context, device);
                 }
             }

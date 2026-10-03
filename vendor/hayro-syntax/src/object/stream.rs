@@ -1,7 +1,7 @@
 //! Streams.
 
 use crate::crypto::DecryptionTarget;
-use crate::filter::{DecodeBudget, Filter};
+use crate::filter::{DecodeBudget, Filter, check_image_pixels};
 use crate::object;
 use crate::object::Dict;
 use crate::object::Name;
@@ -12,6 +12,7 @@ use crate::reader::Reader;
 use crate::reader::{Readable, ReaderContext, ReaderExt, Skippable};
 use crate::trivia::is_white_space_character;
 use crate::util::{OptionLog, find_needle};
+use crate::xref::XRef;
 use alloc::borrow::Cow;
 use alloc::vec::Vec;
 use core::fmt::{Debug, Formatter};
@@ -183,11 +184,51 @@ impl<'a> Stream<'a> {
             .map(|r| r.data)
     }
 
+    /// Like [`Self::decoded_image`], for an inline image: its stream is parsed out of a
+    /// content stream without its document, so it carries no [`DecodeLimits`] of its
+    /// own. This holds it to `xref`'s
+    /// [`max_image_pixels`](crate::DecodeLimits::max_image_pixels); the per-filter byte
+    /// limit still does not apply to inline images, whose encoded size is bounded by
+    /// the content stream that holds them.
+    ///
+    /// [`DecodeLimits`]: crate::DecodeLimits
+    pub fn decoded_inline_image(
+        &self,
+        image_params: &ImageDecodeParams,
+        xref: &XRef,
+    ) -> Result<FilterResult<'a>, DecodeFailure> {
+        let max_pixels = xref
+            .decode_budget()
+            .and_then(|b| b.limits.max_image_pixels);
+        self.decoded_image_capped(image_params, None, max_pixels)
+    }
+
     fn decoded_image_with(
         &self,
         image_params: &ImageDecodeParams,
         budget: Option<&DecodeBudget>,
     ) -> Result<FilterResult<'a>, DecodeFailure> {
+        let max_pixels = budget.and_then(|b| b.limits.max_image_pixels);
+        self.decoded_image_capped(image_params, budget, max_pixels)
+    }
+
+    fn decoded_image_capped(
+        &self,
+        image_params: &ImageDecodeParams,
+        budget: Option<&DecodeBudget>,
+        max_pixels: Option<u64>,
+    ) -> Result<FilterResult<'a>, DecodeFailure> {
+        // The pixel cap (H13) is checked where each size first becomes known, before
+        // the allocation it governs. First the declared dimensions: decrypting the
+        // data and every filter after that allocate in proportion to the image.
+        // Non-image decodes pass default parameters (0 x 0) and are never refused.
+        // The codecs then check their header sizes inside `Filter::apply`.
+        check_image_pixels(
+            u64::from(image_params.width),
+            u64::from(image_params.height),
+            max_pixels,
+        )?;
+
         let limit = budget.map_or(u64::MAX, |b| b.limits.max_stream_decoded_bytes);
         let data = self.raw_data();
         let filters_and_params = self.filters_and_params();
@@ -205,6 +246,7 @@ impl<'a> Stream<'a> {
                     params,
                     image_params,
                     limit,
+                    max_pixels,
                 )
                 .inspect_err(|e| {
                     if let DecodeFailure::LimitExceeded = e {
@@ -215,6 +257,13 @@ impl<'a> Stream<'a> {
                     }
                 })?;
             current = Some(new);
+        }
+
+        // Last, the size the codec reports: hayro-interpret pads or truncates the
+        // output to it and converts at that size, and for CCITT it mixes `/Columns`
+        // with the declared height, so it can exceed both earlier checks.
+        if let Some(info) = current.as_ref().and_then(|c| c.image_data.as_ref()) {
+            check_image_pixels(u64::from(info.width), u64::from(info.height), max_pixels)?;
         }
 
         Ok(current.unwrap_or(FilterResult {
@@ -275,6 +324,10 @@ pub enum DecodeFailure {
     /// A filter would have produced more data than the document's
     /// [`DecodeLimits`](crate::DecodeLimits) allow.
     LimitExceeded,
+    /// An image declared more pixels than the document's
+    /// [`DecodeLimits::max_image_pixels`](crate::DecodeLimits::max_image_pixels)
+    /// allow; it was refused before any filter ran.
+    ImagePixelLimit,
 }
 
 /// An image color space.

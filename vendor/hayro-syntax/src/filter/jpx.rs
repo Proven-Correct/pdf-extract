@@ -1,7 +1,8 @@
 use crate::bit_reader::BitWriter;
 use crate::filter::FilterResult;
 use crate::math::round_f32;
-use crate::object::stream::{ImageColorSpace, ImageData, ImageDecodeParams};
+use crate::filter::check_image_pixels;
+use crate::object::stream::{DecodeFailure, ImageColorSpace, ImageData, ImageDecodeParams};
 use alloc::borrow::Cow;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -18,16 +19,46 @@ impl ImageColorSpace {
     }
 }
 
-pub(crate) fn decode(data: &[u8], params: &ImageDecodeParams) -> Option<FilterResult<'static>> {
-    use crate::object::stream::ImageColorSpace;
-
+pub(crate) fn decode(
+    data: &[u8],
+    params: &ImageDecodeParams,
+    max_pixels: Option<u64>,
+) -> Result<FilterResult<'static>, DecodeFailure> {
     let settings = DecodeSettings {
         resolve_palette_indices: false,
         strict: false,
-        target_resolution: params.target_dimension,
+        target_resolution: None,
     };
 
-    let image = hayro_jpeg2000::Image::new(data, &settings).ok()?;
+    // H13: `Image::new` parses the headers only. Checked at full resolution
+    // even when a smaller target is requested, because the decoder's per-tile
+    // records and coefficient buffers follow the full-resolution geometry
+    // whatever resolution it outputs.
+    let full = hayro_jpeg2000::Image::new(data, &settings).map_err(|_| DecodeFailure::ImageDecode)?;
+    check_image_pixels(
+        u64::from(full.width()),
+        u64::from(full.height()),
+        max_pixels,
+    )?;
+
+    let image = match params.target_dimension {
+        None => full,
+        target @ Some(_) => {
+            let settings = DecodeSettings {
+                target_resolution: target,
+                ..settings
+            };
+            hayro_jpeg2000::Image::new(data, &settings).map_err(|_| DecodeFailure::ImageDecode)?
+        }
+    };
+
+    decode_image(image, params).ok_or(DecodeFailure::ImageDecode)
+}
+
+fn decode_image(
+    image: hayro_jpeg2000::Image<'_>,
+    params: &ImageDecodeParams,
+) -> Option<FilterResult<'static>> {
 
     let width = image.width();
     let height = image.height();

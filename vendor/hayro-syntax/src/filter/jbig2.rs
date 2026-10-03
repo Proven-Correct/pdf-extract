@@ -2,7 +2,10 @@ use crate::bit_reader::BitWriter;
 use crate::object::Dict;
 use crate::object::Stream;
 use crate::object::dict::keys::JBIG2_GLOBALS;
-use crate::object::stream::{FilterResult, ImageColorSpace, ImageData, ImageDecodeParams};
+use crate::filter::check_image_pixels;
+use crate::object::stream::{
+    DecodeFailure, FilterResult, ImageColorSpace, ImageData, ImageDecodeParams,
+};
 use alloc::borrow::Cow;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -16,12 +19,23 @@ pub(crate) fn decode(
     data: &[u8],
     params: &Dict<'_>,
     image_params: &ImageDecodeParams,
-) -> Option<FilterResult<'static>> {
+    max_pixels: Option<u64>,
+) -> Result<FilterResult<'static>, DecodeFailure> {
     let globals = params
         .get::<Stream<'_>>(JBIG2_GLOBALS)
         .and_then(|g| g.decoded().ok());
 
-    let image = hayro_jbig2::Image::new_embedded(data, globals.as_deref()).ok()?;
+    let image = hayro_jbig2::Image::new_embedded(data, globals.as_deref())
+        .map_err(|_| DecodeFailure::ImageDecode)?;
+
+    // H13: `new_embedded` read only the segment headers; the page size (an
+    // unknown height already resolved from the end-of-stripe segments) is
+    // what `decode` and the buffers below allocate for.
+    check_image_pixels(
+        u64::from(image.width()),
+        u64::from(image.height()),
+        max_pixels,
+    )?;
 
     // Whenever possible (if we don't have an indexed color space), we convert
     // the data as 8-bit instead of 1-bit, so that it can be easier converted
@@ -53,9 +67,11 @@ pub(crate) fn decode(
             }
         }
 
-        let writer = BitWriter::new(&mut packed, 1)?;
+        let writer = BitWriter::new(&mut packed, 1).ok_or(DecodeFailure::ImageDecode)?;
         let mut decoder = BitWriterDecoder { writer };
-        image.decode(&mut decoder).ok()?;
+        image
+            .decode(&mut decoder)
+            .map_err(|_| DecodeFailure::ImageDecode)?;
 
         (packed, 1)
     } else {
@@ -78,12 +94,14 @@ pub(crate) fn decode(
         }
 
         let mut decoder = Luma8Decoder { output: Vec::new() };
-        image.decode(&mut decoder).ok()?;
+        image
+            .decode(&mut decoder)
+            .map_err(|_| DecodeFailure::ImageDecode)?;
 
         (decoder.output, 8)
     };
 
-    Some(FilterResult {
+    Ok(FilterResult {
         data: Cow::Owned(decoded),
         image_data: Some(ImageData {
             alpha: None,

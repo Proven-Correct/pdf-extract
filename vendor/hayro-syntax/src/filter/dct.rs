@@ -1,6 +1,9 @@
 use crate::object::Dict;
 use crate::object::dict::keys::COLOR_TRANSFORM;
-use crate::object::stream::{FilterResult, ImageColorSpace, ImageData, ImageDecodeParams};
+use crate::filter::check_image_pixels;
+use crate::object::stream::{
+    DecodeFailure, FilterResult, ImageColorSpace, ImageData, ImageDecodeParams,
+};
 use alloc::borrow::Cow;
 use core::num::NonZeroU32;
 use zune_jpeg::zune_core::bytestream::ZCursor;
@@ -12,9 +15,12 @@ pub(crate) fn decode(
     data: &[u8],
     params: &Dict<'_>,
     image_params: &ImageDecodeParams,
-) -> Option<FilterResult<'static>> {
+    max_pixels: Option<u64>,
+) -> Result<FilterResult<'static>, DecodeFailure> {
+    const FAILED: DecodeFailure = DecodeFailure::ImageDecode;
+
     if image_params.width > u16::MAX as u32 || image_params.height > u16::MAX as u32 {
-        return None;
+        return Err(FAILED);
     }
 
     // Some PDFs have weird JPEGs where the JPEG metadata is completely wrong
@@ -22,13 +28,19 @@ pub(crate) fn decode(
     // metadata in the PDF image dictionary is correct. Therefore, we first
     // validate the JPEG metadata and patch the data if any of the dimensions
     // are too large (if they are too small, they will just be padded later on).
-    let data = maybe_patch_jpeg_dimensions(data, image_params)?;
+    let data = maybe_patch_jpeg_dimensions(data, image_params).ok_or(FAILED)?;
 
     let options = DecoderOptions::default()
         .set_max_width(u16::MAX as usize)
         .set_max_height(u16::MAX as usize);
     let mut decoder = zune_jpeg::JpegDecoder::new_with_options(ZCursor::new(&*data), options);
-    decoder.decode_headers().ok()?;
+    decoder.decode_headers().map_err(|_| FAILED)?;
+
+    // H13: the frame size, known now and allocated by `decode()`. Already at
+    // most the declared area (the SOF was patched down above); checked anyway
+    // so that every codec follows the same rule.
+    let (frame_width, frame_height) = decoder.dimensions().ok_or(FAILED)?;
+    check_image_pixels(frame_width as u64, frame_height as u64, max_pixels)?;
 
     let color_transform = params.get::<u8>(COLOR_TRANSFORM);
     let input_color_space = decoder.input_colorspace().unwrap();
@@ -36,7 +48,7 @@ pub(crate) fn decode(
     let mut out_colorspace = if let Some(num_components) = image_params.num_components
         && !matches!(num_components, 1 | 3 | 4)
     {
-        ColorSpace::MultiBand(NonZeroU32::new(num_components as u32)?)
+        ColorSpace::MultiBand(NonZeroU32::new(num_components as u32).ok_or(FAILED)?)
     } else {
         match input_color_space {
             ColorSpace::YCbCr => {
@@ -61,7 +73,7 @@ pub(crate) fn decode(
     }
 
     decoder.set_options(DecoderOptions::default().jpeg_set_out_colorspace(out_colorspace));
-    let mut decoded = decoder.decode().ok()?;
+    let mut decoded = decoder.decode().map_err(|_| FAILED)?;
 
     if out_colorspace == ColorSpace::YCCK {
         // See <https://github.com/mozilla/pdf.js/blob/69595a29192b7704733404a42a2ebb537601117b/src/core/jpg.js#L1331>
@@ -92,7 +104,7 @@ pub(crate) fn decode(
         height,
     };
 
-    Some(FilterResult {
+    Ok(FilterResult {
         data: Cow::Owned(decoded),
         image_data: Some(image_data),
     })
