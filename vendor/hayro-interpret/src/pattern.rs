@@ -15,7 +15,7 @@ use hayro_syntax::content::TypedIter;
 use hayro_syntax::object::Dict;
 use hayro_syntax::object::Stream;
 use hayro_syntax::object::dict::keys::{
-    BBOX, EXT_G_STATE, MATRIX, PAINT_TYPE, RESOURCES, SHADING, X_STEP, Y_STEP,
+    BBOX, EXT_G_STATE, MATRIX, PAINT_TYPE, SHADING, X_STEP, Y_STEP,
 };
 use hayro_syntax::object::{Object, dict_or_stream};
 use hayro_syntax::page::Resources;
@@ -250,8 +250,9 @@ impl<'a> TilingPattern<'a> {
         );
 
         let decoded = self.stream.decoded().ok()?;
+        // Looked up afresh: the pattern may name an object it was reached through (H12).
         let resources = Resources::from_parent(
-            self.stream.dict().get(RESOURCES).unwrap_or_default(),
+            Resources::resolve_dict(self.stream.dict()),
             self.parent_resources.clone(),
         );
         let iter = TypedIter::new(decoded.as_ref());

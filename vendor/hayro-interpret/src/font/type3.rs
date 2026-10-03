@@ -194,14 +194,16 @@ impl<'a> Type3<'a> {
             glyph.nesting_depth,
         );
 
+        // `/Resources` are looked up afresh: the font (or its glyph procedure) may name an
+        // object it was reached through, such as the page's resources (H12).
         let mut resources = Resources::from_parent(
-            self.dict.get(RESOURCES).unwrap_or_default(),
+            Resources::resolve_dict(&self.dict),
             glyph.parent_resources.clone(),
         );
 
         // Technically not valid, but also support by Adobe Acrobat. See PDFBOX-5294.
-        if let Some(procs_resources) = program.dict().get::<Dict<'_>>(RESOURCES) {
-            resources = Resources::from_parent(procs_resources, resources);
+        if program.dict().contains_key(RESOURCES) {
+            resources = Resources::from_parent(Resources::resolve_dict(program.dict()), resources);
         }
 
         if is_shape_glyph {

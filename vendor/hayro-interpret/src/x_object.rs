@@ -66,7 +66,8 @@ impl<'a> FormXObject<'a> {
         let dict = stream.dict();
 
         let decoded = stream.decoded().ok()?;
-        let resources = dict.get::<Dict<'_>>(RESOURCES).unwrap_or_default();
+        // A fresh lookup: the form may name an object it was reached through (H12).
+        let resources = Resources::resolve_dict(dict);
 
         let matrix = Affine::new(
             dict.get::<[f64; 6]>(MATRIX)

@@ -4,6 +4,7 @@ use crate::content::{TypedIter, UntypedIter};
 use crate::object::Array;
 use crate::object::Dict;
 use crate::object::Name;
+use crate::object::ObjRef;
 use crate::object::Rect;
 use crate::object::Stream;
 use crate::object::dict::keys::*;
@@ -537,6 +538,45 @@ impl<'a> Resources<'a> {
     pub fn get_shading(&self, name: &Name<'_>) -> Option<Object<'a>> {
         self.get_resource::<Object<'_>>(name, &self.shadings)
             .or_else(|| self.parent.as_ref().and_then(|p| p.get_shading(name)))
+    }
+
+    /// Get a named property list (the operand of `/Tag /Name BDC`) by name.
+    ///
+    /// Like the other getters, the innermost level whose `/Properties` entry
+    /// resolves wins; a form without its own entry inherits the page's
+    /// (PDF 32000-1 §8.10.2), which is what a hidden optional-content group
+    /// named only in the page's resources relies on.
+    pub fn get_property(&self, name: &Name<'_>) -> Option<Dict<'a>> {
+        self.get_resource::<Dict<'_>>(name, &self.properties)
+            .or_else(|| self.parent.as_ref().and_then(|p| p.get_property(name)))
+    }
+
+    /// The object reference of a named property list, walking the parent
+    /// chain like [`Resources::get_property`]: the innermost level whose
+    /// `/Properties` entry for `name` is a reference. Optional-content groups
+    /// are identified by reference, so a caller needs it next to the dictionary.
+    pub fn get_property_ref(&self, name: &Name<'_>) -> Option<ObjRef> {
+        self.properties
+            .get_ref(name.deref())
+            .or_else(|| self.parent.as_ref().and_then(|p| p.get_property_ref(name)))
+    }
+
+    /// The `/Resources` dictionary of a form, Type 3 font, glyph procedure or
+    /// pattern dictionary `owner`, or an empty one.
+    ///
+    /// A reference is resolved with a fresh lookup, not through `owner`'s own
+    /// parse context: that context remembers every object `owner` was reached
+    /// through, and hayro's cycle guard refuses all of them, so a form reached
+    /// through the page's resources object could not name that object as its
+    /// own `/Resources` (a back-reference to an ancestor, not a cycle). The
+    /// guard itself is unchanged; nothing here recurses, and the interpreter's
+    /// own form-cycle check and nesting cap bound what is drawn with the result.
+    pub fn resolve_dict(owner: &Dict<'a>) -> Dict<'a> {
+        match owner.get_ref(RESOURCES) {
+            Some(r) => owner.ctx().xref().get::<Dict<'a>>(r.into()),
+            None => owner.get::<Dict<'_>>(RESOURCES),
+        }
+        .unwrap_or_default()
     }
 }
 

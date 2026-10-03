@@ -718,13 +718,22 @@ pub fn interpret<'a>(
 
                 let mcid = dict_or_stream(bdc.1).and_then(|(props, _)| props.get::<i32>(MCID));
 
-                // A name refers to an entry of the resources' `/Properties` dictionary,
-                // resolved through the context's cache; anything else is used inline.
+                // A name refers to an entry of a `/Properties` dictionary, found by walking
+                // the resources chain outward like `Resources::get_property` (a form
+                // inherits the page's entries); each level's entry is resolved through the
+                // context's cache, which is keyed on the dictionary that held it. The
+                // reference is taken from the level the dictionary came from, so an
+                // optional-content group is identified by the same entry it was read from.
+                // Anything else is used inline.
                 let named = bdc.1.clone().into_name().map(|name| {
-                    (
-                        context.named_property(&resources.properties, &name),
-                        resources.properties.get_ref(name.as_ref()),
-                    )
+                    let mut level = Some(resources);
+                    while let Some(l) = level {
+                        if let Some(dict) = context.named_property(&l.properties, &name) {
+                            return (Some(dict), l.properties.get_ref(name.as_ref()));
+                        }
+                        level = l.parent();
+                    }
+                    (None, resources.get_property_ref(&name))
                 });
 
                 let oc = match &named {
