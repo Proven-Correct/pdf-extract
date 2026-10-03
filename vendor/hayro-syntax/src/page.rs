@@ -553,9 +553,10 @@ pub const A4: Rect = Rect {
 };
 
 pub(crate) mod cached {
+    use crate::object::Dict;
     use crate::page::Pages;
     use crate::reader::ReaderContext;
-    use crate::xref::XRef;
+    use crate::xref::{PagesLocation, XRef};
     use core::ops::Deref;
 
     // Keep in sync with the implementation in `sync`. We duplicate it here
@@ -591,8 +592,12 @@ pub(crate) mod cached {
             let xref_reference: &'static XRef = unsafe { core::mem::transmute(xref.deref()) };
 
             let ctx = ReaderContext::new(xref_reference, false);
-            let pages = xref_reference
-                .get_with(xref.trailer_data().pages_ref, &ctx)
+            // H11: an inline root is walked exactly like a resolved one.
+            let root = match xref.trailer_data().pages {
+                PagesLocation::Ref(id) => xref_reference.get_with::<Dict<'_>>(id, &ctx),
+                PagesLocation::Inline => xref_reference.inline_pages_root(&ctx),
+            };
+            let pages = root
                 .and_then(|p| Pages::new(&p, &ctx, xref_reference))
                 .or_else(|| Pages::new_brute_force(&ctx, xref_reference))
                 .unwrap_or_else(|| Pages::empty(xref_reference));

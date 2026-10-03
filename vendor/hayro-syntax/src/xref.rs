@@ -353,14 +353,14 @@ impl XRef {
                     .get::<Dict<'_>>(INFO)
                     .map(|d| parse_metadata(&d))
                     .unwrap_or_default();
-                let pages_ref = root.get_ref(PAGES).ok_or(XRefError::Unknown)?;
+                let pages = PagesLocation::of_catalog(&root).ok_or(XRefError::Unknown)?;
                 let has_ocgs = root.get::<Dict<'_>>(OCPROPERTIES).is_some();
                 let version = root
                     .get::<Name<'_>>(VERSION)
                     .and_then(|v| PdfVersion::from_bytes(v.deref()));
 
                 let td = TrailerData {
-                    pages_ref: pages_ref.into(),
+                    pages,
                     root_ref: root_ref.into(),
                     version,
                 };
@@ -369,10 +369,10 @@ impl XRef {
             }
             XRefInput::RootRef(root_ref) => {
                 let root = xref.get::<Dict<'_>>(root_ref).ok_or(XRefError::Unknown)?;
-                let pages_ref = root.get_ref(PAGES).ok_or(XRefError::Unknown)?;
+                let pages = PagesLocation::of_catalog(&root).ok_or(XRefError::Unknown)?;
 
                 let td = TrailerData {
-                    pages_ref: pages_ref.into(),
+                    pages,
                     root_ref,
                     version: None,
                 };
@@ -448,6 +448,15 @@ impl XRef {
     /// Return the object ID of the root dictionary.
     pub fn root_id(&self) -> ObjectIdentifier {
         self.trailer_data().root_ref
+    }
+
+    /// The catalog's `/Pages` dictionary when it is written inline (H11),
+    /// read through `ctx`. `None` when the catalog no longer resolves or no
+    /// longer holds a dictionary there, which only a lazy repair that
+    /// replaced the catalog can cause.
+    pub(crate) fn inline_pages_root<'a>(&'a self, ctx: &ReaderContext<'a>) -> Option<Dict<'a>> {
+        self.get_with::<Dict<'a>>(self.root_id(), ctx)?
+            .get::<Dict<'a>>(PAGES)
     }
 
     /// Whether the PDF has optional content groups.
@@ -793,9 +802,36 @@ struct MapRepr {
     repaired: bool,
 }
 
+/// Where the catalog's `/Pages` entry lives (fork change H11).
+///
+/// The specification wants an indirect reference, but readers accept a page
+/// tree root written inline in the catalog, so we do too. Only the shape is
+/// recorded: a `Dict` borrows from the document and cannot live in the
+/// trailer data, so an inline root is read again from the catalog when it is
+/// needed (see [`XRef::inline_pages_root`]).
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(crate) enum PagesLocation {
+    /// `/Pages` is a reference to this object.
+    Ref(ObjectIdentifier),
+    /// `/Pages` is a dictionary written directly in the catalog.
+    Inline,
+}
+
+impl PagesLocation {
+    /// Classifies `catalog`'s `/Pages` entry without resolving it. `None`
+    /// when the key is missing or holds neither a reference nor a
+    /// dictionary: such a catalog stays unreadable, as before H11.
+    fn of_catalog(catalog: &Dict<'_>) -> Option<Self> {
+        match catalog.get_raw::<Dict<'_>>(PAGES)? {
+            MaybeRef::Ref(r) => Some(Self::Ref(r.into())),
+            MaybeRef::NotRef(_) => Some(Self::Inline),
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct TrailerData {
-    pub(crate) pages_ref: ObjectIdentifier,
+    pub(crate) pages: PagesLocation,
     pub(crate) root_ref: ObjectIdentifier,
     pub(crate) version: Option<PdfVersion>,
 }
@@ -803,7 +839,7 @@ pub(crate) struct TrailerData {
 impl TrailerData {
     pub(crate) fn dummy() -> Self {
         Self {
-            pages_ref: ObjectIdentifier::new(0, 0),
+            pages: PagesLocation::Ref(ObjectIdentifier::new(0, 0)),
             root_ref: ObjectIdentifier::new(0, 0),
             version: None,
         }

@@ -4,11 +4,12 @@ use crate::PdfData;
 use crate::filter::{DecodeBudget, DecodeLimits, DecodeStats};
 use crate::object::Object;
 use crate::object::ObjectIdentifier;
+use crate::object::dict::Dict;
 use crate::page::Pages;
 use crate::page::cached::CachedPages;
-use crate::reader::Reader;
+use crate::reader::{Reader, ReaderContext};
 use crate::sync::{Arc, OnceLock};
-use crate::xref::{XRef, XRefError, fallback, root_xref};
+use crate::xref::{PagesLocation, XRef, XRefError, fallback, root_xref};
 
 pub use crate::crypto::DecryptionError;
 use crate::metadata::Metadata;
@@ -24,6 +25,30 @@ pub struct Pdf {
     // `Page::from_dict`). Once built, the pages live as long as the `Pdf`.
     pages: OnceLock<CachedPages>,
     data: PdfData,
+}
+
+/// The root of a document's page tree, as returned by [`Pdf::pages_root`].
+///
+/// Fork change H11: the catalog's `/Pages` entry is normally a reference, but
+/// it may also be a dictionary written directly in the catalog. The two are
+/// kept apart (rather than an `Option` of an identifier) because an inline
+/// root is a valid page tree, not a missing one.
+#[derive(Debug, Clone)]
+pub enum PagesRoot<'a> {
+    /// `/Pages` references this object.
+    Ref(ObjectIdentifier),
+    /// `/Pages` is this dictionary, written inline in the catalog.
+    Inline(Dict<'a>),
+}
+
+impl PagesRoot<'_> {
+    /// The root's object identifier, or `None` for an inline root.
+    pub fn id(&self) -> Option<ObjectIdentifier> {
+        match self {
+            Self::Ref(id) => Some(*id),
+            Self::Inline(_) => None,
+        }
+    }
 }
 
 /// An error that occurred while loading a PDF file.
@@ -80,8 +105,8 @@ impl Pdf {
 
         // The page tree is not read here (see `pages`), so a document whose
         // tree is unreadable opens and has no pages. The catalog and its
-        // `/Pages` reference are still required: resolving the trailer above
-        // fails without them.
+        // `/Pages` entry (a reference or, since H11, an inline dictionary)
+        // are still required: resolving the trailer above fails without them.
         Ok(Self {
             xref,
             header_version: version,
@@ -131,14 +156,27 @@ impl Pdf {
         self.pages.get().is_some()
     }
 
-    /// Return the object identifier of the root of the page tree (the
-    /// catalog's `/Pages` entry).
+    /// Return the root of the page tree (the catalog's `/Pages` entry): the
+    /// object it references or, when the catalog writes the root inline, the
+    /// dictionary itself.
     ///
     /// Together with [`XRef::get`] and [`Page::from_dict`](crate::page::Page::from_dict),
     /// this lets a caller walk the page tree on its own terms instead of
-    /// calling [`Pdf::pages`].
-    pub fn pages_root(&self) -> ObjectIdentifier {
-        self.xref.trailer_data().pages_ref
+    /// calling [`Pdf::pages`]. An inline root has no identifier, so a caller
+    /// that deduplicates nodes by identifier cannot do so for it (nothing can
+    /// refer back to it either).
+    pub fn pages_root(&self) -> PagesRoot<'_> {
+        match self.xref.trailer_data().pages {
+            PagesLocation::Ref(id) => PagesRoot::Ref(id),
+            // Read again from the catalog, which `Pdf::new` already parsed;
+            // an empty dictionary (no `/Kids`, so no pages) stands in if a
+            // lazy repair has since replaced the catalog.
+            PagesLocation::Inline => PagesRoot::Inline(
+                self.xref
+                    .inline_pages_root(&ReaderContext::new(&self.xref, false))
+                    .unwrap_or_default(),
+            ),
+        }
     }
 
     /// Return whether the xref table was broken and had to be rebuilt by
