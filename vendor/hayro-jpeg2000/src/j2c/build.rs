@@ -4,6 +4,7 @@ use super::decode::{DecompositionStorage, TileDecompositions};
 use super::rect::IntRect;
 use super::tag_tree::TagTree;
 use super::tile::{ResolutionTile, Tile};
+use crate::budget::MemoryBudget;
 use crate::error::{DecodingError, Result};
 use alloc::vec;
 use core::iter;
@@ -11,11 +12,23 @@ use core::ops::Range;
 
 /// Build and allocate all necessary structures to process the code-blocks
 /// for a specific tile. Also parses the segments for each code-block.
-pub(crate) fn build(tile: &Tile<'_>, storage: &mut DecompositionStorage<'_>) -> Result<()> {
-    build_decompositions(tile, storage)
+///
+/// Everything built here is sized by the tile's declared geometry (the
+/// precinct and code-block exponents, the layer count), so each list's
+/// growth is charged to `budget` before the pushes that need it (H15).
+pub(crate) fn build(
+    tile: &Tile<'_>,
+    storage: &mut DecompositionStorage<'_>,
+    budget: &MemoryBudget,
+) -> Result<()> {
+    build_decompositions(tile, storage, budget)
 }
 
-fn build_decompositions(tile: &Tile<'_>, storage: &mut DecompositionStorage<'_>) -> Result<()> {
+fn build_decompositions(
+    tile: &Tile<'_>,
+    storage: &mut DecompositionStorage<'_>,
+    budget: &MemoryBudget,
+) -> Result<()> {
     let mut total_coefficients = 0;
 
     for component_tile in tile.component_tiles() {
@@ -24,9 +37,12 @@ fn build_decompositions(tile: &Tile<'_>, storage: &mut DecompositionStorage<'_>)
     }
 
     if storage.coefficients.is_empty() {
+        // A fresh buffer replaces whatever capacity the empty one had.
+        budget.charge_array::<f32>(total_coefficients as u64)?;
         // Fast path that requests pre-zeroed memory from the OS where available.
         storage.coefficients = vec![0.0; total_coefficients];
     } else {
+        budget.reserve_exact(&mut storage.coefficients, total_coefficients as u64)?;
         storage.coefficients.resize(total_coefficients, 0.0);
     }
     let mut coefficient_counter = 0;
@@ -57,12 +73,13 @@ fn build_decompositions(tile: &Tile<'_>, storage: &mut DecompositionStorage<'_>)
                 resolution_tile.rect.height(),
             );
 
-            let precincts = build_precincts(resolution_tile, sub_band_rect, tile, storage)?;
+            let precincts = build_precincts(resolution_tile, sub_band_rect, tile, storage, budget)?;
 
             let added_coefficients = (sub_band_rect.width() * sub_band_rect.height()) as usize;
             let coefficients = coefficient_counter..(coefficient_counter + added_coefficients);
             coefficient_counter += added_coefficients;
 
+            budget.reserve_more(&mut storage.sub_bands, 1)?;
             let idx = storage.sub_bands.len();
             storage.sub_bands.push(SubBand {
                 sub_band_type,
@@ -88,11 +105,13 @@ fn build_decompositions(tile: &Tile<'_>, storage: &mut DecompositionStorage<'_>)
                 rect: resolution_tile.rect,
             };
 
+            budget.reserve_more(&mut storage.decompositions, 1)?;
             storage.decompositions.push(decomposition);
         }
 
         let d_end = storage.decompositions.len();
 
+        budget.reserve_more(&mut storage.tile_decompositions, 1)?;
         storage.tile_decompositions.push(TileDecompositions {
             decompositions: d_start..d_end,
             first_ll_sub_band,
@@ -109,8 +128,10 @@ fn build_precincts(
     sub_band_rect: IntRect,
     tile: &Tile<'_>,
     storage: &mut DecompositionStorage<'_>,
+    budget: &MemoryBudget,
 ) -> Result<Range<usize>> {
     let start = storage.precincts.len();
+    budget.reserve_more(&mut storage.precincts, resolution_tile.num_precincts())?;
 
     for precinct_data in resolution_tile
         .precincts()
@@ -163,8 +184,13 @@ fn build_precincts(
             code_blocks_y,
             tile,
             storage,
-        );
+            budget,
+        )?;
 
+        budget.reserve_more(
+            &mut storage.tag_tree_nodes,
+            TagTree::node_count(code_blocks_x, code_blocks_y).saturating_mul(2),
+        )?;
         let code_inclusion_tree =
             TagTree::new(code_blocks_x, code_blocks_y, &mut storage.tag_tree_nodes);
         let zero_bitplane_tree =
@@ -182,6 +208,7 @@ fn build_precincts(
     Ok(start..end)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_code_blocks(
     code_block_area: IntRect,
     sub_band_rect: IntRect,
@@ -190,13 +217,22 @@ fn build_code_blocks(
     code_blocks_y: u32,
     tile: &Tile<'_>,
     storage: &mut DecompositionStorage<'_>,
-) -> Range<usize> {
+    budget: &MemoryBudget,
+) -> Result<Range<usize>> {
     let mut y = code_block_area.y0;
 
     let code_block_width = tile_instance.code_block_width();
     let code_block_height = tile_instance.code_block_height();
 
     let start = storage.code_blocks.len();
+
+    // One `CodeBlock` and `num_layers` `Layer`s per code-block.
+    let count = u64::from(code_blocks_x) * u64::from(code_blocks_y);
+    budget.reserve_more(&mut storage.code_blocks, count)?;
+    budget.reserve_more(
+        &mut storage.layers,
+        count.saturating_mul(u64::from(tile.num_layers)),
+    )?;
 
     for y_idx in 0..code_blocks_y {
         let mut x = code_block_area.x0;
@@ -248,7 +284,7 @@ fn build_code_blocks(
 
     let end = storage.code_blocks.len();
 
-    start..end
+    Ok(start..end)
 }
 
 pub(crate) struct Decomposition {

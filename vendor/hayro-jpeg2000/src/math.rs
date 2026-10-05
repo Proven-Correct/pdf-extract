@@ -552,7 +552,7 @@ impl<const N: usize> SimdBuffer<N> {
     }
 
     /// Returns the length padded to a multiple of `N`
-    fn padded_len(original_len: usize) -> usize {
+    pub(crate) fn padded_len(original_len: usize) -> usize {
         let remainder = original_len % N;
         let padding = N - remainder;
         original_len + padding

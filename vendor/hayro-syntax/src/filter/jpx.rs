@@ -1,7 +1,9 @@
 use crate::bit_reader::BitWriter;
 use crate::filter::FilterResult;
 use crate::math::round_f32;
-use crate::filter::check_image_pixels;
+use crate::filter::{
+    JPX_BUDGET_BYTES_PER_PIXEL, check_image_pixels, image_memory_budget, image_memory_limit_hit,
+};
 use crate::object::stream::{DecodeFailure, ImageColorSpace, ImageData, ImageDecodeParams};
 use alloc::borrow::Cow;
 use alloc::vec;
@@ -24,17 +26,21 @@ pub(crate) fn decode(
     params: &ImageDecodeParams,
     max_pixels: Option<u64>,
 ) -> Result<FilterResult<'static>, DecodeFailure> {
+    // H15: both images built below carry the memory budget the pixel cap
+    // implies; `Image::new` refuses a header whose tile records alone exceed
+    // it, and the decode charges everything else it sizes from the header.
     let settings = DecodeSettings {
         resolve_palette_indices: false,
         strict: false,
         target_resolution: None,
+        max_memory_bytes: image_memory_budget(max_pixels, JPX_BUDGET_BYTES_PER_PIXEL),
     };
 
     // H13: `Image::new` parses the headers only. Checked at full resolution
     // even when a smaller target is requested, because the decoder's per-tile
     // records and coefficient buffers follow the full-resolution geometry
     // whatever resolution it outputs.
-    let full = hayro_jpeg2000::Image::new(data, &settings).map_err(|_| DecodeFailure::ImageDecode)?;
+    let full = hayro_jpeg2000::Image::new(data, &settings).map_err(codec_failure)?;
     check_image_pixels(
         u64::from(full.width()),
         u64::from(full.height()),
@@ -48,17 +54,28 @@ pub(crate) fn decode(
                 target_resolution: target,
                 ..settings
             };
-            hayro_jpeg2000::Image::new(data, &settings).map_err(|_| DecodeFailure::ImageDecode)?
+            hayro_jpeg2000::Image::new(data, &settings).map_err(codec_failure)?
         }
     };
 
-    decode_image(image, params).ok_or(DecodeFailure::ImageDecode)
+    decode_image(image, params)
+}
+
+/// A refusal by the codec's memory budget is its own failure, counted once
+/// (H15, as H14 for JBIG2); every other codec error is a broken image.
+fn codec_failure(e: hayro_jpeg2000::DecodeError) -> DecodeFailure {
+    match e {
+        hayro_jpeg2000::DecodeError::Validation(hayro_jpeg2000::ValidationError::MemoryBudget) => {
+            image_memory_limit_hit()
+        }
+        _ => DecodeFailure::ImageDecode,
+    }
 }
 
 fn decode_image(
     image: hayro_jpeg2000::Image<'_>,
     params: &ImageDecodeParams,
-) -> Option<FilterResult<'static>> {
+) -> Result<FilterResult<'static>, DecodeFailure> {
 
     let width = image.width();
     let height = image.height();
@@ -75,11 +92,11 @@ fn decode_image(
             1 => ImageColorSpace::Gray,
             3 => ImageColorSpace::Rgb,
             4 => ImageColorSpace::Cmyk,
-            _ => return None,
+            _ => return Err(DecodeFailure::ImageDecode),
         },
     };
     let has_alpha = image.has_alpha();
-    let bitmap = image.decode().ok()?;
+    let bitmap = image.decode().map_err(codec_failure)?;
 
     let (mut data, mut alpha) = if !has_alpha {
         (bitmap, None)
@@ -92,7 +109,7 @@ fn decode_image(
         let mut alpha_channel = Vec::with_capacity(bitmap.len() / total_channels as usize);
 
         for sample in bitmap.chunks_exact(total_channels as usize) {
-            let (alpha, color) = sample.split_last()?;
+            let (alpha, color) = sample.split_last().ok_or(DecodeFailure::ImageDecode)?;
             alpha_channel.push(*alpha);
             color_channels.extend_from_slice(color);
         }
@@ -103,11 +120,12 @@ fn decode_image(
     // The decoded image is always 8-bit, so if necessary we have to rescale
     // ourselves.
     if bpc != 8 {
-        data = scale(&data, bpc, cs.num_components(), width, height)?;
+        data = scale(&data, bpc, cs.num_components(), width, height)
+            .ok_or(DecodeFailure::ImageDecode)?;
         alpha = alpha.and_then(|alpha| scale(&alpha, bpc, cs.num_components(), width, height));
     }
 
-    Some(FilterResult {
+    Ok(FilterResult {
         data: Cow::Owned(data),
         image_data: Some(ImageData {
             alpha,

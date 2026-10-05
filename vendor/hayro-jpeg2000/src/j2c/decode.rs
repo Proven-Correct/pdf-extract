@@ -21,6 +21,7 @@ use super::progression::{
 use super::tag_tree::TagNode;
 use super::tile::{ComponentTile, ResolutionTile, Tile};
 use super::{ComponentData, bitplane, build, idwt, mct, segment, tile};
+use crate::budget::MemoryBudget;
 use crate::error::{DecodingError, Result, TileError, bail};
 use crate::j2c::segment::MAX_BITPLANE_COUNT;
 use crate::math::SimdBuffer;
@@ -33,13 +34,17 @@ pub(crate) fn decode<'a>(
     ctx: &mut DecoderContext<'a>,
 ) -> Result<()> {
     let mut reader = BitReader::new(data);
-    let tiles = tile::parse(&mut reader, header)?;
+    // H15: the tile records were sized from the header when it was parsed
+    // (and refused there if they alone exceed the limit); this decode pays
+    // for them before any is built.
+    ctx.budget.charge(header.tile_record_bytes)?;
+    let tiles = tile::parse(&mut reader, header, &ctx.budget)?;
 
     if tiles.is_empty() {
         bail!(TileError::Invalid);
     }
 
-    ctx.reset(header, &tiles[0]);
+    ctx.reset(header, &tiles[0])?;
 
     for tile in &tiles {
         trace!(
@@ -52,6 +57,16 @@ pub(crate) fn decode<'a>(
         );
 
         let iter_input = IteratorInput::new(tile);
+        // The three position-driven orders list every precinct of the tile
+        // before the first packet is read.
+        if matches!(
+            tile.progression_order,
+            ProgressionOrder::ResolutionPositionComponentLayer
+                | ProgressionOrder::PositionComponentResolutionLayer
+                | ProgressionOrder::ComponentPositionResolutionLayer
+        ) {
+            super::progression::charge_precinct_list(&iter_input, &ctx.budget)?;
+        }
 
         let progression_iterator: Box<dyn Iterator<Item = ProgressionData>> =
             match tile.progression_order {
@@ -82,6 +97,7 @@ pub(crate) fn decode<'a>(
             &mut ctx.tile_decode_context,
             &mut ctx.channel_data,
             &mut ctx.storage,
+            &ctx.budget,
         )?;
     }
 
@@ -104,14 +120,35 @@ pub struct DecoderContext<'a> {
     /// The raw, decoded samples for each channel.
     pub(crate) channel_data: Vec<ComponentData>,
     storage: DecompositionStorage<'a>,
+    /// The memory budget of the decode in progress (H15). Buffers this
+    /// context kept from an earlier decode are reused uncharged, as within
+    /// one decode.
+    pub(crate) budget: MemoryBudget,
 }
 
 impl DecoderContext<'_> {
-    fn reset(&mut self, header: &Header<'_>, initial_tile: &Tile<'_>) {
+    /// Starts a decode with a fresh budget of `limit` bytes.
+    pub(crate) fn begin(&mut self, limit: Option<u64>) {
+        self.budget = MemoryBudget::new(limit);
+    }
+
+    fn reset(&mut self, header: &Header<'_>, initial_tile: &Tile<'_>) -> Result<()> {
         self.tile_decode_context.reset();
         self.storage.reset();
 
         self.channel_data.clear();
+
+        // One plane per component, palette-indexed or not: charge them all
+        // before the first is allocated.
+        let plane_len = SimdBuffer::<{ crate::math::SIMD_WIDTH }>::padded_len(
+            header.size_data.image_width() as usize * header.size_data.image_height() as usize,
+        );
+        let num_components = initial_tile.component_infos.len() as u64;
+        self.budget
+            .charge_array::<f32>((plane_len as u64).saturating_mul(num_components))?;
+        self.budget
+            .reserve_exact(&mut self.channel_data, num_components)?;
+
         // TODO: SIMD Buffers should be reused across runs!
         for info in &initial_tile.component_infos {
             self.channel_data.push(ComponentData {
@@ -122,6 +159,8 @@ impl DecoderContext<'_> {
                 bit_depth: info.size_info.precision,
             });
         }
+
+        Ok(())
     }
 }
 
@@ -132,6 +171,7 @@ fn decode_tile<'a, 'b>(
     tile_ctx: &mut TileDecodeContext,
     channel_data: &mut [ComponentData],
     storage: &mut DecompositionStorage<'a>,
+    budget: &MemoryBudget,
 ) -> Result<()> {
     storage.reset();
 
@@ -139,12 +179,12 @@ fn decode_tile<'a, 'b>(
 
     // First, we build the decompositions, including their sub-bands, precincts
     // and code blocks.
-    build::build(tile, storage)?;
+    build::build(tile, storage, budget)?;
     // Next, we parse the layers/segments for each code block.
     segment::parse(tile, progression_iterator, header, storage)?;
     // We then decode the bitplanes of each code block, yielding the
     // (possibly dequantized) coefficients of each code block.
-    decode_component_tile_bit_planes(tile, tile_ctx, storage, header)?;
+    decode_component_tile_bit_planes(tile, tile_ctx, storage, header, budget)?;
 
     // Unlike before, we interleave the apply_idwt and store stages
     // for each component tile so we can reuse allocations better.
@@ -156,7 +196,8 @@ fn decode_tile<'a, 'b>(
             idx,
             header,
             component_info.wavelet_transform(),
-        );
+            budget,
+        )?;
         // Finally, we store the raw samples for the tile area in the correct
         // location. Note that in case we have MCT, we are not applying it yet.
         // It will be applied in the very end once all tiles have been processed.
@@ -301,6 +342,7 @@ fn decode_component_tile_bit_planes<'a>(
     tile_ctx: &mut TileDecodeContext,
     storage: &mut DecompositionStorage<'a>,
     header: &Header<'_>,
+    budget: &MemoryBudget,
 ) -> Result<()> {
     for (tile_decompositions_idx, component_info) in tile.component_infos.iter().enumerate() {
         // Only decode the resolution levels we actually care about.
@@ -318,6 +360,7 @@ fn decode_component_tile_bit_planes<'a>(
                     tile_ctx,
                     storage,
                     header,
+                    budget,
                 )?;
             }
         }
@@ -333,6 +376,7 @@ fn decode_sub_band_bitplanes(
     tile_ctx: &mut TileDecodeContext,
     storage: &mut DecompositionStorage<'_>,
     header: &Header<'_>,
+    budget: &MemoryBudget,
 ) -> Result<()> {
     let sub_band = &storage.sub_bands[sub_band_idx];
 
@@ -392,6 +436,7 @@ fn decode_sub_band_bitplanes(
                 tile_ctx,
                 storage,
                 header.strict,
+                budget,
             )?;
 
             // Turn the signs and magnitudes into singular coefficients and

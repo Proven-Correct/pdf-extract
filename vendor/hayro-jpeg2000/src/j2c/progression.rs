@@ -8,6 +8,8 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use super::tile::{ComponentTile, ResolutionTile, Tile};
+use crate::budget::MemoryBudget;
+use crate::error::Result;
 use core::cmp::Ordering;
 use core::iter;
 
@@ -254,11 +256,45 @@ struct PrecinctStore {
     precinct_idx: u64,
 }
 
+/// Charges the precinct list that the position-driven progressions
+/// (`position_progression_common`) build before yielding anything: one
+/// `PrecinctStore` per precinct of every component and resolution in
+/// `input`, a count the precinct exponents declare (H15).
+pub(crate) fn charge_precinct_list(input: &IteratorInput<'_>, budget: &MemoryBudget) -> Result<()> {
+    budget.charge_array::<PrecinctStore>(precinct_count(input))
+}
+
+/// The number of precincts of every component and resolution in `input`.
+fn precinct_count(input: &IteratorInput<'_>) -> u64 {
+    let mut count: u64 = 0;
+
+    for component in input
+        .tile
+        .component_tiles()
+        .skip(input.min_comp() as usize)
+        .take(input.max_comp() as usize - input.min_comp() as usize)
+    {
+        for resolution_tile in component
+            .resolution_tiles()
+            .skip(input.min_resolution() as usize)
+            .take(input.total_max_resolution() as usize - input.min_resolution() as usize)
+        {
+            count = count.saturating_add(resolution_tile.num_precincts());
+        }
+    }
+
+    count
+}
+
 fn position_progression_common<'a>(
     input: IteratorInput<'a>,
     sort: impl FnMut(&PrecinctStore, &PrecinctStore) -> Ordering,
 ) -> Option<impl Iterator<Item = ProgressionData> + 'a> {
     let mut elements = vec![];
+    // Exactly what `charge_precinct_list` charged (H15), where the
+    // allocator grants it; otherwise the list grows as it always did.
+    let _ =
+        elements.try_reserve_exact(usize::try_from(precinct_count(&input)).unwrap_or(usize::MAX));
 
     for (component_idx, component) in input
         .tile

@@ -78,6 +78,7 @@ use crate::jp2::colr::{CieLab, EnumeratedColorspace};
 use crate::jp2::icc::ICCMetadata;
 use crate::jp2::{DecodedImage, ImageBoxes};
 
+mod budget;
 pub mod error;
 #[macro_use]
 pub(crate) mod log;
@@ -123,6 +124,14 @@ pub struct DecodeSettings {
     pub strict: bool,
     /// A hint for the target resolution that the image should be decoded at.
     pub target_resolution: Option<(u32, u32)>,
+    /// The most bytes one decode may allocate for buffers whose size the
+    /// codestream declares (tile records, channel planes, coefficients,
+    /// code-block and precinct records, the output), counted cumulatively
+    /// and charged before each allocation. A decode that would exceed it
+    /// fails with [`ValidationError::MemoryBudget`]; so does [`Image::new`]
+    /// when the header's tile records alone would. `None`, the default, means
+    /// no limit.
+    pub max_memory_bytes: Option<u64>,
 }
 
 impl Default for DecodeSettings {
@@ -131,6 +140,7 @@ impl Default for DecodeSettings {
             resolve_palette_indices: true,
             strict: false,
             target_resolution: None,
+            max_memory_bytes: None,
         }
     }
 }
@@ -197,9 +207,12 @@ impl<'a> Image<'a> {
         let buffer_size = self.width() as usize
             * self.height() as usize
             * (self.color_space.num_channels() as usize + if self.has_alpha { 1 } else { 0 });
-        let mut buf = vec![0; buffer_size];
         let mut decoder_context = DecoderContext::default();
-        self.decode_into(&mut buf, &mut decoder_context)?;
+        decoder_context.begin(self.settings.max_memory_bytes);
+        // The output buffer is the decode's first charge.
+        decoder_context.budget.charge(buffer_size as u64)?;
+        let mut buf = vec![0; buffer_size];
+        self.decode_budgeted(&mut buf, &mut decoder_context)?;
 
         Ok(buf)
     }
@@ -212,8 +225,20 @@ impl<'a> Image<'a> {
     /// especially recommended if you plan on converting multiple images
     /// in the same session.
     ///
-    /// The buffer must have the correct size.
+    /// The buffer must have the correct size. It is the caller's, so it is
+    /// not charged to [`DecodeSettings::max_memory_bytes`]; everything the
+    /// decode allocates is, from a fresh budget.
     pub fn decode_into(
+        &'a self,
+        buf: &mut [u8],
+        decoder_context: &mut DecoderContext<'a>,
+    ) -> Result<()> {
+        decoder_context.begin(self.settings.max_memory_bytes);
+        self.decode_budgeted(buf, decoder_context)
+    }
+
+    /// [`Image::decode_into`] under the budget the context already holds.
+    fn decode_budgeted(
         &'a self,
         buf: &mut [u8],
         decoder_context: &mut DecoderContext<'a>,
@@ -229,16 +254,16 @@ impl<'a> Image<'a> {
         if settings.resolve_palette_indices {
             let components = core::mem::take(decoded_image.decoded_components);
             *decoded_image.decoded_components =
-                resolve_palette_indices(components, &decoded_image.boxes)?;
+                resolve_palette_indices(components, &decoded_image.boxes, &decoder_context.budget)?;
         }
 
         if let Some(cdef) = &decoded_image.boxes.channel_definition {
             // Sort by the channel association. Note that this will only work if
-            // each component is referenced only once.
-            let mut components = decoded_image
-                .decoded_components
-                .iter()
-                .cloned()
+            // each component is referenced only once. The planes are moved,
+            // not cloned: a copy of every plane would be an uncharged
+            // allocation as large as all of them (H15).
+            let mut components = core::mem::take(decoded_image.decoded_components)
+                .into_iter()
                 .zip(
                     cdef.channel_definitions
                         .iter()
@@ -567,6 +592,7 @@ fn get_color_space(boxes: &ImageBoxes, num_components: usize) -> Result<ColorSpa
 fn resolve_palette_indices(
     components: Vec<ComponentData>,
     boxes: &ImageBoxes,
+    budget: &budget::MemoryBudget,
 ) -> Result<Vec<ComponentData>> {
     let Some(palette) = boxes.palette.as_ref() else {
         // Nothing to resolve.
@@ -582,8 +608,13 @@ fn resolve_palette_indices(
             .get(component_idx)
             .ok_or(ColorError::PaletteResolutionFailed)?;
 
+        // Every mapping entry makes a whole new plane, and the entries come
+        // from the `cmap` box: charge each before it is made.
         match entry.mapping_type {
-            ComponentMappingType::Direct => resolved.push(component.clone()),
+            ComponentMappingType::Direct => {
+                budget.charge_array::<f32>(component.container.len() as u64)?;
+                resolved.push(component.clone());
+            }
             ComponentMappingType::Palette { column } => {
                 let column_idx = column as usize;
                 let column_info = palette
@@ -591,8 +622,9 @@ fn resolve_palette_indices(
                     .get(column_idx)
                     .ok_or(ColorError::PaletteResolutionFailed)?;
 
-                let mut mapped =
-                    Vec::with_capacity(component.container.truncated().len() + SIMD_WIDTH);
+                let capacity = component.container.truncated().len() + SIMD_WIDTH;
+                budget.charge_array::<f32>(capacity as u64)?;
+                let mut mapped = Vec::with_capacity(capacity);
 
                 for &sample in component.container.truncated() {
                     let index = math::round_f32(sample) as i64;

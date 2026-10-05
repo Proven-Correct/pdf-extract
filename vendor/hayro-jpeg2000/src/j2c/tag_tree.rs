@@ -205,6 +205,25 @@ pub(crate) struct TagTree {
 }
 
 impl TagTree {
+    /// An upper bound on the nodes [`TagTree::new`] pushes for a
+    /// `width × height` tree: one per cell of each level's grid, the root
+    /// included (H15 charges them before they are built).
+    pub(crate) fn node_count(width: u32, height: u32) -> u64 {
+        if width == 0 || height == 0 {
+            return 1;
+        }
+
+        let (mut w, mut h) = (u64::from(width), u64::from(height));
+        let mut count = w * h;
+        while w > 1 || h > 1 {
+            w = w.div_ceil(2);
+            h = h.div_ceil(2);
+            count += w * h;
+        }
+
+        count
+    }
+
     pub(crate) fn new(width: u32, height: u32, nodes: &mut Vec<TagNode>) -> Self {
         // Calculate how many levels the tree has in total.
         let level = u32::max(

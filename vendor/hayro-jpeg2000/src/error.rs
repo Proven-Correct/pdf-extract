@@ -87,6 +87,9 @@ pub enum ValidationError {
     MissingStepSize,
     /// Invalid quantization exponents.
     InvalidExponents,
+    /// Decoding would exceed the memory budget set by
+    /// [`DecodeSettings::max_memory_bytes`](crate::DecodeSettings::max_memory_bytes).
+    MemoryBudget,
 }
 
 /// Errors related to decoding operations.
@@ -192,6 +195,7 @@ impl fmt::Display for ValidationError {
             }
             Self::MissingStepSize => write!(f, "missing exponent step size"),
             Self::InvalidExponents => write!(f, "invalid quantization exponents"),
+            Self::MemoryBudget => write!(f, "the decode would exceed its memory budget"),
         }
     }
 }

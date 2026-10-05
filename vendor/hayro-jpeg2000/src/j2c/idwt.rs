@@ -7,6 +7,8 @@ use super::build::{Decomposition, SubBand};
 use super::codestream::WaveletTransform;
 use super::decode::{DecompositionStorage, TileDecodeContext};
 use super::rect::IntRect;
+use crate::budget::MemoryBudget;
+use crate::error::Result;
 use crate::j2c::Header;
 use crate::math::{self, Level, SIMD_WIDTH, Simd, dispatch, f32x8};
 
@@ -44,7 +46,8 @@ pub(crate) fn apply(
     component_idx: usize,
     header: &Header<'_>,
     transform: WaveletTransform,
-) {
+    budget: &MemoryBudget,
+) -> Result<()> {
     let tile_decompositions = &storage.tile_decompositions[component_idx];
 
     let mut decompositions = &storage.decompositions[tile_decompositions.decompositions.clone()];
@@ -78,25 +81,29 @@ pub(crate) fn apply(
         (min, max)
     };
 
+    // H15: both buffers are reused across components and tiles; each
+    // growth is charged before it happens.
     if decompositions.is_empty() {
         // Single decomposition, just copy the coefficients from the sub-band.
         output.coefficients.clear();
+        budget.reserve_exact(
+            &mut output.coefficients,
+            ll_sub_band.coefficients.len() as u64,
+        )?;
         output
             .coefficients
             .extend_from_slice(&storage.coefficients[ll_sub_band.coefficients.clone()]);
 
         output.rect = ll_sub_band.rect;
 
-        return;
+        return Ok(());
     }
 
     // The coefficient array will always be the one that holds the coefficients
     // from the highest decomposition. Therefore, reserve as much.
     let (s_min, s_max) = estimate_buffer_size(decompositions.last().unwrap());
     if output.coefficients.len() < s_min {
-        output
-            .coefficients
-            .reserve_exact(s_max - output.coefficients.len());
+        budget.reserve_exact(&mut output.coefficients, s_max as u64)?;
     }
 
     if decompositions.len() > 1 {
@@ -105,7 +112,7 @@ pub(crate) fn apply(
         let (s_min, s_max) = estimate_buffer_size(&decompositions[decompositions.len() - 2]);
 
         if scratch_buf.len() < s_min {
-            scratch_buf.reserve_exact(s_max - scratch_buf.len());
+            budget.reserve_exact(scratch_buf, s_max as u64)?;
         }
     }
 
@@ -148,6 +155,8 @@ pub(crate) fn apply(
     }
 
     output.rect = temp_output.rect;
+
+    Ok(())
 }
 
 struct IDWTInput<'a> {

@@ -48,10 +48,12 @@ pub struct DecodeLimits {
     /// bounds what the decoders allocate, not only what they return. Streams
     /// decoded without image parameters declare 0 × 0 and are never refused.
     ///
-    /// The cap also sets the memory budget of the JBIG2 decoder,
-    /// [`JBIG2_BUDGET_BYTES_PER_PIXEL`] bytes per pixel of the cap, whose
-    /// working set (symbol and region bitmaps, gray-scale planes) is not
-    /// bounded by the image size; a decode that would exceed it fails with
+    /// The cap also sets the memory budgets of the JBIG2 and JPEG 2000
+    /// decoders, [`JBIG2_BUDGET_BYTES_PER_PIXEL`] and
+    /// [`JPX_BUDGET_BYTES_PER_PIXEL`] bytes per pixel of the cap, whose working
+    /// sets (symbol and region bitmaps, gray-scale planes; tile, precinct and
+    /// code-block records, channel planes) are not bounded by the image size;
+    /// a decode that would exceed its budget fails with
     /// [`DecodeFailure::ImageMemoryLimit`].
     ///
     /// The default, `None`, means no limit and no budget.
@@ -180,7 +182,9 @@ pub const JBIG2_BUDGET_BYTES_PER_PIXEL: u64 = 2;
 /// The JPEG 2000 decoder's memory budget, in bytes per pixel of
 /// [`DecodeLimits::max_image_pixels`]: about 9 bytes per pixel per component
 /// in channel planes, coefficients and output, so 64 covers a single-tile
-/// RGBA image at the cap with room to spare.
+/// RGBA image at the cap with room to spare; the hostile shapes (1 × 1 tiles
+/// over a subsampled reference grid, 1 × 1 code-blocks, thousands of
+/// components) cost hundreds of bytes per pixel or are unbounded.
 pub const JPX_BUDGET_BYTES_PER_PIXEL: u64 = 64;
 
 #[cfg(feature = "std")]

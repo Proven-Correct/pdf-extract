@@ -16,6 +16,7 @@ use super::arithmetic_decoder::{ArithmeticDecoder, ArithmeticDecoderContext};
 use super::build::{CodeBlock, SubBandType};
 use super::codestream::CodeBlockStyle;
 use super::decode::{DecompositionStorage, TileDecodeContext};
+use crate::budget::MemoryBudget;
 use crate::error::{DecodingError, Result, bail};
 use crate::reader::BitReader;
 
@@ -31,6 +32,7 @@ pub(crate) fn decode(
     tile_ctx: &mut TileDecodeContext,
     storage: &DecompositionStorage<'_>,
     strict: bool,
+    budget: &MemoryBudget,
 ) -> Result<()> {
     tile_ctx.bit_plane_decode_context.reset(
         code_block,
@@ -38,6 +40,7 @@ pub(crate) fn decode(
         style,
         total_bitplanes,
         strict,
+        budget,
     )?;
     tile_ctx.bit_plane_decode_buffers.reset();
 
@@ -421,11 +424,19 @@ impl BitPlaneDecodeContext {
         code_block_style: &CodeBlockStyle,
         total_bitplanes: u8,
         strict: bool,
+        budget: &MemoryBudget,
     ) -> Result<()> {
         let (width, height) = (code_block.rect.width(), code_block.rect.height());
         let padded_width = width + COEFFICIENTS_PADDING * 2;
         let padded_height = height + COEFFICIENTS_PADDING * 2;
         let num_coefficients = padded_width as usize * padded_height as usize;
+
+        // H15: the three buffers are reused from code-block to code-block;
+        // a larger code-block than any before grows them.
+        let n = num_coefficients as u64;
+        budget.reserve(&mut self.coefficients, n)?;
+        budget.reserve(&mut self.neighbor_significances, n)?;
+        budget.reserve(&mut self.coefficient_states, n)?;
 
         self.coefficients.clear();
         self.coefficients

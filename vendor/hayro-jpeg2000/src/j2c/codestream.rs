@@ -6,6 +6,8 @@ use alloc::vec::Vec;
 use super::DecodeSettings;
 use super::bitplane::BITPLANE_BIT_SIZE;
 use super::build::SubBandType;
+use super::tile::Tile;
+use crate::budget::MemoryBudget;
 use crate::error::{MarkerError, Result, ValidationError, bail, err};
 use crate::reader::BitReader;
 
@@ -22,6 +24,10 @@ pub(crate) struct Header<'a> {
     pub(crate) skipped_resolution_levels: u8,
     /// Whether strict mode is enabled for decoding.
     pub(crate) strict: bool,
+    /// What the decoder's per-tile records will cost (H15): one `Tile` per
+    /// tile, each with its own copy of every component's parameters.
+    /// Charged to each decode's memory budget before any tile is built.
+    pub(crate) tile_record_bytes: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -116,6 +122,27 @@ pub(crate) fn read_header<'a>(
     let cod = cod.ok_or(MarkerError::Missing("COD"))?;
     let qcd = qcd.ok_or(MarkerError::Missing("QCD"))?;
 
+    // H15: every tile clones the components' parameters, and the tile count
+    // and component count are both declared, so the tile records can be
+    // terabytes (1 × 1 tiles over a subsampled reference grid, thousands of
+    // components with long step-size lists). Price them now, and refuse a
+    // header whose records alone, or whose own copy of the parameters,
+    // exceed the limit, before even that copy is made.
+    let component_record_bytes: u64 = (0..num_components as usize)
+        .map(|idx| {
+            let coding = cod_components[idx]
+                .as_ref()
+                .unwrap_or(&cod.component_parameters);
+            let quantization = qcd_components[idx].as_ref().unwrap_or(&qcd);
+            component_record_size(coding, quantization)
+        })
+        .fold(0, u64::saturating_add);
+    let tile_record_bytes = u64::from(size_data.num_tiles())
+        .saturating_mul((size_of::<Tile<'_>>() as u64).saturating_add(component_record_bytes));
+    let header_budget = MemoryBudget::new(settings.max_memory_bytes);
+    header_budget.charge(component_record_bytes)?;
+    header_budget.charge(tile_record_bytes)?;
+
     let component_infos: Vec<ComponentInfo> = size_data
         .component_sizes
         .iter()
@@ -175,11 +202,23 @@ pub(crate) fn read_header<'a>(
             .collect(),
         skipped_resolution_levels,
         strict: settings.strict,
+        tile_record_bytes,
     };
 
     validate(&header)?;
 
     Ok(header)
+}
+
+/// The bytes one `ComponentInfo` with these parameters occupies, its two
+/// heap-allocated lists included.
+pub(crate) fn component_record_size(
+    coding: &CodingStyleComponent,
+    quantization: &QuantizationInfo,
+) -> u64 {
+    let lists = coding.parameters.precinct_exponents.len() * size_of::<(u8, u8)>()
+        + quantization.step_sizes.len() * size_of::<StepSize>();
+    (size_of::<ComponentInfo>() + lists) as u64
 }
 
 fn validate(header: &Header<'_>) -> Result<()> {
@@ -498,9 +537,17 @@ impl SizeData {
         (self.reference_grid_height - self.tile_y_offset).div_ceil(self.tile_height)
     }
 
-    /// The total number of tiles.
+    /// The total number of tiles, if it fits a `u32`.
+    fn checked_num_tiles(&self) -> Option<u32> {
+        self.num_x_tiles().checked_mul(self.num_y_tiles())
+    }
+
+    /// The total number of tiles. `size_marker` refuses a header whose count
+    /// does not fit a `u32` (H15: it is a product of two declared values,
+    /// and subsampling lets each reach 255 × 60,000), so this never
+    /// saturates for a parsed header.
     pub(crate) fn num_tiles(&self) -> u32 {
-        self.num_x_tiles() * self.num_y_tiles()
+        self.checked_num_tiles().unwrap_or(u32::MAX)
     }
 
     /// Return the overall width of the image.
@@ -570,6 +617,10 @@ fn size_marker(reader: &mut BitReader<'_>) -> Result<SizeData> {
     if size_data.image_width() as usize > MAX_DIMENSIONS
         || size_data.image_height() as usize > MAX_DIMENSIONS
     {
+        bail!(ValidationError::ImageTooLarge);
+    }
+
+    if size_data.checked_num_tiles().is_none() {
         bail!(ValidationError::ImageTooLarge);
     }
 

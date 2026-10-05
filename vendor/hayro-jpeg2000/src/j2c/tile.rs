@@ -6,6 +6,7 @@ use alloc::vec::Vec;
 use super::build::{PrecinctData, SubBandType};
 use super::codestream::{ComponentInfo, Header, ProgressionOrder, markers, skip_marker_segment};
 use super::rect::IntRect;
+use crate::budget::MemoryBudget;
 use crate::error::{MarkerError, Result, TileError, ValidationError, bail, err};
 use crate::j2c::codestream;
 use crate::reader::BitReader;
@@ -128,9 +129,13 @@ impl<'a> Tile<'a> {
 }
 
 /// Create the tiles and parse their constituent tile parts.
+///
+/// The tile records themselves were charged from the header (H15); `budget`
+/// pays for the parameter lists a tile-part header replaces.
 pub(crate) fn parse<'a>(
     reader: &mut BitReader<'a>,
     main_header: &'a Header<'a>,
+    budget: &MemoryBudget,
 ) -> Result<Vec<Tile<'a>>> {
     let mut tiles = (0..main_header.size_data.num_tiles() as usize)
         .map(|idx| Tile::new(idx as u32, main_header))
@@ -138,11 +143,11 @@ pub(crate) fn parse<'a>(
 
     let mut tile_part_idx = 0;
 
-    parse_tile_part(reader, main_header, &mut tiles, tile_part_idx)?;
+    parse_tile_part(reader, main_header, &mut tiles, tile_part_idx, budget)?;
     tile_part_idx += 1;
 
     while reader.peek_marker() == Some(markers::SOT) {
-        parse_tile_part(reader, main_header, &mut tiles, tile_part_idx)?;
+        parse_tile_part(reader, main_header, &mut tiles, tile_part_idx, budget)?;
         tile_part_idx += 1;
     }
 
@@ -158,6 +163,7 @@ fn parse_tile_part<'a>(
     main_header: &'a Header<'a>,
     tiles: &mut [Tile<'a>],
     tile_part_idx: usize,
+    budget: &MemoryBudget,
 ) -> Result<()> {
     if reader.read_marker()? != markers::SOT {
         bail!(MarkerError::Expected("SOT"));
@@ -205,6 +211,11 @@ fn parse_tile_part<'a>(
             markers::COD => {
                 reader.read_marker()?;
                 let cod = codestream::cod_marker(reader).ok_or(MarkerError::ParseFailure("COD"))?;
+                // A few marker bytes give every component a new list.
+                budget.charge_array::<(u8, u8)>(
+                    (cod.component_parameters.parameters.precinct_exponents.len() as u64)
+                        .saturating_mul(num_components as u64),
+                )?;
 
                 tile.mct = cod.mct;
                 tile.num_layers = cod.num_layers;
@@ -225,6 +236,7 @@ fn parse_tile_part<'a>(
                     .component_infos
                     .get_mut(component_index as usize)
                     .ok_or(ValidationError::InvalidComponentMetadata)?;
+                budget.charge_array::<(u8, u8)>(coc.parameters.precinct_exponents.len() as u64)?;
 
                 old.coding_style.parameters = coc.parameters;
                 old.coding_style.flags.raw |= coc.flags.raw;
@@ -232,6 +244,10 @@ fn parse_tile_part<'a>(
             markers::QCD => {
                 reader.read_marker()?;
                 let qcd = codestream::qcd_marker(reader).ok_or(MarkerError::ParseFailure("QCD"))?;
+                // As for COD: one new step-size list per component.
+                budget.charge_array::<codestream::StepSize>(
+                    (qcd.step_sizes.len() as u64).saturating_mul(num_components as u64),
+                )?;
 
                 for component_info in &mut tile.component_infos {
                     component_info.quantization_info = qcd.clone();
@@ -241,6 +257,7 @@ fn parse_tile_part<'a>(
                 reader.read_marker()?;
                 let (component_index, qcc) = codestream::qcc_marker(reader, num_components as u16)
                     .ok_or(MarkerError::ParseFailure("QCC"))?;
+                budget.charge_array::<codestream::StepSize>(qcc.step_sizes.len() as u64)?;
 
                 tile.component_infos
                     .get_mut(component_index as usize)
@@ -825,6 +842,7 @@ mod tests {
             ppm_packets: vec![],
             skipped_resolution_levels: 0,
             strict: false,
+            tile_record_bytes: 0,
         };
 
         let tile_0_0 = Tile::new(0, &header);
