@@ -148,6 +148,11 @@ pub enum InterpreterWarning {
     /// allow and was skipped without being decoded. Raised instead of
     /// [`Self::ImageDecodeFailure`], never as well.
     ImagePixelLimit,
+    /// An image's codec would have exceeded the memory budget that
+    /// [`DecodeLimits::max_image_pixels`](hayro_syntax::DecodeLimits::max_image_pixels)
+    /// sets, and the image was skipped. Raised instead of
+    /// [`Self::ImageDecodeFailure`] and [`Self::ImagePixelLimit`], never as well.
+    ImageMemoryLimit,
 }
 
 /// Limits on the work an interpreter may do, for processing untrusted input.

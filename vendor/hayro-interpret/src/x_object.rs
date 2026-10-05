@@ -459,11 +459,13 @@ fn decode_context<'a>(
         Some(xref) => obj.stream.decoded_inline_image(&decode_params, xref),
         None => obj.stream.decoded_image(&decode_params),
     };
-    // A refusal by the pixel cap is its own warning, never also a decode failure.
+    // A refusal by the pixel cap or a codec's memory budget is its own
+    // warning, never also a decode failure.
     let decoded = decoded
         .map_err(|e| {
             (obj.warning_sink)(match e {
                 DecodeFailure::ImagePixelLimit => InterpreterWarning::ImagePixelLimit,
+                DecodeFailure::ImageMemoryLimit => InterpreterWarning::ImageMemoryLimit,
                 _ => InterpreterWarning::ImageDecodeFailure,
             })
         })

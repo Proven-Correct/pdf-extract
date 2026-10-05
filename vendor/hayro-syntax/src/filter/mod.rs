@@ -47,7 +47,14 @@ pub struct DecodeLimits {
     /// [`DecodeFailure::ImagePixelLimit`] before any filter runs, so the cap
     /// bounds what the decoders allocate, not only what they return. Streams
     /// decoded without image parameters declare 0 × 0 and are never refused.
-    /// The default, `None`, means no limit.
+    ///
+    /// The cap also sets the memory budget of the JBIG2 decoder,
+    /// [`JBIG2_BUDGET_BYTES_PER_PIXEL`] bytes per pixel of the cap, whose
+    /// working set (symbol and region bitmaps, gray-scale planes) is not
+    /// bounded by the image size; a decode that would exceed it fails with
+    /// [`DecodeFailure::ImageMemoryLimit`].
+    ///
+    /// The default, `None`, means no limit and no budget.
     pub max_image_pixels: Option<u64>,
 }
 
@@ -159,6 +166,62 @@ pub fn image_pixel_limit_hits() -> u64 {
 pub(crate) fn note_image_pixel_limit_hit() {
     #[cfg(feature = "std")]
     IMAGE_PIXEL_LIMIT_HITS.with(|n| n.set(n.get().saturating_add(1)));
+}
+
+/// The JBIG2 decoder's memory budget, in bytes per pixel of
+/// [`DecodeLimits::max_image_pixels`]. A text page of `P` pixels needs about
+/// half a byte per pixel in total (its page bitmap, regions tiling the page,
+/// a symbol dictionary of a few megabytes), so 2 leaves a fourfold margin at
+/// the cap and far more for ordinary scans; the hostile shapes (a symbol
+/// exported thousands of times, a gray-scale plane of 16 GiB from eight header
+/// bytes) cost hundreds of bytes per pixel or are unbounded.
+pub const JBIG2_BUDGET_BYTES_PER_PIXEL: u64 = 2;
+
+/// The JPEG 2000 decoder's memory budget, in bytes per pixel of
+/// [`DecodeLimits::max_image_pixels`]: about 9 bytes per pixel per component
+/// in channel planes, coefficients and output, so 64 covers a single-tile
+/// RGBA image at the cap with room to spare.
+pub const JPX_BUDGET_BYTES_PER_PIXEL: u64 = 64;
+
+#[cfg(feature = "std")]
+std::thread_local! {
+    // Per thread for the same reason as `STREAM_DECODE_LIMIT_HITS`.
+    static IMAGE_MEMORY_LIMIT_HITS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
+}
+
+/// Return how many image decodes on the current thread were refused with
+/// [`DecodeFailure::ImageMemoryLimit`](crate::object::stream::DecodeFailure::ImageMemoryLimit)
+/// because the codec would have exceeded its memory budget.
+///
+/// It only ever increases: read it before and after an operation, on the same thread.
+/// Without the `std` feature nothing is counted and this always returns 0.
+pub fn image_memory_limit_hits() -> u64 {
+    #[cfg(feature = "std")]
+    {
+        IMAGE_MEMORY_LIMIT_HITS.with(core::cell::Cell::get)
+    }
+
+    #[cfg(not(feature = "std"))]
+    {
+        0
+    }
+}
+
+/// Count one refusal by a codec's memory budget and return the failure that
+/// reports it.
+#[cfg(feature = "images")]
+pub(crate) fn image_memory_limit_hit() -> DecodeFailure {
+    #[cfg(feature = "std")]
+    IMAGE_MEMORY_LIMIT_HITS.with(|n| n.set(n.get().saturating_add(1)));
+
+    DecodeFailure::ImageMemoryLimit
+}
+
+/// The memory budget of a codec allowed `bytes_per_pixel` bytes for each
+/// pixel of `max_pixels`; none when there is no pixel cap.
+#[cfg(feature = "images")]
+pub(crate) fn image_memory_budget(max_pixels: Option<u64>, bytes_per_pixel: u64) -> Option<u64> {
+    max_pixels.map(|pixels| pixels.saturating_mul(bytes_per_pixel))
 }
 
 /// Refuse an image of `width × height` pixels when that exceeds `max_pixels`,

@@ -2,7 +2,9 @@ use crate::bit_reader::BitWriter;
 use crate::object::Dict;
 use crate::object::Stream;
 use crate::object::dict::keys::JBIG2_GLOBALS;
-use crate::filter::check_image_pixels;
+use crate::filter::{
+    JBIG2_BUDGET_BYTES_PER_PIXEL, check_image_pixels, image_memory_budget, image_memory_limit_hit,
+};
 use crate::object::stream::{
     DecodeFailure, FilterResult, ImageColorSpace, ImageData, ImageDecodeParams,
 };
@@ -69,9 +71,7 @@ pub(crate) fn decode(
 
         let writer = BitWriter::new(&mut packed, 1).ok_or(DecodeFailure::ImageDecode)?;
         let mut decoder = BitWriterDecoder { writer };
-        image
-            .decode(&mut decoder)
-            .map_err(|_| DecodeFailure::ImageDecode)?;
+        decode_within_budget(&image, &mut decoder, max_pixels)?;
 
         (packed, 1)
     } else {
@@ -94,9 +94,7 @@ pub(crate) fn decode(
         }
 
         let mut decoder = Luma8Decoder { output: Vec::new() };
-        image
-            .decode(&mut decoder)
-            .map_err(|_| DecodeFailure::ImageDecode)?;
+        decode_within_budget(&image, &mut decoder, max_pixels)?;
 
         (decoder.output, 8)
     };
@@ -110,5 +108,27 @@ pub(crate) fn decode(
             width: image.width(),
             height: image.height(),
         }),
+    })
+}
+
+/// H14: decode under the memory budget the pixel cap implies. The page size
+/// was checked against the cap above, but the decoder's working set (symbol
+/// dictionaries and their exported copies, intermediate regions, gray-scale
+/// planes) is not bounded by the page size; the budget bounds its total. A
+/// refusal by the budget is its own failure, counted once; every other codec
+/// error is a broken image.
+fn decode_within_budget<D: hayro_jbig2::Decoder>(
+    image: &hayro_jbig2::Image<'_>,
+    decoder: &mut D,
+    max_pixels: Option<u64>,
+) -> Result<(), DecodeFailure> {
+    let mut ctx = hayro_jbig2::DecoderContext::default();
+    ctx.memory_budget = image_memory_budget(max_pixels, JBIG2_BUDGET_BYTES_PER_PIXEL);
+
+    image.decode_with(decoder, &mut ctx).map_err(|e| match e {
+        hayro_jbig2::DecodeError::Overflow(hayro_jbig2::OverflowError::MemoryBudget) => {
+            image_memory_limit_hit()
+        }
+        _ => DecodeFailure::ImageDecode,
     })
 }
