@@ -135,6 +135,10 @@ pub enum OverflowError {
     Index,
     /// A symbol dictionary has too many symbols.
     SymbolCount,
+    /// The decode would have allocated more than
+    /// [`DecoderContext::memory_budget`](crate::DecoderContext::memory_budget)
+    /// bytes in total. Raised before the allocation that would exceed it.
+    MemoryBudget,
 }
 
 impl fmt::Display for DecodeError {
@@ -162,6 +166,7 @@ impl fmt::Display for OverflowError {
             Self::Index => write!(f, "overflow in index computation"),
             Self::GridDimension => write!(f, "overflow in grid dimension computation"),
             Self::SymbolCount => write!(f, "a symbol dictionary has too many symbols"),
+            Self::MemoryBudget => write!(f, "the decode would exceed its memory budget"),
         }
     }
 }

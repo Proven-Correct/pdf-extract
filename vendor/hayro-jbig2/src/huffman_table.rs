@@ -5,6 +5,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::num::NonZeroU32;
 
+use crate::budget::MemoryBudget;
 use crate::error::{HuffmanError, ParseError, Result, bail};
 use crate::lazy::Lazy;
 use crate::reader::Reader;
@@ -137,11 +138,27 @@ impl HuffmanTable {
     /// This is used for symbol ID encoding (6.5.8.2.3): "For each value of i from
     /// 0 to SDNUMINSYMS + NSYMSDECODED – 1, set SBSYMCODES[i] to the binary
     /// representation of i using a SBSYMCODELEN-bit string."
-    pub(crate) fn build_uniform(num_symbols: u32, code_length: u32) -> Result<Self> {
+    pub(crate) fn build_uniform(
+        num_symbols: u32,
+        code_length: u32,
+        budget: &MemoryBudget,
+    ) -> Result<Self> {
+        Self::charge_build(u64::from(num_symbols), budget)?;
         let lines: Vec<TableLine> = (0..num_symbols)
             .map(|i| TableLine::new(i as i32, code_length as u8, 0))
             .collect();
         Self::build(&lines)
+    }
+
+    /// Charge what [`build`](Self::build) allocates for a table of
+    /// `line_count` lines whose count comes from a declared value rather
+    /// than from the data: the lines themselves, one code per line, and the
+    /// tree, whose nodes are at most two per line plus one per bit of the
+    /// longest code.
+    pub(crate) fn charge_build(line_count: u64, budget: &MemoryBudget) -> Result<()> {
+        budget.charge_array::<TableLine>(line_count)?;
+        budget.charge_array::<u32>(line_count)?;
+        budget.charge_array::<HuffmanNode>(line_count.saturating_mul(2).saturating_add(33))
     }
 
     /// Insert a code into the Huffman tree.

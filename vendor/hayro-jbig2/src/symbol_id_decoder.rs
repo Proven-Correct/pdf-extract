@@ -4,6 +4,8 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::arithmetic_decoder::{ArithmeticDecoder, ArithmeticDecoderContext};
+use crate::budget::MemoryBudget;
+use crate::error::Result;
 
 pub(crate) struct SymbolIdDecoder {
     contexts: Vec<ArithmeticDecoderContext>,
@@ -11,15 +13,19 @@ pub(crate) struct SymbolIdDecoder {
 }
 
 impl SymbolIdDecoder {
-    pub(crate) fn new(code_len: u32) -> Self {
+    /// A decoder for `code_len`-bit symbol IDs, charging its context table
+    /// to `budget`: `code_len` follows the number of input symbols, which a
+    /// segment can inflate by naming one dictionary many times.
+    pub(crate) fn new(code_len: u32, budget: &MemoryBudget) -> Result<Self> {
         // A.3: "The number of contexts required is 2^SBSYMCODELEN, which is less
         // than twice the maximum symbol ID."
         let num_contexts = 1_usize << code_len;
+        budget.charge_array::<ArithmeticDecoderContext>(num_contexts as u64)?;
 
-        Self {
+        Ok(Self {
             contexts: vec![ArithmeticDecoderContext::default(); num_contexts],
             code_len,
-        }
+        })
     }
 
     #[inline(always)]

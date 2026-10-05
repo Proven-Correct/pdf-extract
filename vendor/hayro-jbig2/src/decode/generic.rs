@@ -6,6 +6,7 @@ use super::{
 use crate::ScratchBuffers;
 use crate::arithmetic_decoder::{ArithmeticDecoder, ArithmeticDecoderContext};
 use crate::bitmap::{Bitmap, WORD_BITS, WORD_SHIFT, Word};
+use crate::budget::MemoryBudget;
 use crate::error::{ParseError, RegionError, Result, TemplateError, bail};
 use crate::reader::Reader;
 
@@ -13,6 +14,7 @@ use crate::reader::Reader;
 pub(crate) fn decode(
     header: &GenericRegionHeader<'_>,
     ctx: &mut ScratchBuffers,
+    budget: &MemoryBudget,
 ) -> Result<RegionBitmap> {
     let mut bitmap = Bitmap::new_with(
         header.region_info.width,
@@ -20,6 +22,7 @@ pub(crate) fn decode(
         header.region_info.x_location,
         header.region_info.y_location,
         false,
+        budget,
     )?;
 
     decode_into(header, &mut bitmap, ctx)?;

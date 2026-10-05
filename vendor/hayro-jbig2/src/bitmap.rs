@@ -5,6 +5,7 @@
 //!
 //! "GBREG - The decoded region bitmap." (Table 3)
 
+use crate::budget::MemoryBudget;
 use crate::decode::CombinationOperator;
 use crate::error::{OverflowError, Result, bail};
 use alloc::vec;
@@ -26,7 +27,10 @@ pub(crate) const WORD_SHIFT: u32 = WORD_BITS - 1;
 /// "Pixels decoded by the MMR decoder having the value 'black' shall be treated
 /// as having the value 1. Pixels decoded by the MMR decoder having the value
 /// 'white' shall be treated as having the value 0." (6.2.6)
-#[derive(Debug, Clone, Default)]
+///
+/// Not `Clone`: a copy is an allocation the decode's [`MemoryBudget`] must
+/// see, so it goes through [`Bitmap::clone_within`].
+#[derive(Debug, Default)]
 pub(crate) struct Bitmap {
     /// Width in pixels.
     pub(crate) width: u32,
@@ -46,24 +50,33 @@ pub(crate) struct Bitmap {
 }
 
 impl Bitmap {
+    /// The bytes of pixel data a `width × height` bitmap allocates.
+    pub(crate) fn data_bytes(width: u32, height: u32) -> u64 {
+        u64::from(width.div_ceil(WORD_BITS)) * u64::from(height) * u64::from(WORD_BITS / 8)
+    }
+
     /// Create a new bitmap filled with white pixels (false).
     ///
     /// The bitmap is positioned at (0, 0).
-    pub(crate) fn new(width: u32, height: u32) -> Result<Self> {
-        Self::new_with(width, height, 0, 0, false)
+    pub(crate) fn new(width: u32, height: u32, budget: &MemoryBudget) -> Result<Self> {
+        Self::new_with(width, height, 0, 0, false, budget)
     }
 
-    /// Create a new bitmap with full configuration.
+    /// Create a new bitmap with full configuration, charging its pixel data
+    /// to `budget` first.
     pub(crate) fn new_with(
         width: u32,
         height: u32,
         x_location: u32,
         y_location: u32,
         default_pixel: bool,
+        budget: &MemoryBudget,
     ) -> Result<Self> {
         if width > MAX_DIMENSION || height > MAX_DIMENSION {
             bail!(OverflowError::BitmapDimension);
         }
+
+        budget.charge(Self::data_bytes(width, height))?;
 
         let stride = width.div_ceil(WORD_BITS);
         let default_word: Word = if default_pixel { !0 } else { 0 };
@@ -78,15 +91,21 @@ impl Bitmap {
         })
     }
 
+    /// Resize and clear this bitmap for reuse, charging the new size to
+    /// `budget` (in full, even when the old buffer is large enough: the
+    /// budget is per decode and does not know what an earlier decode left).
     pub(crate) fn reinitialize(
         &mut self,
         width: u32,
         height: u32,
         default_pixel: bool,
+        budget: &MemoryBudget,
     ) -> Result<()> {
         if width > MAX_DIMENSION || height > MAX_DIMENSION {
             return Err(OverflowError::BitmapDimension.into());
         }
+
+        budget.charge(Self::data_bytes(width, height))?;
 
         let stride = width.div_ceil(WORD_BITS);
         let default_word: Word = if default_pixel { !0 } else { 0 };
@@ -100,6 +119,20 @@ impl Bitmap {
             .resize(stride as usize * height as usize, default_word);
 
         Ok(())
+    }
+
+    /// A copy of this bitmap, charged to `budget` before it is made.
+    pub(crate) fn clone_within(&self, budget: &MemoryBudget) -> Result<Self> {
+        budget.charge_array::<Word>(self.data.len() as u64)?;
+
+        Ok(Self {
+            width: self.width,
+            height: self.height,
+            stride: self.stride,
+            data: self.data.clone(),
+            x_location: self.x_location,
+            y_location: self.y_location,
+        })
     }
 
     /// Get a pixel value at (x, y).

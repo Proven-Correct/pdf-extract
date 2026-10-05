@@ -27,6 +27,14 @@ pub struct DecoderContext {
     pub(crate) page_state: PageState,
     pub(crate) scratch_buffers: ScratchBuffers,
     pub(crate) page_bitmap: Bitmap,
+    /// The most bytes one [`Image::decode_with`] call may allocate in total
+    /// for buffers whose size the file declares (bitmaps and their copies,
+    /// gray-scale planes, symbol tables). The total is counted from zero at
+    /// the start of each call and never refunded, so a decode that frees and
+    /// reallocates is charged for both. A decode that would exceed it fails
+    /// with [`OverflowError::MemoryBudget`] before the allocation. The
+    /// default, `None`, means no limit.
+    pub memory_budget: Option<u64>,
 }
 
 #[derive(Default)]
@@ -56,6 +64,7 @@ pub mod integration;
 
 mod arithmetic_decoder;
 mod bitmap;
+mod budget;
 mod decode;
 mod error;
 mod file;
@@ -77,6 +86,7 @@ pub use error::{
 
 use crate::file::parse_segments_sequential;
 use bitmap::Bitmap;
+use budget::MemoryBudget;
 use decode::CombinationOperator;
 use decode::generic;
 use decode::generic_refinement;
@@ -192,8 +202,11 @@ impl<'a> Image<'a> {
     ///
     /// This is useful in case you want to convert multiple JBIG2 images,
     /// as it allows `hayro-jbig2` to reuse allocations during decoding.
+    /// The decode is held to the context's
+    /// [`memory_budget`](DecoderContext::memory_budget).
     pub fn decode_with<D: Decoder>(&self, decoder: &mut D, ctx: &mut DecoderContext) -> Result<()> {
-        decode_segments(&self.segments, self.height_from_stripes, ctx)?;
+        let budget = MemoryBudget::new(ctx.memory_budget);
+        decode_segments(&self.segments, self.height_from_stripes, ctx, &budget)?;
         emit_bitmap(&ctx.page_bitmap, decoder);
 
         Ok(())
@@ -261,6 +274,7 @@ fn decode_segments(
     segments: &[segment::Segment<'_>],
     height_from_stripes: Option<u32>,
     decoder_ctx: &mut DecoderContext,
+    budget: &MemoryBudget,
 ) -> Result<()> {
     // Find and parse page information segment first.
     if let Some(page_info) = segments
@@ -273,6 +287,7 @@ fn decode_segments(
             height_from_stripes,
             &mut decoder_ctx.page_state,
             &mut decoder_ctx.page_bitmap,
+            budget,
         )?;
     } else {
         bail!(FormatError::MissingPageInfo);
@@ -297,7 +312,7 @@ fn decode_segments(
                 if page_state.can_decode_directly(page_bitmap, &header.region_info, false) {
                     generic::decode_into(&header, page_bitmap, scratch_buffers)?;
                 } else {
-                    let region = generic::decode(&header, scratch_buffers)?;
+                    let region = generic::decode(&header, scratch_buffers, budget)?;
                     page_bitmap.combine(
                         &region.bitmap,
                         region.bitmap.x_location as i32,
@@ -310,34 +325,22 @@ fn decode_segments(
             SegmentType::IntermediateGenericRegion => {
                 // Intermediate segments cannot have unknown length.
                 let header = generic::parse(&mut reader, false)?;
-                let region = generic::decode(&header, scratch_buffers)?;
+                let region = generic::decode(&header, scratch_buffers, budget)?;
                 page_state.store_region(seg.header.segment_number, region.bitmap);
             }
             SegmentType::PatternDictionary => {
                 let header = pattern::parse(&mut reader)?;
-                let dictionary = pattern::decode(&header, scratch_buffers)?;
+                let dictionary = pattern::decode(&header, scratch_buffers, budget)?;
                 page_state.store_pattern_dictionary(seg.header.segment_number, dictionary);
             }
             SegmentType::SymbolDictionary => {
                 // "1) Concatenate all the input symbol dictionaries to form SDINSYMS."
                 // (6.5.5, step 1)
                 // Collect references to avoid cloning; symbols are only cloned if re-exported.
-                let input_symbols: Vec<&Bitmap> = seg
-                    .header
-                    .referred_to_segments
-                    .iter()
-                    .filter_map(|&num| page_state.get_symbol_dictionary(num))
-                    .flat_map(|dict| dict.exported_symbols.iter())
-                    .collect();
+                let input_symbols = page_state.referred_symbols(seg, budget)?;
 
                 // Collect Huffman tables from referred table segments.
-                let referred_tables: Vec<HuffmanTable> = seg
-                    .header
-                    .referred_to_segments
-                    .iter()
-                    .filter_map(|&num| page_state.get_huffman_table(num))
-                    .cloned()
-                    .collect();
+                let referred_tables = page_state.referred_tables(seg, budget)?;
 
                 // Get retained contexts from the last referred symbol dictionary (7.4.2.2 step 3).
                 let retained_contexts = seg
@@ -354,31 +357,20 @@ fn decode_segments(
                     &referred_tables,
                     &page_state.standard_tables,
                     retained_contexts,
+                    budget,
                 )?;
                 page_state.store_symbol_dictionary(seg.header.segment_number, dictionary);
             }
             SegmentType::ImmediateTextRegion | SegmentType::ImmediateLosslessTextRegion => {
                 // Collect symbols from referred symbol dictionaries (SBSYMS).
-                let symbols: Vec<&Bitmap> = seg
-                    .header
-                    .referred_to_segments
-                    .iter()
-                    .filter_map(|&num| page_state.get_symbol_dictionary(num))
-                    .flat_map(|dict| dict.exported_symbols.iter())
-                    .collect();
+                let symbols = page_state.referred_symbols(seg, budget)?;
 
                 // Collect Huffman tables from referred table segments.
                 // "These user-supplied Huffman decoding tables may be supplied either
                 // as a Tables segment..." (7.4.3.1.6)
-                let referred_tables: Vec<HuffmanTable> = seg
-                    .header
-                    .referred_to_segments
-                    .iter()
-                    .filter_map(|&num| page_state.get_huffman_table(num))
-                    .cloned()
-                    .collect();
+                let referred_tables = page_state.referred_tables(seg, budget)?;
 
-                let header = text::parse(&mut reader, symbols.len() as u32)?;
+                let header = text::parse(&mut reader, symbols.len() as u32, budget)?;
 
                 if page_state.can_decode_directly(
                     page_bitmap,
@@ -392,6 +384,7 @@ fn decode_segments(
                         &page_state.standard_tables,
                         page_bitmap,
                         scratch_buffers,
+                        budget,
                     )?;
                 } else {
                     let region = text::decode(
@@ -400,6 +393,7 @@ fn decode_segments(
                         &referred_tables,
                         &page_state.standard_tables,
                         scratch_buffers,
+                        budget,
                     )?;
                     page_bitmap.combine(
                         &region.bitmap,
@@ -412,30 +406,19 @@ fn decode_segments(
             }
             SegmentType::IntermediateTextRegion => {
                 // Collect symbols from referred symbol dictionaries (SBSYMS).
-                let symbols: Vec<&Bitmap> = seg
-                    .header
-                    .referred_to_segments
-                    .iter()
-                    .filter_map(|&num| page_state.get_symbol_dictionary(num))
-                    .flat_map(|dict| dict.exported_symbols.iter())
-                    .collect();
+                let symbols = page_state.referred_symbols(seg, budget)?;
 
                 // Collect Huffman tables from referred table segments.
-                let referred_tables: Vec<HuffmanTable> = seg
-                    .header
-                    .referred_to_segments
-                    .iter()
-                    .filter_map(|&num| page_state.get_huffman_table(num))
-                    .cloned()
-                    .collect();
+                let referred_tables = page_state.referred_tables(seg, budget)?;
 
-                let header = text::parse(&mut reader, symbols.len() as u32)?;
+                let header = text::parse(&mut reader, symbols.len() as u32, budget)?;
                 let region = text::decode(
                     &header,
                     &symbols,
                     &referred_tables,
                     &page_state.standard_tables,
                     scratch_buffers,
+                    budget,
                 )?;
                 page_state.store_region(seg.header.segment_number, region.bitmap);
             }
@@ -454,9 +437,15 @@ fn decode_segments(
                     &header.region_info,
                     header.flags.initial_pixel_color,
                 ) {
-                    halftone::decode_into(&header, pattern_dict, page_bitmap, scratch_buffers)?;
+                    halftone::decode_into(
+                        &header,
+                        pattern_dict,
+                        page_bitmap,
+                        scratch_buffers,
+                        budget,
+                    )?;
                 } else {
-                    let region = halftone::decode(&header, pattern_dict, scratch_buffers)?;
+                    let region = halftone::decode(&header, pattern_dict, scratch_buffers, budget)?;
                     page_bitmap.combine(
                         &region.bitmap,
                         region.bitmap.x_location as i32,
@@ -475,7 +464,7 @@ fn decode_segments(
                     .ok_or(SegmentError::MissingPatternDictionary)?;
 
                 let header = halftone::parse(&mut reader)?;
-                let region = halftone::decode(&header, pattern_dict, scratch_buffers)?;
+                let region = halftone::decode(&header, pattern_dict, scratch_buffers, budget)?;
                 page_state.store_region(seg.header.segment_number, region.bitmap);
             }
             SegmentType::IntermediateGenericRefinementRegion => {
@@ -488,7 +477,8 @@ fn decode_segments(
                     .unwrap_or(page_bitmap);
 
                 let header = generic_refinement::parse(&mut reader)?;
-                let region = generic_refinement::decode(&header, reference, scratch_buffers)?;
+                let region =
+                    generic_refinement::decode(&header, reference, scratch_buffers, budget)?;
                 page_state.store_region(seg.header.segment_number, region.bitmap);
             }
             SegmentType::ImmediateGenericRefinementRegion
@@ -517,7 +507,8 @@ fn decode_segments(
                     )?;
                 } else {
                     let reference = referred_segment.unwrap_or(page_bitmap);
-                    let region = generic_refinement::decode(&header, reference, scratch_buffers)?;
+                    let region =
+                        generic_refinement::decode(&header, reference, scratch_buffers, budget)?;
                     page_bitmap.combine(
                         &region.bitmap,
                         region.bitmap.x_location as i32,
@@ -649,6 +640,49 @@ impl PageState {
             .map(|idx| &self.symbol_dictionaries[idx].1)
     }
 
+    /// The exported symbols of every symbol dictionary `seg` refers to, in
+    /// order (SDINSYMS / SBSYMS). A segment may name the same dictionary many
+    /// times, so the list is not bounded by the number of symbols decoded:
+    /// its length is computed and charged before it is built.
+    fn referred_symbols<'s>(
+        &'s self,
+        seg: &segment::Segment<'_>,
+        budget: &MemoryBudget,
+    ) -> Result<Vec<&'s Bitmap>> {
+        let dictionaries = || {
+            seg.header
+                .referred_to_segments
+                .iter()
+                .filter_map(|&num| self.get_symbol_dictionary(num))
+        };
+        let count = dictionaries()
+            .map(|dict| dict.exported_symbols.len() as u64)
+            .fold(0_u64, u64::saturating_add);
+        budget.charge_array::<&Bitmap>(count)?;
+
+        Ok(dictionaries()
+            .flat_map(|dict| dict.exported_symbols.iter())
+            .collect())
+    }
+
+    /// The Huffman tables of every table segment `seg` refers to, in order.
+    /// Cloning a table copies a reference-counted pointer, not the table.
+    fn referred_tables(
+        &self,
+        seg: &segment::Segment<'_>,
+        budget: &MemoryBudget,
+    ) -> Result<Vec<HuffmanTable>> {
+        let tables = || {
+            seg.header
+                .referred_to_segments
+                .iter()
+                .filter_map(|&num| self.get_huffman_table(num))
+        };
+        budget.charge_array::<HuffmanTable>(tables().count() as u64)?;
+
+        Ok(tables().cloned().collect())
+    }
+
     /// Store a decoded Huffman table for later reference.
     fn store_huffman_table(&mut self, segment_number: u32, table: HuffmanTable) {
         self.huffman_tables.push((segment_number, table));
@@ -669,6 +703,7 @@ fn init_page(
     height_from_stripes: Option<u32>,
     page: &mut PageState,
     bitmap: &mut Bitmap,
+    budget: &MemoryBudget,
 ) -> Result<()> {
     let page_info = parse_page_information(reader)?;
 
@@ -684,7 +719,12 @@ fn init_page(
     // "Bit 2: Page default pixel value. This bit contains the initial value
     // for every pixel in the page, before any region segments are decoded
     // or drawn." (7.4.8.5)
-    bitmap.reinitialize(page_info.width, height, page_info.flags.default_pixel != 0)?;
+    bitmap.reinitialize(
+        page_info.width,
+        height,
+        page_info.flags.default_pixel != 0,
+        budget,
+    )?;
 
     page.reset(page_info);
 

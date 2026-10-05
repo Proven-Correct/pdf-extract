@@ -12,6 +12,7 @@ use super::{RegionBitmap, generic_refinement};
 use crate::ScratchBuffers;
 use crate::arithmetic_decoder::{ArithmeticDecoder, ArithmeticDecoderContext};
 use crate::bitmap::Bitmap;
+use crate::budget::MemoryBudget;
 use crate::error::{HuffmanError, OverflowError, ParseError, Result, SymbolError, bail};
 use crate::huffman_table::{HuffmanTable, StandardHuffmanTables, TableLine};
 use crate::integer_decoder::IntegerDecoder;
@@ -25,6 +26,7 @@ pub(crate) fn decode(
     referred_tables: &[HuffmanTable],
     standard_tables: &StandardHuffmanTables,
     scratch: &mut ScratchBuffers,
+    budget: &MemoryBudget,
 ) -> Result<RegionBitmap> {
     let mut bitmap = Bitmap::new_with(
         header.region_info.width,
@@ -32,6 +34,7 @@ pub(crate) fn decode(
         header.region_info.x_location,
         header.region_info.y_location,
         header.flags.default_pixel,
+        budget,
     )?;
 
     decode_into(
@@ -41,6 +44,7 @@ pub(crate) fn decode(
         standard_tables,
         &mut bitmap,
         scratch,
+        budget,
     )?;
 
     Ok(RegionBitmap {
@@ -56,18 +60,19 @@ pub(crate) fn decode_into(
     standard_tables: &StandardHuffmanTables,
     bitmap: &mut Bitmap,
     scratch: &mut ScratchBuffers,
+    budget: &MemoryBudget,
 ) -> Result<()> {
     if header.flags.use_huffman {
         let mut reader = Reader::new(header.data);
         let ctx =
             DecodeContext::new_huffman(&mut reader, header, referred_tables, standard_tables)?;
-        decode_with(ctx, symbols, header, bitmap)?;
+        decode_with(ctx, symbols, header, bitmap, budget)?;
     } else {
         let mut decoder = ArithmeticDecoder::new(header.data);
 
         let num_symbols = symbols.len() as u32;
         let symbol_code_length = 32 - num_symbols.saturating_sub(1).leading_zeros();
-        let mut contexts = TextRegionContexts::new(symbol_code_length);
+        let mut contexts = TextRegionContexts::new(symbol_code_length, budget)?;
 
         let num_gr_contexts = 1 << header.flags.refinement_template.context_bits();
         scratch.contexts.clear();
@@ -76,7 +81,7 @@ pub(crate) fn decode_into(
             .resize(num_gr_contexts, ArithmeticDecoderContext::default());
 
         let ctx = DecodeContext::new_arithmetic(&mut decoder, &mut contexts, &mut scratch.contexts);
-        decode_with(ctx, symbols, header, bitmap)?;
+        decode_with(ctx, symbols, header, bitmap, budget)?;
     }
 
     Ok(())
@@ -88,6 +93,7 @@ pub(crate) fn decode_with(
     symbols: &[&Bitmap],
     header: &TextRegionHeader<'_>,
     region: &mut Bitmap,
+    budget: &MemoryBudget,
 ) -> Result<()> {
     let strip_size = header.strip_size();
 
@@ -147,7 +153,7 @@ pub(crate) fn decode_with(
             let symbol_id = ctx.read_symbol_id()?;
 
             let symbol_bitmap =
-                decode_symbol_instance_bitmap(&mut ctx, symbols, header, symbol_id)?;
+                decode_symbol_instance_bitmap(&mut ctx, symbols, header, symbol_id, budget)?;
 
             let symbol_bitmap_ref: &Bitmap = match &symbol_bitmap {
                 SymbolBitmap::Reference(idx) => symbols.get(*idx).ok_or(SymbolError::OutOfRange)?,
@@ -244,20 +250,21 @@ pub(crate) struct TextRegionContexts {
 }
 
 impl TextRegionContexts {
-    /// Create new text region contexts with the given symbol code length.
-    pub(crate) fn new(symbol_code_length: u32) -> Self {
-        Self {
+    /// Create new text region contexts with the given symbol code length,
+    /// charging the symbol-ID context table to `budget`.
+    pub(crate) fn new(symbol_code_length: u32, budget: &MemoryBudget) -> Result<Self> {
+        Ok(Self {
             iadt: IntegerDecoder::new(),
             iafs: IntegerDecoder::new(),
             iads: IntegerDecoder::new(),
             iait: IntegerDecoder::new(),
-            iaid: SymbolIdDecoder::new(symbol_code_length),
+            iaid: SymbolIdDecoder::new(symbol_code_length, budget)?,
             iari: IntegerDecoder::new(),
             iardw: IntegerDecoder::new(),
             iardh: IntegerDecoder::new(),
             iardx: IntegerDecoder::new(),
             iardy: IntegerDecoder::new(),
-        }
+        })
     }
 }
 
@@ -531,6 +538,7 @@ fn decode_symbol_instance_bitmap(
     symbols: &[&Bitmap],
     header: &TextRegionHeader<'_>,
     symbol_id: usize,
+    budget: &MemoryBudget,
 ) -> Result<SymbolBitmap> {
     if !header.flags.use_refinement || ctx.read_refinement_flag()? == 0 {
         return Ok(SymbolBitmap::Reference(symbol_id));
@@ -562,7 +570,7 @@ fn decode_symbol_instance_bitmap(
         .checked_add(rdy)
         .ok_or(OverflowError::ReferenceOffset)?;
 
-    let mut refined_bitmap = Bitmap::new(refined_width, refined_height)?;
+    let mut refined_bitmap = Bitmap::new(refined_width, refined_height, budget)?;
 
     ctx.decode_refinement_bitmap(
         &mut refined_bitmap,
@@ -673,6 +681,7 @@ fn select_huffman_tables<'a>(
 fn decode_symbol_id_huffman_table(
     reader: &mut Reader<'_>,
     num_symbols: u32,
+    budget: &MemoryBudget,
 ) -> Result<HuffmanTable> {
     let mut runcode_lines: Vec<TableLine> = Vec::with_capacity(35);
     for runcode_idx in 0..35 {
@@ -681,6 +690,10 @@ fn decode_symbol_id_huffman_table(
     }
 
     let runcode_table = HuffmanTable::build(&runcode_lines)?;
+    // Sized by the number of input symbols, not by the data: the code
+    // lengths, then a table of the same length.
+    budget.charge_array::<u8>(u64::from(num_symbols))?;
+    HuffmanTable::charge_build(u64::from(num_symbols), budget)?;
     let mut symbol_code_lengths = Vec::with_capacity(num_symbols as usize);
 
     while symbol_code_lengths.len() < num_symbols as usize {
@@ -865,7 +878,11 @@ fn parse_text_region_huffman_flags(reader: &mut Reader<'_>) -> Result<TextRegion
 }
 
 /// Parse a text region segment header (7.4.3.1).
-pub(crate) fn parse<'a>(reader: &mut Reader<'a>, num_symbols: u32) -> Result<TextRegionHeader<'a>> {
+pub(crate) fn parse<'a>(
+    reader: &mut Reader<'a>,
+    num_symbols: u32,
+    budget: &MemoryBudget,
+) -> Result<TextRegionHeader<'a>> {
     let region_info = parse_region_segment_info(reader)?;
     let flags = parse_text_region_flags(reader)?;
     let huffman_flags = if flags.use_huffman {
@@ -884,7 +901,7 @@ pub(crate) fn parse<'a>(reader: &mut Reader<'a>, num_symbols: u32) -> Result<Tex
     let num_instances = reader.read_u32().ok_or(ParseError::UnexpectedEof)?;
 
     let symbol_id_table = if flags.use_huffman {
-        Some(decode_symbol_id_huffman_table(reader, num_symbols)?)
+        Some(decode_symbol_id_huffman_table(reader, num_symbols, budget)?)
     } else {
         None
     };

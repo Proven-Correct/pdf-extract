@@ -4,6 +4,7 @@ use super::{AdaptiveTemplatePixel, Template, generic};
 use crate::ScratchBuffers;
 use crate::arithmetic_decoder::{ArithmeticDecoder, ArithmeticDecoderContext};
 use crate::bitmap::{Bitmap, WORD_BITS, Word};
+use crate::budget::MemoryBudget;
 use crate::error::{OverflowError, ParseError, Result};
 use crate::reader::Reader;
 use alloc::vec::Vec;
@@ -12,6 +13,7 @@ use alloc::vec::Vec;
 pub(crate) fn decode(
     header: &PatternDictionaryHeader<'_>,
     scratch: &mut ScratchBuffers,
+    budget: &MemoryBudget,
 ) -> Result<PatternDictionary> {
     let pattern_width = header.pattern_width as u32;
     let pattern_height = header.pattern_height as u32;
@@ -27,7 +29,7 @@ pub(crate) fn decode(
         .checked_mul(pattern_width)
         .ok_or(OverflowError::BitmapDimension)?;
 
-    let mut collective_bitmap = Bitmap::new(collective_width, pattern_height)?;
+    let mut collective_bitmap = Bitmap::new(collective_width, pattern_height, budget)?;
 
     // "2) Decode the collective bitmap using a generic region decoding procedure
     // as described in 6.2." (6.7.5)
@@ -75,6 +77,7 @@ pub(crate) fn decode(
 
     // "3) Set: GRAY = 0" (6.7.5)
     // "4) While GRAY ≤ GRAYMAX:" (6.7.5)
+    budget.charge_array::<Bitmap>(u64::from(num_patterns))?;
     let mut patterns = Vec::with_capacity(num_patterns as usize);
 
     let src_stride = collective_bitmap.stride;
@@ -84,7 +87,7 @@ pub(crate) fn decode(
         // HDPW × GRAY through HDPW × (GRAY + 1) − 1 be denoted B_P. Set:
         // HDPATS[GRAY] = B_P" (6.7.5)"
         let start_x = gray * pattern_width;
-        let mut pattern = Bitmap::new(pattern_width, pattern_height)?;
+        let mut pattern = Bitmap::new(pattern_width, pattern_height, budget)?;
 
         let src_word_idx = start_x / WORD_BITS;
         let src_bit_offset = start_x % WORD_BITS;
@@ -135,6 +138,7 @@ pub(crate) fn decode(
     // the whole process.
     let shifted_patterns = if pattern_width <= WORD_BITS && pattern_height <= WORD_BITS {
         let h = pattern_height as usize;
+        budget.charge_array::<Word>((patterns.len() * 32 * h * 2) as u64)?;
         let mut data = Vec::with_capacity(patterns.len() * 32 * h * 2);
         for pattern in &patterns {
             for k in 0..32_u32 {
@@ -164,7 +168,7 @@ pub(crate) fn decode(
 }
 
 /// A decoded pattern dictionary.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct PatternDictionary {
     pub(crate) patterns: Vec<Bitmap>,
     pub(crate) pattern_width: u32,
