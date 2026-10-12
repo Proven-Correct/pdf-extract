@@ -293,6 +293,14 @@ pub(crate) fn resolve_alpha_and_color_space(
 ) -> Result<(ColorSpace, bool)> {
     let mut num_components = header.component_infos.len();
 
+    // The decoder keeps component counts in a `u8` (the progression
+    // iterator narrows to one), so more than 255 would truncate. Every
+    // `Image` is built through here, so refusing it here covers raw
+    // codestreams and JP2 files alike, before any decoding.
+    if num_components > u8::MAX as usize {
+        bail!(ValidationError::TooManyChannels);
+    }
+
     // Override number of components with what is actually in the palette box
     // in case we resolve them.
     if settings.resolve_palette_indices
@@ -317,6 +325,13 @@ pub(crate) fn resolve_alpha_and_color_space(
     }
 
     let actual_num_components = header.component_infos.len();
+
+    // Unresolved, the output holds one index channel per pixel, so a
+    // palette image with more components would be interleaved past its end
+    // (the channel check below skips palette images).
+    if !settings.resolve_palette_indices && boxes.palette.is_some() && actual_num_components != 1 {
+        bail!(ValidationError::TooManyChannels);
+    }
 
     // Validate the number of channels.
     if boxes.palette.is_none()
