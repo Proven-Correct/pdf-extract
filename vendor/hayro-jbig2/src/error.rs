@@ -118,6 +118,8 @@ pub enum SymbolError {
     InvalidStripDelta,
     /// Too many symbol instances in a text region.
     TooManyInstances,
+    /// The export flags stopped advancing after the data ran out.
+    ExportStalled,
 }
 
 /// Arithmetic overflow errors.
@@ -246,6 +248,7 @@ impl fmt::Display for SymbolError {
             Self::Invalid => write!(f, "invalid symbol encountered"),
             Self::InvalidStripDelta => write!(f, "strip delta overflow"),
             Self::TooManyInstances => write!(f, "too many symbol instances"),
+            Self::ExportStalled => write!(f, "export flags stopped advancing"),
         }
     }
 }

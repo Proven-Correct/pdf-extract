@@ -41,6 +41,15 @@ impl<'a> ArithmeticDecoder<'a> {
         self.decode(context)
     }
 
+    /// Whether the decoder has stopped taking in data: it is past the end of
+    /// its input or at a marker (0xFF followed by a byte above 0x8F), where
+    /// BYTEIN no longer advances. The state is permanent, and from then on
+    /// the decoder is a finite state machine that reads nothing, so it can
+    /// cycle; a loop that only ends on what the data says can then spin.
+    pub(crate) fn is_exhausted(&self) -> bool {
+        self.current_byte() == 0xff && self.next_byte() > 0x8f
+    }
+
     /// The INITDEC procedure from C.3.5.
     ///
     /// We use the version from Annex G in <https://www.itu.int/rec/T-REC-T.88-201808-I>.

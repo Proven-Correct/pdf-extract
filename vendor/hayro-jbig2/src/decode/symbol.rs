@@ -682,7 +682,10 @@ fn export_symbols(ctx: &mut SymbolDecodeContext<'_>) -> Result<Vec<Bitmap>> {
     let total_symbols = ctx.total_symbols();
     let budget = ctx.budget;
 
-    let mut read_run_length = || -> Result<u32> {
+    // Returns the run length and whether the arithmetic decoder had run out
+    // of data by the time it was decoded. The Huffman reader fails at the end
+    // of its data, so it never runs out this way.
+    let mut read_run_length = || -> Result<(u32, bool)> {
         let value = if ctx.header.flags.use_huffman {
             ctx.h_ctx
                 .export_run_length_table
@@ -693,8 +696,10 @@ fn export_symbols(ctx: &mut SymbolDecodeContext<'_>) -> Result<Vec<Bitmap>> {
                 .decode(&mut ctx.a_ctx.decoder)
         }
         .ok_or(HuffmanError::UnexpectedOob)?;
+        let exhausted = !ctx.header.flags.use_huffman && ctx.a_ctx.decoder.is_exhausted();
 
-        u32::try_from(value).map_err(|_| HuffmanError::InvalidCode.into())
+        let value = u32::try_from(value).map_err(|_| HuffmanError::InvalidCode)?;
+        Ok((value, exhausted))
     };
     // The runs of exported indices; empty runs are not kept, so there are at
     // most `total_symbols` of them.
@@ -702,9 +707,23 @@ fn export_symbols(ctx: &mut SymbolDecodeContext<'_>) -> Result<Vec<Bitmap>> {
     let mut export_count: u64 = 0;
     let mut index: u32 = 0;
     let mut should_export = false;
+    let mut previous_run_empty = false;
 
     while index < total_symbols {
-        let run_length = read_run_length()?;
+        let (run_length, exhausted) = read_run_length()?;
+
+        // Only a run of at least one symbol moves `index`, and once the
+        // arithmetic decoder has run out of data its state can cycle through
+        // runs of 0 forever (#94). Two 0-length runs in a row are refused
+        // once the data is gone: every such cycle decodes them, and no
+        // encoder writes them (a 0-length run is needed only first, when the
+        // first symbol is exported). Refusing any 0-length run after the data
+        // would break valid streams: a short one's runs are all decoded from
+        // the padding, its leading 0 among them.
+        if run_length == 0 && previous_run_empty && exhausted {
+            bail!(SymbolError::ExportStalled);
+        }
+        previous_run_empty = run_length == 0;
 
         let end_index = index.checked_add(run_length).ok_or(OverflowError::Index)?;
         if end_index > total_symbols {
