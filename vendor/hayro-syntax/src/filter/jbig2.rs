@@ -3,7 +3,8 @@ use crate::object::Dict;
 use crate::object::Stream;
 use crate::object::dict::keys::JBIG2_GLOBALS;
 use crate::filter::{
-    JBIG2_BUDGET_BYTES_PER_PIXEL, check_image_pixels, image_memory_budget, image_memory_limit_hit,
+    JBIG2_BUDGET_BYTES_PER_PIXEL, check_image_pixels, guard_codec, image_memory_budget,
+    image_memory_limit_hit,
 };
 use crate::object::stream::{
     DecodeFailure, FilterResult, ImageColorSpace, ImageData, ImageDecodeParams,
@@ -26,9 +27,14 @@ pub(crate) fn decode(
     let globals = params
         .get::<Stream<'_>>(JBIG2_GLOBALS)
         .and_then(|g| g.decoded().ok());
+    super::fire_armed_panic(super::ArmedPanic::OutsideGuard);
 
-    let image = hayro_jbig2::Image::new_embedded(data, globals.as_deref())
-        .map_err(|_| DecodeFailure::ImageDecode)?;
+    // H18: the globals above are hayro-syntax's (xref and Flate) and stay
+    // outside the codec guard; only hayro-jbig2's own calls are inside it.
+    let image = guard_codec(|| {
+        hayro_jbig2::Image::new_embedded(data, globals.as_deref())
+            .map_err(|_| DecodeFailure::ImageDecode)
+    })?;
 
     // H13: `new_embedded` read only the segment headers; the page size (an
     // unknown height already resolved from the end-of-stripe segments) is
@@ -125,10 +131,12 @@ fn decode_within_budget<D: hayro_jbig2::Decoder>(
     let mut ctx = hayro_jbig2::DecoderContext::default();
     ctx.memory_budget = image_memory_budget(max_pixels, JBIG2_BUDGET_BYTES_PER_PIXEL);
 
-    image.decode_with(decoder, &mut ctx).map_err(|e| match e {
-        hayro_jbig2::DecodeError::Overflow(hayro_jbig2::OverflowError::MemoryBudget) => {
-            image_memory_limit_hit()
-        }
-        _ => DecodeFailure::ImageDecode,
+    guard_codec(|| {
+        image.decode_with(decoder, &mut ctx).map_err(|e| match e {
+            hayro_jbig2::DecodeError::Overflow(hayro_jbig2::OverflowError::MemoryBudget) => {
+                image_memory_limit_hit()
+            }
+            _ => DecodeFailure::ImageDecode,
+        })
     })
 }

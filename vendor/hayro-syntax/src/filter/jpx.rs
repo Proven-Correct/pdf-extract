@@ -2,7 +2,8 @@ use crate::bit_reader::BitWriter;
 use crate::filter::FilterResult;
 use crate::math::round_f32;
 use crate::filter::{
-    JPX_BUDGET_BYTES_PER_PIXEL, check_image_pixels, image_memory_budget, image_memory_limit_hit,
+    JPX_BUDGET_BYTES_PER_PIXEL, check_image_pixels, guard_codec, image_memory_budget,
+    image_memory_limit_hit,
 };
 use crate::object::stream::{DecodeFailure, ImageColorSpace, ImageData, ImageDecodeParams};
 use alloc::borrow::Cow;
@@ -35,12 +36,15 @@ pub(crate) fn decode(
         target_resolution: None,
         max_memory_bytes: image_memory_budget(max_pixels, JPX_BUDGET_BYTES_PER_PIXEL),
     };
+    super::fire_armed_panic(super::ArmedPanic::OutsideGuard);
 
     // H13: `Image::new` parses the headers only. Checked at full resolution
     // even when a smaller target is requested, because the decoder's per-tile
     // records and coefficient buffers follow the full-resolution geometry
     // whatever resolution it outputs.
-    let full = hayro_jpeg2000::Image::new(data, &settings).map_err(codec_failure)?;
+    //
+    // H18: each call into hayro-jpeg2000 runs in the codec guard.
+    let full = guard_codec(|| hayro_jpeg2000::Image::new(data, &settings).map_err(codec_failure))?;
     check_image_pixels(
         u64::from(full.width()),
         u64::from(full.height()),
@@ -54,7 +58,7 @@ pub(crate) fn decode(
                 target_resolution: target,
                 ..settings
             };
-            hayro_jpeg2000::Image::new(data, &settings).map_err(codec_failure)?
+            guard_codec(|| hayro_jpeg2000::Image::new(data, &settings).map_err(codec_failure))?
         }
     };
 
@@ -96,7 +100,7 @@ fn decode_image(
         },
     };
     let has_alpha = image.has_alpha();
-    let bitmap = image.decode().map_err(codec_failure)?;
+    let bitmap = guard_codec(|| image.decode().map_err(codec_failure))?;
 
     let (mut data, mut alpha) = if !has_alpha {
         (bitmap, None)

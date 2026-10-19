@@ -247,6 +247,107 @@ pub(crate) fn check_image_pixels(
     }
 }
 
+/// H18: run one call into an image codec crate (zune-jpeg, hayro-ccitt,
+/// hayro-jbig2, hayro-jpeg2000), turning a panic inside it into
+/// [`DecodeFailure::ImageDecode`], so a codec bug skips one image instead of
+/// failing the page.
+///
+/// Only the codec call goes in here: resolving the image's parameters, the
+/// `JBIG2Globals` stream and the rest of hayro-syntax stay outside, so a
+/// parser bug still panics. `AssertUnwindSafe` holds because `f` borrows only
+/// the encoded data, decoder state local to the one decode, and copies of its
+/// settings. The thread-local counters are bumped inside the guard only after
+/// a codec call has returned, immediately before returning the error (the
+/// JPEG frame check, the memory-budget mappings), and a decoder left
+/// half-written by a panic is dropped unread. Our own code that does run
+/// inside (the pixel sinks the CCITT and JBIG2 codecs call back into, the
+/// JPEG frame check and YCCK fix-up) touches only that local state.
+///
+/// Fuzzing builds (`cfg(fuzzing)`, set by `cargo fuzz` for every crate) and
+/// `no_std` builds compile the catch out, so there a codec panic propagates.
+#[cfg(feature = "images")]
+pub(crate) fn guard_codec<T>(
+    f: impl FnOnce() -> Result<T, DecodeFailure>,
+) -> Result<T, DecodeFailure> {
+    #[cfg(all(feature = "std", not(fuzzing)))]
+    {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            fire_armed_panic(ArmedPanic::InsideGuard);
+            f()
+        }))
+        .unwrap_or(Err(DecodeFailure::ImageDecode))
+    }
+
+    #[cfg(not(all(feature = "std", not(fuzzing))))]
+    {
+        fire_armed_panic(ArmedPanic::InsideGuard);
+        f()
+    }
+}
+
+/// Whether [`guard_codec`] catches codec panics in this build: false under
+/// `cfg(fuzzing)`, without `std`, and without `images` (no codecs). Lets a test assert which build it runs in
+/// without naming the `fuzzing` cfg itself.
+#[doc(hidden)]
+pub const CODEC_PANICS_CAUGHT: bool =
+    cfg!(all(feature = "std", feature = "images", not(fuzzing)));
+
+/// Where an armed test panic fires (feature `codec-panic-hook`).
+#[cfg_attr(not(feature = "codec-panic-hook"), allow(dead_code))]
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub(crate) enum ArmedPanic {
+    /// Inside [`guard_codec`], as if the codec itself had panicked.
+    InsideGuard,
+    /// In a codec module, after the image's parameters (and JBIG2's
+    /// globals) are resolved and just before the first guarded call: a panic
+    /// on the image path that the guard must not catch. A guard widened to
+    /// the module's body, or to [`Filter::apply`], would catch it.
+    OutsideGuard,
+}
+
+#[cfg(feature = "codec-panic-hook")]
+std::thread_local! {
+    // Per thread so that a test arming it cannot disturb decodes running on
+    // other threads of the same process.
+    static ARMED_PANIC: core::cell::Cell<Option<ArmedPanic>> = const { core::cell::Cell::new(None) };
+}
+
+/// Make the next guarded image-codec call on this thread panic inside the
+/// codec guard, as a codec bug would (feature `codec-panic-hook`). The flag
+/// clears when it fires, so exactly one decode fails. For tests of the codec
+/// panic boundary: no known input panics a codec reliably, and fuzzing exists
+/// to find and fix any that does.
+#[cfg(feature = "codec-panic-hook")]
+#[doc(hidden)]
+pub fn arm_codec_panic_for_test() {
+    ARMED_PANIC.with(|a| a.set(Some(ArmedPanic::InsideGuard)));
+}
+
+/// Make the next image-codec decode on this thread panic just before the codec
+/// guard is entered, after the image's parameters are resolved: on the image
+/// path but outside the codec call (feature `codec-panic-hook`). The flag clears when it fires. For tests that
+/// the guard catches codec panics only.
+#[cfg(feature = "codec-panic-hook")]
+#[doc(hidden)]
+pub fn arm_unguarded_image_panic_for_test() {
+    ARMED_PANIC.with(|a| a.set(Some(ArmedPanic::OutsideGuard)));
+}
+
+/// Panic if a test armed a panic for `site`, clearing the flag first.
+#[cfg(feature = "images")]
+#[cfg_attr(not(feature = "codec-panic-hook"), allow(unused_variables))]
+#[inline]
+pub(crate) fn fire_armed_panic(site: ArmedPanic) {
+    #[cfg(feature = "codec-panic-hook")]
+    if ARMED_PANIC.with(|a| a.get()) == Some(site) {
+        ARMED_PANIC.with(|a| a.set(None));
+        match site {
+            ArmedPanic::InsideGuard => panic!("codec panic injected for testing"),
+            ArmedPanic::OutsideGuard => panic!("image-path panic injected for testing"),
+        }
+    }
+}
+
 /// A data filter.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Filter {

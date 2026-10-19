@@ -28,6 +28,10 @@ repository = "https://github.com/LaurenzV/hayro"
 resolver = "2"
 
 [features]
+# H18: test-only; `arm_codec_panic_for_test` makes the next guarded image-codec
+# call on the thread panic inside the codec guard. Costs one thread-local read
+# per guarded codec call when enabled.
+codec-panic-hook = ["std"]
 default = [
     "std",
     "images",
@@ -153,3 +157,9 @@ unused_import_braces = "warn"
 unused_lifetimes = "warn"
 unused_macro_rules = "warn"
 unused_qualifications = "warn"
+
+# H18: `cargo fuzz` sets `--cfg fuzzing`, which compiles the codec panic guard
+# out (filter/mod.rs, `guard_codec`).
+[lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = ["cfg(fuzzing)"]

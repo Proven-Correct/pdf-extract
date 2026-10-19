@@ -2,7 +2,7 @@ use crate::object::Dict;
 use crate::object::dict::keys::{
     BLACK_IS_1, COLUMNS, ENCODED_BYTE_ALIGN, END_OF_BLOCK, END_OF_LINE, K, ROWS,
 };
-use crate::filter::check_image_pixels;
+use crate::filter::{check_image_pixels, guard_codec};
 use crate::object::stream::{
     DecodeFailure, FilterResult, ImageColorSpace, ImageData, ImageDecodeParams,
 };
@@ -48,6 +48,7 @@ pub(crate) fn decode(
         u64::from(rows)
     };
     check_image_pixels(u64::from(settings.columns), max_rows, max_pixels)?;
+    super::fire_armed_panic(super::ArmedPanic::OutsideGuard);
 
     // Whenever possible (if we don't have an indexed color space), we convert
     // the data as 8-bit instead of 1-bit, so that it can be easier converted
@@ -108,7 +109,9 @@ pub(crate) fn decode(
             bit_count: 0,
         };
         let mut context = DecoderContext::new(settings);
-        let result = hayro_ccitt::decode(data, &mut decoder, &mut context);
+        // H18: a panic in the codec fails the image outright, whatever rows
+        // it had pushed.
+        let result = guard_codec(|| Ok(hayro_ccitt::decode(data, &mut decoder, &mut context)))?;
 
         // If we decoded at least one row, let's be lenient and return what we got.
         // See also 0001763.pdf.
@@ -144,7 +147,8 @@ pub(crate) fn decode(
             decoded_rows: 0,
         };
         let mut context = DecoderContext::new(settings);
-        let result = hayro_ccitt::decode(data, &mut decoder, &mut context);
+        // H18: as above.
+        let result = guard_codec(|| Ok(hayro_ccitt::decode(data, &mut decoder, &mut context)))?;
 
         if result.is_err() && decoder.decoded_rows == 0 {
             return Err(DecodeFailure::ImageDecode);
