@@ -35,6 +35,17 @@ pub struct DecoderContext {
     /// with [`OverflowError::MemoryBudget`] before the allocation. The
     /// default, `None`, means no limit.
     pub memory_budget: Option<u64>,
+    /// The most pixels one [`Image::decode_with`] call may spend placing
+    /// symbol instances, in text regions and in the aggregate symbols of
+    /// symbol dictionaries: each instance costs its symbol's
+    /// `width × height` plus a fixed charge for decoding its placement, all
+    /// counted from zero at the start of each call. A decode that would
+    /// exceed it fails with [`OverflowError::WorkBudget`] before the
+    /// instance is drawn. The memory budget bounds what a decode allocates
+    /// but not how often it draws what it allocated, so without this one a
+    /// few hundred bytes can draw a large symbol tens of thousands of times.
+    /// The default, `None`, means no limit.
+    pub work_budget: Option<u64>,
 }
 
 #[derive(Default)]
@@ -203,9 +214,10 @@ impl<'a> Image<'a> {
     /// This is useful in case you want to convert multiple JBIG2 images,
     /// as it allows `hayro-jbig2` to reuse allocations during decoding.
     /// The decode is held to the context's
-    /// [`memory_budget`](DecoderContext::memory_budget).
+    /// [`memory_budget`](DecoderContext::memory_budget) and
+    /// [`work_budget`](DecoderContext::work_budget).
     pub fn decode_with<D: Decoder>(&self, decoder: &mut D, ctx: &mut DecoderContext) -> Result<()> {
-        let budget = MemoryBudget::new(ctx.memory_budget);
+        let budget = MemoryBudget::new(ctx.memory_budget, ctx.work_budget);
         decode_segments(&self.segments, self.height_from_stripes, ctx, &budget)?;
         emit_bitmap(&ctx.page_bitmap, decoder);
 

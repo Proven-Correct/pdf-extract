@@ -19,6 +19,11 @@ use crate::integer_decoder::IntegerDecoder;
 use crate::reader::Reader;
 use crate::symbol_id_decoder::SymbolIdDecoder;
 
+/// The fixed charge, in pixels, for each symbol instance placed, on top of
+/// its symbol's area: what decoding its placement costs, measured as the
+/// pixels drawing a symbol costs in the same time.
+const INSTANCE_WORK_PIXELS: u64 = 64;
+
 /// Decode a text region segment (6.4).
 pub(crate) fn decode(
     header: &TextRegionHeader<'_>,
@@ -200,6 +205,17 @@ pub(crate) fn decode_with(
                 }
             };
 
+            // The instance count is capped above, but each instance costs its
+            // symbol's area to draw, and the symbols can be large, so the
+            // pixels drawn are charged to the decode's work allowance (#116).
+            // The area is charged unclipped: an encoder places its symbols
+            // inside the region, so only a hostile file pays for pixels that
+            // fall outside it. The fixed part stands for decoding the
+            // placement, so instances of an empty symbol are not free.
+            budget.charge_work(
+                u64::from(symbol_bitmap_ref.width) * u64::from(symbol_bitmap_ref.height)
+                    + INSTANCE_WORK_PIXELS,
+            )?;
             region.combine(symbol_bitmap_ref, x, y, header.flags.combination_operator);
 
             if !header.flags.transposed

@@ -18,23 +18,51 @@
 //! allocated over the decode, which is an upper bound on the peak. Allocations
 //! linear in the input (segment headers, referred-to lists, custom Huffman
 //! tables) and the fixed-size context tables are not charged.
+//!
+//! The same value carries a second, separate allowance: the pixels the
+//! decode may spend placing symbol instances, from
+//! [`DecoderContext::work_budget`](crate::DecoderContext::work_budget). The
+//! memory budget bounds what is allocated, not how often it is drawn: a text
+//! region places up to 10,000 instances and every aggregate symbol of a
+//! dictionary places its own, each costing its symbol's area, so a few
+//! hundred bytes could draw a symbol of millions of pixels over and over. It
+//! lives here because this value already reaches every place that draws an
+//! instance; it fails with
+//! [`OverflowError::WorkBudget`](crate::OverflowError::WorkBudget).
 
 use core::cell::Cell;
 
 use crate::error::{OverflowError, Result, bail};
 
-/// The bytes left for one decode; `None` means unlimited.
+/// The bytes, and the instance-placing pixels, left for one decode; `None`
+/// means unlimited.
 #[derive(Debug)]
 pub(crate) struct MemoryBudget {
     remaining: Cell<Option<u64>>,
+    work_remaining: Cell<Option<u64>>,
 }
 
 impl MemoryBudget {
-    /// A budget of `limit` bytes, or an unlimited one for `None`.
-    pub(crate) fn new(limit: Option<u64>) -> Self {
+    /// A budget of `limit` bytes and `work_limit` pixels of instance
+    /// placement, each unlimited for `None`.
+    pub(crate) fn new(limit: Option<u64>, work_limit: Option<u64>) -> Self {
         Self {
             remaining: Cell::new(limit),
+            work_remaining: Cell::new(work_limit),
         }
+    }
+
+    /// Charges `pixels` of instance placement against the work allowance,
+    /// failing without charging anything when that would exceed it.
+    pub(crate) fn charge_work(&self, pixels: u64) -> Result<()> {
+        if let Some(remaining) = self.work_remaining.get() {
+            match remaining.checked_sub(pixels) {
+                Some(left) => self.work_remaining.set(Some(left)),
+                None => bail!(OverflowError::WorkBudget),
+            }
+        }
+
+        Ok(())
     }
 
     /// Charges `bytes` against the budget, failing without charging anything

@@ -3,8 +3,8 @@ use crate::object::Dict;
 use crate::object::Stream;
 use crate::object::dict::keys::JBIG2_GLOBALS;
 use crate::filter::{
-    JBIG2_BUDGET_BYTES_PER_PIXEL, check_image_pixels, guard_codec, image_memory_budget,
-    image_memory_limit_hit,
+    JBIG2_BUDGET_BYTES_PER_PIXEL, JBIG2_WORK_PIXELS_PER_PIXEL, check_image_pixels, guard_codec,
+    image_memory_budget, image_memory_limit_hit,
 };
 use crate::object::stream::{
     DecodeFailure, FilterResult, ImageColorSpace, ImageData, ImageDecodeParams,
@@ -123,6 +123,10 @@ pub(crate) fn decode(
 /// planes) is not bounded by the page size; the budget bounds its total. A
 /// refusal by the budget is its own failure, counted once; every other codec
 /// error is a broken image.
+///
+/// H23: the cap also sets the work allowance for placing symbol instances
+/// (#116), whose refusal goes the same way: both are the decoder outgrowing
+/// what the cap allows, and raising the cap admits both.
 fn decode_within_budget<D: hayro_jbig2::Decoder>(
     image: &hayro_jbig2::Image<'_>,
     decoder: &mut D,
@@ -130,12 +134,13 @@ fn decode_within_budget<D: hayro_jbig2::Decoder>(
 ) -> Result<(), DecodeFailure> {
     let mut ctx = hayro_jbig2::DecoderContext::default();
     ctx.memory_budget = image_memory_budget(max_pixels, JBIG2_BUDGET_BYTES_PER_PIXEL);
+    ctx.work_budget = image_memory_budget(max_pixels, JBIG2_WORK_PIXELS_PER_PIXEL);
 
     guard_codec(|| {
         image.decode_with(decoder, &mut ctx).map_err(|e| match e {
-            hayro_jbig2::DecodeError::Overflow(hayro_jbig2::OverflowError::MemoryBudget) => {
-                image_memory_limit_hit()
-            }
+            hayro_jbig2::DecodeError::Overflow(
+                hayro_jbig2::OverflowError::MemoryBudget | hayro_jbig2::OverflowError::WorkBudget,
+            ) => image_memory_limit_hit(),
             _ => DecodeFailure::ImageDecode,
         })
     })

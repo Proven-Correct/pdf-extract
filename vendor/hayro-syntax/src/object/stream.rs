@@ -330,7 +330,9 @@ pub enum DecodeFailure {
     ImagePixelLimit,
     /// An image codec would have allocated more than its memory budget,
     /// which [`DecodeLimits::max_image_pixels`](crate::DecodeLimits::max_image_pixels)
-    /// sets; it was refused before the allocation that would exceed it.
+    /// sets; it was refused before the allocation that would exceed it. The
+    /// JBIG2 decoder's work allowance for placing symbol instances, set by
+    /// the same cap, is refused this way too.
     ImageMemoryLimit,
 }
 

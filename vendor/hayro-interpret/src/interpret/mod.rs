@@ -150,7 +150,8 @@ pub enum InterpreterWarning {
     ImagePixelLimit,
     /// An image's codec would have exceeded the memory budget that
     /// [`DecodeLimits::max_image_pixels`](hayro_syntax::DecodeLimits::max_image_pixels)
-    /// sets, and the image was skipped. Raised instead of
+    /// sets (or, for JBIG2, the work allowance for placing symbol instances
+    /// that it also sets), and the image was skipped. Raised instead of
     /// [`Self::ImageDecodeFailure`] and [`Self::ImagePixelLimit`], never as well.
     ImageMemoryLimit,
 }

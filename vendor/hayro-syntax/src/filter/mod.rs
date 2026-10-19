@@ -54,7 +54,10 @@ pub struct DecodeLimits {
     /// sets (symbol and region bitmaps, gray-scale planes; tile, precinct and
     /// code-block records, channel planes) are not bounded by the image size;
     /// a decode that would exceed its budget fails with
-    /// [`DecodeFailure::ImageMemoryLimit`].
+    /// [`DecodeFailure::ImageMemoryLimit`]. It sets the JBIG2 decoder's work
+    /// allowance for placing symbol instances too,
+    /// [`JBIG2_WORK_PIXELS_PER_PIXEL`] pixels per pixel of the cap, refused
+    /// the same way.
     ///
     /// The default, `None`, means no limit and no budget.
     pub max_image_pixels: Option<u64>,
@@ -178,6 +181,22 @@ pub(crate) fn note_image_pixel_limit_hit() {
 /// exported thousands of times, a gray-scale plane of 16 GiB from eight header
 /// bytes) cost hundreds of bytes per pixel or are unbounded.
 pub const JBIG2_BUDGET_BYTES_PER_PIXEL: u64 = 2;
+
+/// The JBIG2 decoder's work allowance for placing symbol instances, in
+/// pixels per pixel of [`DecodeLimits::max_image_pixels`]: each instance a
+/// text region or an aggregate symbol places costs its symbol's area plus 64.
+/// A text page draws each glyph once, so its instances cover the page about
+/// once, and at most a few times counting the per-instance charge for small
+/// glyphs and overlapping glyph boxes; 16 is as many pixels as the memory
+/// budget can allocate as bitmaps (2 bytes, 16 one-bit pixels, per pixel of
+/// the cap), so a decode may draw each pixel it could hold once, a fourfold
+/// margin at the cap and far more for ordinary scans. The hostile shape (a
+/// large symbol placed 10,000 times per region, region after region) is
+/// unbounded without it; with it, the placing a decode can do at the default
+/// cap takes a few seconds (measured at about 0.45 ns per charged pixel for
+/// the costliest shape, one-pixel-wide symbols). A refusal is reported like
+/// the memory budget's.
+pub const JBIG2_WORK_PIXELS_PER_PIXEL: u64 = 16;
 
 /// The JPEG 2000 decoder's memory budget, in bytes per pixel of
 /// [`DecodeLimits::max_image_pixels`]: about 9 bytes per pixel per component
