@@ -120,6 +120,8 @@ pub enum SymbolError {
     TooManyInstances,
     /// The export flags stopped advancing after the data ran out.
     ExportStalled,
+    /// The height classes stopped adding symbols after the data ran out.
+    HeightClassStalled,
 }
 
 /// Arithmetic overflow errors.
@@ -249,6 +251,7 @@ impl fmt::Display for SymbolError {
             Self::InvalidStripDelta => write!(f, "strip delta overflow"),
             Self::TooManyInstances => write!(f, "too many symbol instances"),
             Self::ExportStalled => write!(f, "export flags stopped advancing"),
+            Self::HeightClassStalled => write!(f, "height classes stopped adding symbols"),
         }
     }
 }

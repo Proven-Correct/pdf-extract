@@ -25,6 +25,10 @@ use crate::reader::Reader;
 
 const MAX_SYMBOLS: u32 = u16::MAX as u32;
 
+/// The most height classes in a row that may decode no symbol after the
+/// arithmetic data is used up before the dictionary is refused (#116).
+const MAX_STALLED_HEIGHT_CLASSES: u32 = 64;
+
 /// Decode a symbol dictionary segment (7.4.2, 6.5).
 pub(crate) fn decode(
     header: &SymbolDictionaryHeader<'_>,
@@ -79,6 +83,10 @@ pub(crate) fn decode(
                 .decode(&mut ctx.a_ctx.decoder))
         }
     };
+
+    // Height classes in a row that decoded no symbol and ended with the
+    // arithmetic decoder out of data; see the check after the class.
+    let mut stalled_height_classes: u32 = 0;
 
     while ctx.symbols_decoded_count < num_new_symbols {
         let height_class_delta =
@@ -148,6 +156,29 @@ pub(crate) fn decode(
             // the previously decoded symbol widths to decode the collective bitmap
             // and extract the individual symbols from that bitmap.
             decode_height_class_collective_bitmap(&mut ctx)?;
+        }
+
+        // Only a symbol moves this loop forward, and once the arithmetic
+        // decoder has run out of data it is a finite state machine reading
+        // nothing, which can cycle through height classes that hold no
+        // symbol (IADH, then IADW = OOB) forever (#116), as the export flags
+        // could (#94). This is a heuristic: refuse once the data is used up
+        // and more than 64 consecutive height classes decode no symbol. No
+        // encoder writes an empty height class, but a short stream's classes
+        // all come from the padding, and some decode a few empty ones before
+        // a symbol (three, for one two-byte stream), so refusing at the first,
+        // or at two in a row as the export guard does, would break streams
+        // that decode today; 64 is far above that and still ends a spin at
+        // once. The Huffman reader fails at the end of its data, so that path
+        // cannot spin.
+        let empty = ctx.symbols_decoded_count == ctx.height_class_first_symbol;
+        if empty && !ctx.header.flags.use_huffman && ctx.a_ctx.decoder.is_exhausted() {
+            stalled_height_classes += 1;
+            if stalled_height_classes > MAX_STALLED_HEIGHT_CLASSES {
+                bail!(SymbolError::HeightClassStalled);
+            }
+        } else {
+            stalled_height_classes = 0;
         }
     }
 
