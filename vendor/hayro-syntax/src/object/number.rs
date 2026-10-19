@@ -113,16 +113,16 @@ impl Readable<'_> for Number {
 
 #[inline(always)]
 fn read_inner(r: &mut Reader<'_>) -> Option<Number> {
-    let negative = match r.peek_byte()? {
+    let (negative, has_sign) = match r.peek_byte()? {
         b'-' => {
             r.forward();
-            true
+            (true, true)
         }
         b'+' => {
             r.forward();
-            false
+            (false, true)
         }
-        _ => false,
+        _ => (false, false),
     };
 
     let mut mantissa: u64 = 0;
@@ -161,7 +161,9 @@ fn read_inner(r: &mut Reader<'_>) -> Option<Number> {
     }
 
     if !has_digits {
-        if negative || has_dot {
+        // `skip` accepts a lone sign as a number, so `read` must too, or a
+        // validated array (`[+ ]`) fails to re-read when it is iterated.
+        if has_sign || has_dot {
             // Treat numbers like just `-`, `+` or `-.` as zero.
             return Some(Number(InternalNumber::Integer(0)));
         }

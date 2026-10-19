@@ -134,12 +134,13 @@ impl<'a> Iterator for ArrayIter<'a> {
         self.reader.skip_white_spaces_and_comments();
 
         if !self.reader.at_end() {
-            // Objects are already guaranteed to be valid.
-            let item = self
+            // Validation (`skip`) and this re-read are separate parsers, and a
+            // disagreement used to panic here (a lone `+`, #120). End the
+            // iteration on a failed read instead: malformed input must not
+            // panic, and a short array is how hayro treats other bad entries.
+            return self
                 .reader
-                .read_with_context::<MaybeRef<Object<'_>>>(&self.ctx)
-                .unwrap();
-            return Some(item);
+                .read_with_context::<MaybeRef<Object<'_>>>(&self.ctx);
         }
 
         None
