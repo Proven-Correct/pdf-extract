@@ -458,6 +458,11 @@ fn decryption_key_rev1234(
     permissions: u32,
     id: &[u8],
 ) -> Result<Vec<u8>, DecryptionError> {
+    // The key is a prefix of a 16-byte MD5 output, so no /Length can yield
+    // more than 16 bytes. Slicing by an out-of-range /Length (V 2 or V 4 with
+    // more than 128 bits, V 5 paired with revision <= 4) used to panic; clamp
+    // as pdf.js does so such files open instead.
+    let byte_length = byte_length.min(16);
     let mut md5_input = vec![];
 
     // TODO: Convert to PDFDocEncoding.
