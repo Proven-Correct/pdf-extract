@@ -260,13 +260,15 @@ impl<'a> RefinementContextGatherer<'a> {
             self.reg_cur = ContextGatherer::load_word(region, self.reg_y, new_start);
         }
 
+        // While the reference column is left of the reference (a positive
+        // GRREFERENCEDX), keep the words `start_row` loaded at column 0: the
+        // template's right-hand pixel reaches column 0 at ref_x = -1, columns
+        // further left read as 0 through the wrapped offset, and the words
+        // stay valid until ref_x reaches 31. Zeroing them here, as before,
+        // read reference columns 0-30 as white, because the test below does
+        // not reload until then.
         let ref_x_signed = x as i32 - self.reference_dx;
-        if ref_x_signed < 0 {
-            self.ref_cur_x = 0;
-            self.ref_m1 = 0;
-            self.ref_cur = 0;
-            self.ref_p1 = 0;
-        } else {
+        if ref_x_signed >= 0 {
             let ref_x = ref_x_signed as u32;
 
             if ref_x + 1 >= self.ref_cur_x + WORD_BITS || ref_x < self.ref_cur_x {
