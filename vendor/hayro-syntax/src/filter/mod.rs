@@ -42,11 +42,17 @@ pub struct DecodeLimits {
     /// The maximum number of bytes one filter may produce for one stream.
     /// The default, `u64::MAX`, means no limit.
     pub max_stream_decoded_bytes: u64,
-    /// The largest image, by the `width × height` its decode parameters
-    /// declare, that may be decoded at all. A larger one fails with
-    /// [`DecodeFailure::ImagePixelLimit`] before any filter runs, so the cap
-    /// bounds what the decoders allocate, not only what they return. Streams
-    /// decoded without image parameters declare 0 × 0 and are never refused.
+    /// The largest image, by `width × height`, that may be decoded. The size
+    /// is checked wherever it first becomes known: the size its decode
+    /// parameters declare, before any filter runs; the size each image codec
+    /// reads from its header or parameters, before the codec allocates for
+    /// it; and the size the codec reports once it has run (for CCITT, which
+    /// pairs `/Columns` with the declared height, it can exceed both). A
+    /// larger image fails with [`DecodeFailure::ImagePixelLimit`], so the
+    /// cap bounds what the decoders allocate, not only what they return.
+    /// Streams decoded without image parameters declare 0 × 0 and pass the
+    /// first check, but an image codec in their filter chain still applies
+    /// the other two.
     ///
     /// The cap also sets the memory budgets of the JBIG2 and JPEG 2000
     /// decoders, [`JBIG2_BUDGET_BYTES_PER_PIXEL`] and
@@ -152,7 +158,8 @@ std::thread_local! {
 
 /// Return how many image decodes on the current thread were refused with
 /// [`DecodeFailure::ImagePixelLimit`](crate::object::stream::DecodeFailure::ImagePixelLimit)
-/// because the image declared more pixels than [`DecodeLimits::max_image_pixels`].
+/// because the image's size, declared, read from its codec's header or reported by
+/// the codec, exceeded [`DecodeLimits::max_image_pixels`].
 ///
 /// It only ever increases: read it before and after an operation, on the same thread.
 /// Without the `std` feature nothing is counted and this always returns 0.

@@ -221,7 +221,7 @@ impl<'a> Stream<'a> {
         // The pixel cap (H13) is checked where each size first becomes known, before
         // the allocation it governs. First the declared dimensions: decrypting the
         // data and every filter after that allocate in proportion to the image.
-        // Non-image decodes pass default parameters (0 x 0) and are never refused.
+        // Non-image decodes pass default parameters (0 x 0) and are never refused here.
         // The codecs then check their header sizes inside `Filter::apply`.
         check_image_pixels(
             u64::from(image_params.width),
@@ -324,9 +324,11 @@ pub enum DecodeFailure {
     /// A filter would have produced more data than the document's
     /// [`DecodeLimits`](crate::DecodeLimits) allow.
     LimitExceeded,
-    /// An image declared more pixels than the document's
-    /// [`DecodeLimits::max_image_pixels`](crate::DecodeLimits::max_image_pixels)
-    /// allow; it was refused before any filter ran.
+    /// An image's size exceeded the document's
+    /// [`DecodeLimits::max_image_pixels`](crate::DecodeLimits::max_image_pixels):
+    /// as declared, refused before any filter ran; as read from its codec's
+    /// header or parameters, before the codec allocated for it; or as the codec
+    /// reported it, after decoding.
     ImagePixelLimit,
     /// An image codec would have allocated more than its memory budget,
     /// which [`DecodeLimits::max_image_pixels`](crate::DecodeLimits::max_image_pixels)

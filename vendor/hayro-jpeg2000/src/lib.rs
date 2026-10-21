@@ -115,7 +115,9 @@ pub struct DecodeSettings {
     /// If you disable this option, in case you have an image with palette
     /// indices, they will not be resolved, but instead a grayscale image
     /// will be returned, with each pixel value corresponding to the palette
-    /// index of the location.
+    /// index of the location. A palette image with more than one component
+    /// (for example indices plus alpha) cannot be returned that way and is
+    /// refused with `ValidationError::TooManyChannels`.
     pub resolve_palette_indices: bool,
     /// Whether strict mode should be enabled when decoding.
     ///

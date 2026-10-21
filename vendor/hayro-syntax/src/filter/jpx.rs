@@ -1,10 +1,10 @@
 use crate::bit_reader::BitWriter;
 use crate::filter::FilterResult;
-use crate::math::round_f32;
 use crate::filter::{
     JPX_BUDGET_BYTES_PER_PIXEL, check_image_pixels, guard_codec, image_memory_budget,
     image_memory_limit_hit,
 };
+use crate::math::round_f32;
 use crate::object::stream::{DecodeFailure, ImageColorSpace, ImageData, ImageDecodeParams};
 use alloc::borrow::Cow;
 use alloc::vec;
@@ -80,7 +80,6 @@ fn decode_image(
     image: hayro_jpeg2000::Image<'_>,
     params: &ImageDecodeParams,
 ) -> Result<FilterResult<'static>, DecodeFailure> {
-
     let width = image.width();
     let height = image.height();
     let bpc = params.bpc.unwrap_or(image.original_bit_depth());

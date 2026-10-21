@@ -143,9 +143,12 @@ pub enum InterpreterWarning {
     UnsupportedFont,
     /// An image failed to decode.
     ImageDecodeFailure,
-    /// An image declared more pixels than the document's
+    /// An image's size exceeded the document's
     /// [`DecodeLimits::max_image_pixels`](hayro_syntax::DecodeLimits::max_image_pixels)
-    /// allow and was skipped without being decoded. Raised instead of
+    /// and the image was skipped. The size is checked as declared, as its codec
+    /// reads it from its header or parameters, and as the codec reports it after
+    /// decoding (see [`DecodeFailure::ImagePixelLimit`](hayro_syntax::object::stream::DecodeFailure::ImagePixelLimit)),
+    /// so the image may have been partly or wholly decoded. Raised instead of
     /// [`Self::ImageDecodeFailure`], never as well.
     ImagePixelLimit,
     /// An image's codec would have exceeded the memory budget that

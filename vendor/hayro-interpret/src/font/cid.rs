@@ -2,8 +2,9 @@ use crate::font::blob::{CffFontBlob, OpenTypeFontBlob, Type1FontBlob};
 use crate::font::generated::glyph_names;
 use crate::font::standard_font::select_standard_font;
 use crate::font::{
-    FallbackFontQuery, FontFlags, FontQuery, has_font_program, note_font_substitution,
-    read_ascent_descent, read_to_unicode, stretch_glyph, strip_subset_prefix,
+    FallbackFontQuery, FontFlags, FontQuery, has_font_program, is_binary_cmap,
+    note_font_substitution, read_ascent_descent, read_to_unicode, stretch_glyph,
+    strip_subset_prefix,
 };
 use crate::{CMapResolverFn, CacheKey, FontResolverFn};
 use hayro_cmap::{BfString, CMap, CharacterCollection, CidFamily, WritingMode};
@@ -670,6 +671,9 @@ fn read_encoding(object: &Object<'_>, cmap_resolver: &CMapResolverFn) -> Option<
         }
         Object::Stream(s) => {
             let decoded = s.decoded().ok()?;
+            if is_binary_cmap(&decoded) {
+                return None;
+            }
             let resolver = cmap_resolver.clone();
             CMap::parse(&decoded, move |n| (resolver)(n))
         }

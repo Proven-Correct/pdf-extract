@@ -969,6 +969,9 @@ pub(crate) fn unicode_from_name(name: &str) -> Option<char> {
 pub(crate) fn read_to_unicode(dict: &Dict<'_>, cmap_resolver: &CMapResolverFn) -> Option<CMap> {
     dict.get::<Stream<'_>>(TO_UNICODE)
         .and_then(|s| s.decoded().ok())
+        // Refused before the name fallback, which is only for a name: a stream
+        // in the binary format is a stream that fails to parse.
+        .filter(|data| !is_binary_cmap(data))
         // See PDFJS-11915, where `Identity-H` is used for `ToUnicode`. I don't
         // believe it's valid, but at least mupdf seems to be able to deal with it.
         .or_else(|| {
@@ -980,6 +983,21 @@ pub(crate) fn read_to_unicode(dict: &Dict<'_>, cmap_resolver: &CMapResolverFn) -
             let cmap_resolver = cmap_resolver.clone();
             CMap::parse(&data, move |name| (cmap_resolver)(name))
         })
+}
+
+/// Whether CMap data taken from the document (a `/ToUnicode` stream or a
+/// Type 0 `/Encoding` stream) is in hayro-cmap's binary format, which is then
+/// refused like a CMap that fails to parse.
+///
+/// hayro-cmap parses any data starting with `bcmap` as the binary format its
+/// embedded predefined CMaps are stored in. That parser trusts its input: it
+/// rebuilds each range as `previous end + 1 + delta`, which overflows on
+/// hostile deltas (a panic with overflow checks, a wrong range without). The
+/// format is private to hayro-cmap and legitimately comes only from the
+/// resolver, so only document data is checked: predefined CMaps named by the
+/// document, and `usecmap` inside a stream, still resolve and parse.
+pub(crate) fn is_binary_cmap(data: &[u8]) -> bool {
+    data.starts_with(b"bcmap")
 }
 
 /// Read `/Ascent` and `/Descent` from a font descriptor, in text space units.
