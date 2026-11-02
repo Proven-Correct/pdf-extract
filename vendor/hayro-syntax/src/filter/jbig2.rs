@@ -125,7 +125,7 @@ pub(crate) fn decode(
 /// error is a broken image.
 ///
 /// H23: the cap also sets the work allowance for placing symbol instances
-/// (#116), whose refusal goes the same way: both are the decoder outgrowing
+/// (internal #116), whose refusal goes the same way: both are the decoder outgrowing
 /// what the cap allows, and raising the cap admits both.
 fn decode_within_budget<D: hayro_jbig2::Decoder>(
     image: &hayro_jbig2::Image<'_>,

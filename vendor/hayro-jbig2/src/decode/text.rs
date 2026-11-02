@@ -207,7 +207,7 @@ pub(crate) fn decode_with(
 
             // The instance count is capped above, but each instance costs its
             // symbol's area to draw, and the symbols can be large, so the
-            // pixels drawn are charged to the decode's work allowance (#116).
+            // pixels drawn are charged to the decode's work allowance (internal #116).
             // The area is charged unclipped: an encoder places its symbols
             // inside the region, so only a hostile file pays for pixels that
             // fall outside it. The fixed part stands for decoding the

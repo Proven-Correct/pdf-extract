@@ -26,7 +26,7 @@ use crate::reader::Reader;
 const MAX_SYMBOLS: u32 = u16::MAX as u32;
 
 /// The most height classes in a row that may decode no symbol after the
-/// arithmetic data is used up before the dictionary is refused (#116).
+/// arithmetic data is used up before the dictionary is refused (internal #116).
 const MAX_STALLED_HEIGHT_CLASSES: u32 = 64;
 
 /// Decode a symbol dictionary segment (7.4.2, 6.5).
@@ -161,8 +161,8 @@ pub(crate) fn decode(
         // Only a symbol moves this loop forward, and once the arithmetic
         // decoder has run out of data it is a finite state machine reading
         // nothing, which can cycle through height classes that hold no
-        // symbol (IADH, then IADW = OOB) forever (#116), as the export flags
-        // could (#94). This is a heuristic: refuse once the data is used up
+        // symbol (IADH, then IADW = OOB) forever (internal #116), as the export flags
+        // could (internal #94). This is a heuristic: refuse once the data is used up
         // and more than 64 consecutive height classes decode no symbol. No
         // encoder writes an empty height class, but a short stream's classes
         // all come from the padding, and some decode a few empty ones before
@@ -745,7 +745,7 @@ fn export_symbols(ctx: &mut SymbolDecodeContext<'_>) -> Result<Vec<Bitmap>> {
 
         // Only a run of at least one symbol moves `index`, and once the
         // arithmetic decoder has run out of data its state can cycle through
-        // runs of 0 forever (#94). Two 0-length runs in a row are refused
+        // runs of 0 forever (internal #94). Two 0-length runs in a row are refused
         // once the data is gone: every such cycle decodes them, and no
         // encoder writes them (a 0-length run is needed only first, when the
         // first symbol is exported). Refusing any 0-length run after the data

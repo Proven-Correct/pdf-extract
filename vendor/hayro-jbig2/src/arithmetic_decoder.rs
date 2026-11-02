@@ -3,7 +3,7 @@
 //
 // One deliberate divergence: `is_exhausted` exists only here. JBIG2 has
 // loops that end only on what the data decodes to (the height classes and
-// export flags of a symbol dictionary, #94 and #116), which can cycle once
+// export flags of a symbol dictionary, internal #94 and #116), which can cycle once
 // the data runs out. JPEG 2000's loops over coding passes and bit planes are
 // counted from the packet headers, so its copy cannot spin that way and has
 // no caller for the method.

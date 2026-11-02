@@ -135,7 +135,7 @@ impl<'a> Iterator for ArrayIter<'a> {
 
         if !self.reader.at_end() {
             // Validation (`skip`) and this re-read are separate parsers, and a
-            // disagreement used to panic here (a lone `+`, #120). End the
+            // disagreement used to panic here (a lone `+`, internal #120). End the
             // iteration on a failed read instead: malformed input must not
             // panic, and a short array is how hayro treats other bad entries.
             return self
