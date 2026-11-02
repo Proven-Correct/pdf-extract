@@ -1,0 +1,6 @@
+# LeakSanitizer suppressions for tools/sanitizers/run.sh asan (Linux only:
+# LSan is not supported on macOS). Format: one `leak:<pattern>` per entry,
+# each directly preceded by a comment block containing `# why: <reason>`
+# that names the code covered and why the report is a false positive or out
+# of our control. Never this workspace's own crates or the C++ shim: those
+# reports are bugs. tools/sanitizers/check-suppressions.sh enforces all this.

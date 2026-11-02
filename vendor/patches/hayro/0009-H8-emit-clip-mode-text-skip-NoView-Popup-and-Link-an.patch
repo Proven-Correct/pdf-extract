@@ -1,0 +1,77 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Thu, 1 Oct 2026 16:18:42 -0400
+Subject: [PATCH 09/22] H8: emit clip-mode text; skip NoView, Popup and Link
+ annotations
+
+Text in rendering mode 7 (add to clipping path, no painting) never
+reached the device, so a text extractor lost it although it is part of
+the page's text. After its outline joins the text clip it is now also
+passed to `draw_glyph` with `GlyphDrawMode::Invisible`, as mode 3
+(invisible) text already is; renderers already skip `Invisible`.
+
+`interpret_page` drew the appearance stream of every annotation that
+was not Hidden. It now also skips annotations flagged NoView (bit 6)
+and those of subtype `Popup` and `Link`, which viewers do not draw as
+page content.
+---
+ hayro-interpret/src/interpret/mod.rs  | 18 ++++++++++++++----
+ hayro-interpret/src/interpret/text.rs |  9 +++++++++
+ 2 files changed, 23 insertions(+), 4 deletions(-)
+
+diff --git a/hayro-interpret/src/interpret/mod.rs b/hayro-interpret/src/interpret/mod.rs
+index 81f9cca..0830670 100644
+--- a/hayro-interpret/src/interpret/mod.rs
++++ b/hayro-interpret/src/interpret/mod.rs
+@@ -17,8 +17,8 @@ use crate::x_object::{
+ };
+ use hayro_syntax::content::TypedIter;
+ use hayro_syntax::content::ops::TypedInstruction;
+-use hayro_syntax::object::dict::keys::{ANNOTS, AP, F, MCID, N, OC, RECT};
+-use hayro_syntax::object::{Array, Dict, Object, Rect, Stream, dict_or_stream};
++use hayro_syntax::object::dict::keys::{ANNOTS, AP, F, MCID, N, OC, POPUP, RECT, SUBTYPE};
++use hayro_syntax::object::{Array, Dict, Name, Object, Rect, Stream, dict_or_stream};
+ use hayro_syntax::page::{Page, Resources};
+ use kurbo::{Affine, Point, Shape};
+ use smallvec::smallvec;
+@@ -329,8 +329,18 @@ pub fn interpret_page<'a>(
+         for annot in annot_arr.iter::<Dict<'_>>() {
+             let flags = annot.get::<u32>(F).unwrap_or(0);
+ 
+-            // Annotation should be hidden.
+-            if flags & 2 != 0 {
++            // Annotation should be hidden (bit 2, Hidden) or not shown on screen (bit 6,
++            // NoView).
++            if flags & (2 | 32) != 0 {
++                continue;
++            }
++
++            // A pop-up only displays its parent's text in a window, and a link's appearance
++            // is at most a border; viewers do not draw either as page content.
++            if annot
++                .get::<Name<'_>>(SUBTYPE)
++                .is_some_and(|s| matches!(s.as_ref(), POPUP | b"Link"))
++            {
+                 continue;
+             }
+ 
+diff --git a/hayro-interpret/src/interpret/text.rs b/hayro-interpret/src/interpret/text.rs
+index a631ba9..27f0d4e 100644
+--- a/hayro-interpret/src/interpret/text.rs
++++ b/hayro-interpret/src/interpret/text.rs
+@@ -117,6 +117,15 @@ pub(crate) fn show_glyph<'a>(
+         }
+         TextRenderingMode::Clip => {
+             clip_glyph(ctx, glyph, glyph_transform);
++            // Like `Invisible`: nothing is painted, but the device still learns about the
++            // glyph, so that it can for example be used for text extraction.
++            device.draw_glyph(
++                glyph,
++                ctx.get().ctm,
++                glyph_transform,
++                &get_paint(ctx, false),
++                &GlyphDrawMode::Invisible,
++            );
+         }
+         TextRenderingMode::FillAndClip => {
+             clip_glyph(ctx, glyph, glyph_transform);

@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "e03f41c6914295170f6b9acbf9819af4d6779fe845c06459c4d55e9cd47bf656",
+  "size": 323738,
+  "source": "corpus-d/clean_heading_footnote.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "Of the Causes Which Impel the Separation\n{throw off such Government, and to provide new Guards for their future security. Such has\nbeen the patient sutferance of these Colonies; and such is now the necessity which\nconstrains them to alter their former Systems of Government. The history of the present King\n(of Groat Britain is a history of repeated injuries and usurpation, all having indirect object\nthe establishment of an absolute Tyranny over these States. To prove ths, let Facts be\n‘submited to candid world He has refused his Assent o Law, the most wholesome and\n1necessary forthe public good. Ho has forbidden his Governors to pass Laws ofimmodiato\nand pressing importance, unless suspended in their operation til his Assent should be\n‘obtained; and when so suspended, he has utterly neglected to attondto them. He has\nrefused to pass other Laws for the accommodation of large districts of people, unless those\n‘people would relinquish the right of Representation in the Legislature, aright inestimable to\nthom and formidable\nto tyrants only, He has called together logisiatve bodes at places\nunusual, uncomfortable, and distant from the depository\nof ther public Record, or the sole\n‘purpose of fatiguing them into compliance with his measures. He has dissolved\nRepresentative Houses repeatedly, for opposing with manly firmness his invasions on the\nrights ofthe people. He has retused for along time, after such dissolutions, to cause others\ntobe elected; whereby the Legislative powers, incapable of Annihilation, have returned to\nthe People at large for their exercise; the State remaining inthe mean time exposed to all\nthe dangers\nof invasion from without, and convulsions within. He has endeavoured to\nprevent the population ofthese States; for that purpose obstructing the Laws for\nNaturalization of Foreigners; refusing o pass others to encourage their migrations hither,\n‘and raising the conditons of new Appropriations of Lands. He has obstructed the\n‘Administration of Justice, by refusing his Assent to Laws for estabishing Judiciary powers.\nHe has made Judges dependent on his Will alone, forthe tenure oftheir offices, and the:\n‘amount and payment oftheir salaries. He has erected a mulitude of New Offices, and sent\nhither swarms of Officers toharass\nour people, and eat out their substance, He has kept\n‘among us, in times of peace, Standing Armies without the Consent of our legislatures. He\nhas affectedto render the Miltary independent of and superior tothe Chil power. He has\nwo tes sc uo ard rn ou ceton, annko\nby tong hesetae\n‘Ssolpeundesagaaton\nWhen th aie han wera roses neem an pao Sse Pe\npois bdsm havecoment\nrateramass\namong eso\nPevrase\n",
+        "sha256": "58e9704d0c3ba5b3d35e529ee12d1787e09cecddca6b8f7505f0a115e7b56188"
+      }
+    ]
+  }
+}

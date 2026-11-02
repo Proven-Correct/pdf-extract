@@ -1,0 +1,72 @@
+# pdf-extract-python: the CPython extension module `pdf_extract._native`.
+# Thin binding over pdf-extract-core; the pure-Python half of the package
+# (exception classes, re-exports, stubs) lives in python/pdf_extract/. Built
+# by maturin (see pyproject.toml); never published as a crate.
+[package]
+name = "pdf-extract-python"
+description = "CPython binding (pdf_extract._native) for pdf-extract"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+# The module is exercised by the Python test suite (tests/python), not by
+# Rust tests: a Rust test harness would have to link and initialise
+# libpython, which an extension-module build deliberately does not link.
+test = false
+doctest = false
+
+[features]
+# How Tesseract is linked (run 0002 §3.7 "Cargo features"): forwarded to
+# pdf-extract-ocr, and exactly one must be on, as in the sys crate. A source
+# install against the distribution's libraries builds with
+# `maturin build --no-default-features --features system-tesseract`.
+default = ["vendored"]
+vendored = ["pdf-extract-ocr/vendored"]
+system-tesseract = ["pdf-extract-ocr/system-tesseract"]
+# The stable-ABI (abi3) build of the release wheels (one wheel per platform
+# for CPython 3.13 and later; tools/build/build-wheel.sh turns it on). Opt-in,
+# not default: free-threaded CPython has no stable ABI, so the cp314t wheels
+# and the development builds (`maturin develop`, CI's python jobs) use the
+# full, version-specific API. The floor is the package's `requires-python`;
+# the binding's buffer access (PyBuffer) needs at least the 3.11 limited API.
+abi3 = ["pyo3/abi3-py313"]
+
+[dependencies]
+# `test-hooks` for `_native._arm_codec_panic_for_test` (the fork's codec
+# panic hook, H18), always present like `_panic_for_test`; it costs one
+# thread-local read per guarded codec call.
+pdf-extract-core = { path = "../core", features = ["test-hooks"] }
+# OcrEngine, default_ocr_engine and Page.ocr (run 0002 §3.6). No default
+# features: the linkage is chosen by this crate's own features above.
+pdf-extract-ocr = { path = "../ocr", default-features = false }
+# The builder behind `pdf_extract.testing` (spec T49): the Python test kit is
+# the Rust one, so the same calls give the same bytes. This makes the
+# extension ship the kit and its Helvetica AFM data (Adobe's notice in
+# crates/testkit/data/README-AFM.txt must travel with binary distributions).
+#
+# Feature `ocr` adds `ScriptedBackend`, behind the test-only
+# `_native._scripted_engine` (run 0002 §4.11). It adds nothing to the build:
+# the kit reaches Tesseract only through pdf-extract-ocr, which this crate
+# links anyway, and with no default features of its own, so the linkage stays
+# the one chosen by the features above.
+pdf-extract-testkit = { path = "../testkit", features = ["ocr"] }
+# Exact pin, like the hayro crates: the binding is checked against this
+# release's API and its free-threading support (CPython 3.14t and later).
+# No optional features are needed; the extension-module link mode comes from
+# PYO3_BUILD_EXTENSION_MODULE (.cargo/config.toml, and maturin sets it too).
+pyo3 = "=0.29.3"
+
+[build-dependencies]
+# Emits the platform's extension-module link arguments (macOS:
+# `-undefined dynamic_lookup`) for builds that do not go through maturin,
+# i.e. `cargo build/clippy/test --workspace`.
+# Same release as pyo3.
+pyo3-build-config = "=0.29.3"

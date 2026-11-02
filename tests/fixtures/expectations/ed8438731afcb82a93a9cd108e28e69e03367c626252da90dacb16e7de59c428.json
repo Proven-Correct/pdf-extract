@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "ed8438731afcb82a93a9cd108e28e69e03367c626252da90dacb16e7de59c428",
+  "size": 743,
+  "source": "corpus-c/kp03_right_left.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Right\nLeft\n",
+      "sha256": "efee6546c8950ba561abefbfcff9a6845d33a5df3a1148ff68c424cd1d8358a6",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "a7f0a5263413cf0465d8bdbcd1d81a85d39bd494a344b6ed42835b198580480d",
+  "size": 859335,
+  "source": "corpus-d/clean_cropbox_blur.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "Itbecomes necessary for one people to dissolve the poltical bands which have connected\nthem with another, and to assume among the powers of the earth, theseparate\nand equal\nstation to which the Laws of Nature and of Nature's God entitle them, a decent respect to the\n‘opinionsofmankind requires that they should declare the causes which impel themto the\n‘separation. We hold these truths to be self-evident, that all men are created equal, that they\n‘are endowed by their Creator with certain unabenable Rights, hat among these are Life,\nLiberty and the pursuitofHappiness. Thatto secure these rights, Govermments are instituted\n‘among Men, deriving their just powers from theconsent\nof thegoverned, Thatwheneverany\nForm\nof Government becomes destructive of these ends, itis the Right ofthe People to ater\n(10 abolish it, and to institute new Government, laying its foundationon such principles and\n‘organizing its powers in such form, as to them shall seem most likely to effect their Safety\n‘and Happiness. Prudence, indeed, will dictate that Govemments long estabished shouldnot\nbbe changed for light and transient causes; and accordingly all experience hath shewn, that\n‘mankind are more disposed to sutfer, while evils are sutferabe, than to right themselves by\nabolishing the forms to which they are accustomed. But when a long train of abuses and\n‘usurpations, pursuing invariably the same Object evinces a design to reduce them under\nabsolute Despotism, itis their right, itis their duty, to throwoff such Government,\nand 10\nprovide new Guards for their future security. Such has been the patient sutferance of these\nColonies; and such is now the necessity which constrains them to alter their former Systems\n(of Government. The history of the present King of Great Britain is a history of repeated\nInjuries and usurpations, all having n direct object the establishment of an absolute Tyranny\n‘over these States. To prove this, lot Facts be submitted toa candid world, He has refused\nhis Assent to Laws, the most wholesome and necessary for the public good. He has\n{forbidden his Governors to pass Laws of immediate and pressing importance, unless\n‘suspended in their operation til his Assent should be obtained; and when so suspended, he\nthas utterly neglected to attend to them. He has refused to pass other Laws for the\naccommodation of large districts of people, unless those people would relinquish the right of\nRepresentation in the Legisiature, aright inestimable to them and formidable to tyrants only,\nHe has called together legislative bodies at places unusual, uncomfortable, and distant from\nthe depository of their public Records, for the sole purpose of fatiguing them into compliance\nwith his measures. He has dissolved Representative Houses repeatedly, for opposing with\n‘manly firmness\nhis invasions on the rights of the people. He has refused for a long time,\n‘after such dissolutions, to cause others to be elected; whereby the Legislative powers,\nincapable of Annihilation, have retumed to the People at large for their exercise; the State\n‘remaining in the mean time exposed to all the dangers of invasion from without, and\nconvulsions within. He has endeavoured to prevent the population of these States; for that\npurpose obstructing the Laws for Naturalization of Foreigners: refusingto pass othersto\n‘encourage their migrations hither, and raising the conditions of new Appropriations of Lands.\n",
+        "sha256": "58dbbef9cacf2880e59a635f162fc8cee8c18814332d63049658f122f6813d3f"
+      }
+    ]
+  }
+}

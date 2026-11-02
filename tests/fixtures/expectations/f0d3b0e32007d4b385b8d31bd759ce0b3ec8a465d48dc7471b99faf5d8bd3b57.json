@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "f0d3b0e32007d4b385b8d31bd759ce0b3ec8a465d48dc7471b99faf5d8bd3b57",
+  "size": 49917,
+  "source": "corpus-b/pdfbox/PDFA3A.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "The quick brown fox jumps over the lazy dog. \n",
+      "sha256": "b1ce86fe097182ffcc9eea9f4b1ab784ed45e7704d6bff401a7c83956df02d47",
+      "error": null
+    }
+  ]
+}

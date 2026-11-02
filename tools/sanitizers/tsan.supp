@@ -1,0 +1,7 @@
+# ThreadSanitizer suppressions for tools/sanitizers/run.sh tsan. Format: one
+# `<kind>:<pattern>` per entry (race, race_top, thread, mutex, signal,
+# deadlock, called_from_lib), each directly preceded by a comment block
+# containing `# why: <reason>` that names the code covered and why the report
+# is a false positive (typically an uninstrumented system library) or out of
+# our control. Never this workspace's own crates or the C++ shim: those
+# reports are bugs. tools/sanitizers/check-suppressions.sh enforces all this.

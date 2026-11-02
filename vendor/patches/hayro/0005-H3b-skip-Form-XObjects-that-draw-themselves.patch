@@ -1,0 +1,154 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Thu, 1 Oct 2026 15:23:47 -0400
+Subject: [PATCH 05/22] H3b: skip Form XObjects that draw themselves
+
+A form that draws itself, directly or through other forms, recursed
+until the 50-level nesting cap, so its content was drawn 50 times.
+`Context` now keeps a stack of the forms being drawn; `draw_form_xobject`
+skips a form whose object identifier is already on it and counts the
+skip in the new `InterpretStats::form_cycle_hits`. Forms drawn several
+times side by side are unaffected.
+---
+ hayro-interpret/src/context.rs       | 19 +++++++++++++++++++
+ hayro-interpret/src/interpret/mod.rs | 11 +++++++++++
+ hayro-interpret/src/x_object.rs      | 18 ++++++++++++++++++
+ 3 files changed, 48 insertions(+)
+
+diff --git a/hayro-interpret/src/context.rs b/hayro-interpret/src/context.rs
+index 749f25e..e3e8503 100644
+--- a/hayro-interpret/src/context.rs
++++ b/hayro-interpret/src/context.rs
+@@ -9,6 +9,7 @@ use crate::{ClipPath, Device, FillRule, InterpretStats, InterpreterSettings, Str
+ use hayro_syntax::content::ops::Transform;
+ use hayro_syntax::object::Dict;
+ use hayro_syntax::object::Name;
++use hayro_syntax::object::ObjectIdentifier;
+ use hayro_syntax::page::Resources;
+ use hayro_syntax::xref::XRef;
+ use kurbo::{Affine, BezPath, PathEl, Point, Rect, Shape};
+@@ -59,6 +60,10 @@ pub struct Context<'a> {
+     pub(crate) xref: &'a XRef,
+     pub(crate) ocg_state: OcgState,
+     nesting_depth: u32,
++    // The Form XObjects currently being drawn, innermost last. Forms are always indirect
++    // objects, so the identifier tells a form that draws itself (directly or through other
++    // forms) from one that is merely drawn several times.
++    form_stack: Vec<ObjectIdentifier>,
+ }
+ 
+ impl<'a> Context<'a> {
+@@ -104,6 +109,7 @@ impl<'a> Context<'a> {
+             interpreter_cache: cache.clone(),
+             ocg_state,
+             nesting_depth,
++            form_stack: Vec::new(),
+         }
+     }
+ 
+@@ -323,6 +329,19 @@ impl<'a> Context<'a> {
+         true
+     }
+ 
++    /// Whether the form `id` is currently being drawn.
++    pub(crate) fn is_drawing_form(&self, id: ObjectIdentifier) -> bool {
++        self.form_stack.contains(&id)
++    }
++
++    pub(crate) fn push_form(&mut self, id: ObjectIdentifier) {
++        self.form_stack.push(id);
++    }
++
++    pub(crate) fn pop_form(&mut self) {
++        self.form_stack.pop();
++    }
++
+     pub(crate) fn end_nested_interpretation(&mut self) {
+         self.nesting_depth = self.nesting_depth.saturating_sub(1);
+     }
+diff --git a/hayro-interpret/src/interpret/mod.rs b/hayro-interpret/src/interpret/mod.rs
+index 6d1cca3..fff4135 100644
+--- a/hayro-interpret/src/interpret/mod.rs
++++ b/hayro-interpret/src/interpret/mod.rs
+@@ -197,6 +197,9 @@ pub struct InterpretStats {
+     /// How often nested content (a Form XObject, Type3 glyph, tiling pattern or soft mask)
+     /// was skipped because it exceeded the maximum nesting depth.
+     pub nesting_cap_hits: u32,
++    /// How often a Form XObject was skipped because it was already being drawn, i.e. it
++    /// (directly or indirectly) draws itself.
++    pub form_cycle_hits: u32,
+ }
+ 
+ // Atomics rather than `Cell`s so that `InterpreterSettings` stays `Send + Sync`. A budget is
+@@ -207,6 +210,7 @@ struct BudgetState {
+     // 0 while the budget is available, otherwise one of the `EXHAUSTED_*` codes below.
+     exhausted: AtomicU8,
+     nesting_cap_hits: AtomicU32,
++    form_cycle_hits: AtomicU32,
+ }
+ 
+ const EXHAUSTED_OPS: u8 = 1;
+@@ -232,6 +236,7 @@ impl InterpretBudget {
+             ops: self.state.ops.load(Ordering::Relaxed),
+             exhausted: self.exhaustion(),
+             nesting_cap_hits: self.state.nesting_cap_hits.load(Ordering::Relaxed),
++            form_cycle_hits: self.state.form_cycle_hits.load(Ordering::Relaxed),
+         }
+     }
+ 
+@@ -286,6 +291,12 @@ impl InterpretBudget {
+         self.state.nesting_cap_hits.fetch_add(1, Ordering::Relaxed);
+     }
+ 
++    /// Record that a Form XObject was skipped because it is already being drawn.
++    pub(crate) fn note_form_cycle_hit(&self) {
++        warn!("skipping cyclic form xobject");
++        self.state.form_cycle_hits.fetch_add(1, Ordering::Relaxed);
++    }
++
+     /// Check whether nested content at `nesting_depth` (the depth of the context it would be
+     /// interpreted in) may run, and count a hit if not.
+     ///
+diff --git a/hayro-interpret/src/x_object.rs b/hayro-interpret/src/x_object.rs
+index 6521379..78a131a 100644
+--- a/hayro-interpret/src/x_object.rs
++++ b/hayro-interpret/src/x_object.rs
+@@ -112,6 +112,16 @@ pub(crate) fn draw_form_xobject<'a, 'b>(
+         return;
+     }
+ 
++    // A form that draws itself (directly or through other forms) would otherwise recurse
++    // until the nesting cap, repeating its content 50 times; skip it instead, as other PDF
++    // readers do. A form that is not an indirect object (only possible in a malformed file)
++    // cannot be tracked; the nesting cap still bounds it.
++    let form_id = x_object.dict.obj_id();
++    if form_id.is_some_and(|id| context.is_drawing_form(id)) {
++        context.settings.budget.note_form_cycle_hit();
++        return;
++    }
++
+     if !context.begin_nested_interpretation() {
+         return;
+     }
+@@ -158,6 +168,10 @@ pub(crate) fn draw_form_xobject<'a, 'b>(
+         fill: FillRule::NonZero,
+     });
+ 
++    if let Some(id) = form_id {
++        context.push_form(id);
++    }
++
+     interpret(
+         iter,
+         &Resources::from_parent(x_object.resources.clone(), resources.clone()),
+@@ -165,6 +179,10 @@ pub(crate) fn draw_form_xobject<'a, 'b>(
+         device,
+     );
+ 
++    if form_id.is_some() {
++        context.pop_form();
++    }
++
+     device.pop_clip_path();
+ 
+     if x_object.is_transparency_group {

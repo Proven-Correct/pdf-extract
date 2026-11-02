@@ -1,0 +1,296 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Thu, 1 Oct 2026 21:15:17 -0400
+Subject: [PATCH 10/22] H9: make lazy xref repair thread-safe; add
+ Pdf::is_encrypted
+
+The first lookup that finds no object where the xref table says one is
+rebuilds the table by scanning the whole file. That path was not safe
+to reach from several threads at once: `XRef::get_with` took the map
+lock with `try_read().unwrap()`, `repair()` with `try_write().unwrap()`
+followed by `assert!(!repaired)`, and the scan ran while the write lock
+was held. Two threads looking up objects of one document while either
+of them triggered a repair could therefore panic, and every other lookup
+was locked out for the duration of the scan.
+
+Now `get_with` takes a blocking read lock. `repair()` scans the file
+bytes, which are immutable, without holding any lock, then takes a
+blocking write lock, re-checks `repaired` and returns if another thread
+got there first; otherwise it swaps the new map in, sets the flag and
+frees the old map after releasing the lock. Concurrent repairs are
+idempotent, the map is replaced at most once, and other lookups block
+only for the swap.
+
+`get_with` also reads the `repaired` flag under the same lock as the
+entry it looks up, instead of calling `is_repaired()` after the read
+failed. Otherwise a thread holding a stale entry from the old map, whose
+read failed just after another thread swapped the repaired map in, saw
+`repaired == true`, concluded that the repaired table was wrong too and
+returned `None` for an object that exists. Lock poisoning is ignored: the writer only moves two
+fields, so the data cannot be left half-updated.
+
+`xref::repair_hooks` (hidden, per thread) counts repair scans and swaps
+and can run a callback between the scan and the swap, so tests can
+force several threads into the repair at once.
+
+Also add `Pdf::is_encrypted()`, which reports whether the document was
+opened with a decryptor installed. Callers previously had to infer it,
+for example by opening a second time with a wrong password.
+---
+ hayro-syntax/src/pdf.rs  |   9 +++
+ hayro-syntax/src/sync.rs |  27 ++++-----
+ hayro-syntax/src/xref.rs | 127 ++++++++++++++++++++++++++++++++++++---
+ 3 files changed, 139 insertions(+), 24 deletions(-)
+
+diff --git a/hayro-syntax/src/pdf.rs b/hayro-syntax/src/pdf.rs
+index fc40229..d4107e3 100644
+--- a/hayro-syntax/src/pdf.rs
++++ b/hayro-syntax/src/pdf.rs
+@@ -151,6 +151,15 @@ impl Pdf {
+         self.xref.is_repaired()
+     }
+ 
++    /// Return whether the document is encrypted.
++    ///
++    /// An encrypted document that opened (with an empty password when only
++    /// an owner password is set, or with the right password) returns `true`;
++    /// its objects are decrypted transparently when read.
++    pub fn is_encrypted(&self) -> bool {
++        self.xref.is_encrypted()
++    }
++
+     /// Return the xref of the PDF file.
+     pub fn xref(&self) -> &XRef {
+         &self.xref
+diff --git a/hayro-syntax/src/sync.rs b/hayro-syntax/src/sync.rs
+index dd4d93c..17caef5 100644
+--- a/hayro-syntax/src/sync.rs
++++ b/hayro-syntax/src/sync.rs
+@@ -72,23 +72,24 @@ impl<T> MutexExt<T> for Mutex<T> {
+ }
+ 
+ pub(crate) trait RwLockExt<T> {
++    /// Block until shared access is available.
+     fn get(&self) -> RwLockReadGuard<'_, T>;
+-    fn try_get(&self) -> Option<RwLockReadGuard<'_, T>>;
+-    fn try_put(&self) -> Option<RwLockWriteGuard<'_, T>>;
++    /// Block until exclusive access is available.
++    fn put(&self) -> RwLockWriteGuard<'_, T>;
+ }
+ 
++// Poisoning is ignored: the only writer (the xref repair) does nothing but
++// move two fields while it holds the lock, so a panic elsewhere cannot leave
++// the protected data half-updated, and refusing to read it would turn one
++// panic into a panic on every later lookup.
+ #[cfg(feature = "std")]
+ impl<T> RwLockExt<T> for RwLock<T> {
+     fn get(&self) -> RwLockReadGuard<'_, T> {
+-        self.read().unwrap()
++        self.read().unwrap_or_else(std::sync::PoisonError::into_inner)
+     }
+ 
+-    fn try_get(&self) -> Option<RwLockReadGuard<'_, T>> {
+-        self.try_read().ok()
+-    }
+-
+-    fn try_put(&self) -> Option<RwLockWriteGuard<'_, T>> {
+-        self.try_write().ok()
++    fn put(&self) -> RwLockWriteGuard<'_, T> {
++        self.write().unwrap_or_else(std::sync::PoisonError::into_inner)
+     }
+ }
+ 
+@@ -98,11 +99,7 @@ impl<T> RwLockExt<T> for RwLock<T> {
+         self.borrow()
+     }
+ 
+-    fn try_get(&self) -> Option<RwLockReadGuard<'_, T>> {
+-        Some(self.borrow())
+-    }
+-
+-    fn try_put(&self) -> Option<RwLockWriteGuard<'_, T>> {
+-        Some(self.borrow_mut())
++    fn put(&self) -> RwLockWriteGuard<'_, T> {
++        self.borrow_mut()
+     }
+ }
+diff --git a/hayro-syntax/src/xref.rs b/hayro-syntax/src/xref.rs
+index 6178b7a..fb212b9 100644
+--- a/hayro-syntax/src/xref.rs
++++ b/hayro-syntax/src/xref.rs
+@@ -506,17 +506,43 @@ impl XRef {
+         }
+     }
+ 
++    /// Rebuild the xref map by scanning the whole file, unless that has
++    /// already happened.
++    ///
++    /// Any lookup can end up here, so several threads may call this at once.
++    /// The scan reads only the immutable file bytes and runs without holding
++    /// the map lock, so lookups by other threads are not blocked for its
++    /// duration; the lock is taken only to swap the new map in. A thread that
++    /// finds the map already repaired by the time it gets the lock discards
++    /// its own (identical) result, so the map is replaced at most once.
+     pub(crate) fn repair(&self) {
+         let Inner::Some(r) = &self.0 else {
+-            unreachable!();
++            return;
+         };
+ 
+-        let mut locked = r.map.try_put().unwrap();
+-        assert!(!locked.repaired);
+-
+         let (xref_map, _) = fallback_xref_map(r.data.get(), &r.password, &r.decode_budget);
+-        locked.xref_map = xref_map;
+-        locked.repaired = true;
++        repair_hooks::scanned();
++
++        let old = {
++            let mut locked = r.map.put();
++            if locked.repaired {
++                return;
++            }
++            locked.repaired = true;
++            core::mem::replace(&mut locked.xref_map, xref_map)
++        };
++        repair_hooks::swapped();
++        // The old map is freed after the lock is released.
++        drop(old);
++    }
++
++    /// Whether the document is encrypted, i.e. whether objects are decrypted
++    /// when they are read.
++    pub(crate) fn is_encrypted(&self) -> bool {
++        match &self.0 {
++            Inner::Dummy => false,
++            Inner::Some(r) => !matches!(*r.decryptor, Decryptor::None),
++        }
+     }
+ 
+     #[inline]
+@@ -570,7 +596,7 @@ impl XRef {
+             return None;
+         };
+ 
+-        let locked = repr.map.try_get().unwrap();
++        let locked = repr.map.get();
+ 
+         let mut r = Reader::new(repr.data.get().as_ref());
+ 
+@@ -579,6 +605,10 @@ impl XRef {
+             // shall be treated as a reference to the null object.
+             None
+         })?;
++        // Whether `entry` comes from the repaired map. Read under the same
++        // lock as the entry: another thread may repair the map as soon as the
++        // lock is released, and a stale entry must still lead to a retry.
++        let entry_repaired = locked.repaired;
+         drop(locked);
+ 
+         let mut ctx = ctx.clone();
+@@ -603,7 +633,7 @@ impl XRef {
+                 };
+ 
+                 // The xref table is broken, try to repair if not already repaired.
+-                if self.is_repaired() {
++                if entry_repaired {
+                     error!(
+                         "attempt was made at repairing xref, but object {id:?} still couldn't be read"
+                     );
+@@ -612,9 +642,11 @@ impl XRef {
+                 } else {
+                     warn!("broken xref, attempting to repair");
+ 
++                    // A no-op if another thread has repaired the map since
++                    // `entry` was read.
+                     self.repair();
+ 
+-                    // Now try reading again.
++                    // Now try reading again, from the repaired map.
+                     self.get_with::<T>(id, &ctx)
+                 }
+             }
+@@ -637,6 +669,83 @@ impl XRef {
+     }
+ }
+ 
++/// Instrumentation of lazy xref repair, for testing concurrent use of a
++/// document. Not part of the stable API.
++///
++/// Everything here is per thread: the counters count the repairs run on the
++/// calling thread, and a hook only runs on the thread that installed it, so
++/// tests running in parallel do not see each other. Without the `std`
++/// feature nothing is counted and hooks never run.
++#[doc(hidden)]
++pub mod repair_hooks {
++    use alloc::boxed::Box;
++
++    #[cfg(feature = "std")]
++    std::thread_local! {
++        static SCANS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
++        static SWAPS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
++        static AFTER_SCAN: core::cell::RefCell<Option<Box<dyn Fn()>>> =
++            const { core::cell::RefCell::new(None) };
++    }
++
++    /// Return how many times a repair scanned the file on this thread.
++    pub fn scans() -> u64 {
++        #[cfg(feature = "std")]
++        {
++            SCANS.with(core::cell::Cell::get)
++        }
++
++        #[cfg(not(feature = "std"))]
++        {
++            0
++        }
++    }
++
++    /// Return how many of this thread's repair scans replaced the xref map
++    /// (the others found it already repaired by another thread).
++    pub fn swaps() -> u64 {
++        #[cfg(feature = "std")]
++        {
++            SWAPS.with(core::cell::Cell::get)
++        }
++
++        #[cfg(not(feature = "std"))]
++        {
++            0
++        }
++    }
++
++    /// Install `hook` (or remove it, with `None`) to run on this thread
++    /// after each repair scan and before the repaired map is swapped in.
++    ///
++    /// A test can block in the hook to hold several threads between the scan
++    /// and the swap. The hook must not call this function.
++    pub fn set_after_scan(hook: Option<Box<dyn Fn()>>) {
++        #[cfg(feature = "std")]
++        AFTER_SCAN.with(|h| *h.borrow_mut() = hook);
++
++        #[cfg(not(feature = "std"))]
++        drop(hook);
++    }
++
++    pub(super) fn scanned() {
++        #[cfg(feature = "std")]
++        {
++            SCANS.with(|c| c.set(c.get() + 1));
++            AFTER_SCAN.with(|h| {
++                if let Some(hook) = &*h.borrow() {
++                    hook();
++                }
++            });
++        }
++    }
++
++    pub(super) fn swapped() {
++        #[cfg(feature = "std")]
++        SWAPS.with(|c| c.set(c.get() + 1));
++    }
++}
++
+ /// An input that is passed to the xref constructor so that we can fully resolve
+ /// the PDF.
+ #[derive(Debug, Copy, Clone)]

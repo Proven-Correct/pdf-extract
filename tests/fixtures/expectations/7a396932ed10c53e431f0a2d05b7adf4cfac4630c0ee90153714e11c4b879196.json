@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "7a396932ed10c53e431f0a2d05b7adf4cfac4630c0ee90153714e11c4b879196",
+  "size": 130025,
+  "source": "corpus-d/lowres_citations_150.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "Carterv. Dawson, 9728. Ct. 184, 223 (2022)\n‘Andersonv. Holloway, 580F.Supp. 2d 469, 491 (2d Cir. 2010).\nFletcherv.Anderson, 438 F.2d 645, 664 (O. Mass. 2021),\nIngramv. Garrison, 208F.Supp. 2d 633, 641 (9th Cir 1979),\nJefferson v, Baker, 295 F.2d 443, 468 (24 Cir. 2024),\nElisonv. Kendall, 910F. Supp. 2d 18, 82 (7th Cir. 2020).\nBakerv.Anderson, 837S. Ct. 1071, 1074 (2009).\n‘Andersonv. Elison, 315 F.4th\n548, 579 (Sth Ci.2004)\nLombardv.Dawson, 126F. Supp. 2d 1003, 1009 (2d Cir. 1980).\nDawsonv. Baker,\n610 F.2d 396, 429 (N.D. Cal. 1983).\nHollowayv. Lombard, 133S. Ct. 1077, 1078 (2007).\nHollowayv.Kendall, 592 F.3d 1064, 1104 (D. Mass. 2019).\nIngramv. Dawson, 942 Fath 716, 725 (5th Cir. 1976).\nKendallv. Lombard, 365F.Supp. 2d 217, 243 (Sth\nCir. 1988).\nCarterv.Holloway,\n837 F.Supp. 2d 983, 999 (7th Cir. 2010),\nFletcherv Anderson, 674 F 4th 1146, 1189 (Sth Cir. 2012).\nJettersonv,Jefferson,\n513 8, Ct. §11, 642 (1994)\n\\Jottorsonv, Anderson, 664 U.S.781,\n807 (1980).\nJetfersonv.Garrison,\n965 F.Supp. 2d 928,\n944\n(N.D. Cal. 1989),\nCarterv,Anderson, 732S. Ct. 983, 989 (2008).\n‘Anderson v. Baker, 524 S. Ct. 1148, 1167 (2008).\nIngramv. Anderson, $50 F.4th 1034, 1048 (24 Cir. 1975).\nCarter v. Dawson, $52 F.4th 199, 218 (2d Cir. 1986).\nElisonv. Kendall,\n333 F.3d 205, 235 (9th Cir. 1978).\nGarrisonv,Garrison, 401 F, Supp. 2d 1007, 1019 (7th Cir. 1985).\nJetfersonv. Kendall, 967 F. Supp. 2d 344, 384 (7th Cir. 2003).\nFletcherv. Lombard,\n294 S. Ct. 82, 108 (2013).\nIngramv. Anderson, 506 F.2d 262, 264 (D. Mass. 1985).\nCarterv.Garrison, 686 F.2d 151, 174 (7th Ci. 2003).\nBakerv. Jetterson, 532 Fath 805, 829 (2d Cir 2024).\n",
+        "sha256": "c35ac2f17b6f2ccdeab3d803f04de689929e81768f780990e1bce118d027c651"
+      }
+    ]
+  }
+}

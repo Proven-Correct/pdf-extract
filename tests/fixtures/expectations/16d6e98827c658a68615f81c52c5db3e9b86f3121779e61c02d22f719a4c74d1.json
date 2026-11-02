@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "16d6e98827c658a68615f81c52c5db3e9b86f3121779e61c02d22f719a4c74d1",
+  "size": 1036,
+  "source": "corpus-c/kp07_mediabox_edges.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "y840\ny845\nx\nxneg5\ny2\n",
+      "sha256": "9795245078c8381b223e11f0bde546a6204e4d115d84ba4edf22d29d66a2e5e4",
+      "error": null
+    }
+  ]
+}

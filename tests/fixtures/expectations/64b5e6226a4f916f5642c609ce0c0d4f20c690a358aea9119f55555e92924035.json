@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "64b5e6226a4f916f5642c609ce0c0d4f20c690a358aea9119f55555e92924035",
+  "size": 711,
+  "source": "corpus-c/kp09_ligature.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "fine\n",
+      "sha256": "8ecc5f94c57b05d6c5e0ee316bee4875427e1845bbeef3ead59df29c72aab36e",
+      "error": null
+    }
+  ]
+}

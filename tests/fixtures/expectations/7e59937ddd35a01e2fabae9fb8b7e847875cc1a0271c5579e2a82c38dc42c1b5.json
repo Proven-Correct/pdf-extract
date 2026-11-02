@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "7e59937ddd35a01e2fabae9fb8b7e847875cc1a0271c5579e2a82c38dc42c1b5",
+  "size": 784,
+  "source": "corpus-c/kp15_macroman.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "a b\n",
+      "sha256": "01186fcf04b4b447f393e552964c08c7b419c1ad7a25c342a0b631b1967d3a27",
+      "error": null
+    }
+  ]
+}

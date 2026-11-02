@@ -1,0 +1,67 @@
+# pdf-extract-render: rasterises one page into an 8-bit gray image for OCR
+# (spec 0002 §1.1, §3.3). hayro's renderer draws the page through the same
+# patched interpreter, budget and decode limits as the text path; this crate
+# adds the resolution clamp, the gray conversion and the page's warnings.
+# No unsafe code of its own.
+[package]
+name = "pdf-extract-render"
+description = "Page rasterisation to grayscale for pdf-extract OCR"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# The rasteriser, from crates.io and not vendored (spec D-1): it needs no
+# patch, and its hayro-interpret dependency resolves to the vendored fork
+# through the workspace's [patch.crates-io]. Exact pin, like the fork crates,
+# because it must compile against the patched hayro-interpret 0.7.0.
+hayro = "=0.7.1"
+# The fork itself: the budget, settings and warning types, and the
+# thread-local signal counters sampled around each render. Same pins as core.
+hayro-syntax = "=0.7.2"
+hayro-interpret = "=0.7.0"
+# `Page::with_hayro_page` and the shared vocabulary (Limits, Warning).
+pdf-extract-core = { path = "../core", features = ["render-support"] }
+# Derive for `RenderError`, as in the other workspace crates.
+thiserror = "2"
+
+[dev-dependencies]
+# The fork with its codec panic hook on (H18), for tests/codec_panic.rs and
+# tests/codec_panic_hook.rs. Feature unification turns it on for the library
+# the tests link as well.
+hayro-syntax = { version = "=0.7.2", features = ["codec-panic-hook"] }
+# Core's fuzzing limits for the regression replay (tests/fuzz_regressions.rs).
+pdf-extract-core = { path = "../core", features = ["render-support", "fuzzing"] }
+# The stack-size measurement in tests/common/stack.rs (shared with core's
+# tests). Already in the graph through core's dev-dependencies.
+libc = "0.2"
+# Builder pages and hostile fixtures.
+pdf-extract-testkit = { path = "../testkit" }
+# Golden hashes of rendered pages (tests/golden.rs). Already in the graph.
+sha2 = "0.10"
+# Writes and reads the golden PNG artefacts compared across CI hosts.
+# Already in the graph (hayro's image crate).
+png = "0.18"
+# Fixture manifest (the committed hostile set). Already in the graph.
+toml = "0.9"
+serde = { version = "1", features = ["derive"] }
+# Compresses the declared-huge image of tests/images.rs. Already in the
+# graph through hayro-syntax.
+flate2 = "1"
+# Report-only render benchmark, as core's P1 bench.
+criterion = { version = "0.8.2", default-features = false }
+
+[[bench]]
+name = "render"
+harness = false
+
+# The silence test re-runs itself as a child whose fds 1 and 2 are captured,
+# so the child must print nothing, not even libtest's banner: its own `main`.
+[[test]]
+name = "silence"
+harness = false

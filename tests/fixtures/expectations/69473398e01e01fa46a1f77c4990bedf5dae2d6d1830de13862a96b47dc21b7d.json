@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "69473398e01e01fa46a1f77c4990bedf5dae2d6d1830de13862a96b47dc21b7d",
+  "size": 1632,
+  "source": "corpus-c/kp15_type3_nbspace.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "a b­a b\n",
+      "sha256": "095ccd72bcbee81e2c1db06da202b48001efdadbef46ce85f32700e1722d47e6",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "4552420ef40ed7dd64b0763e68ad248a2f794fec0be1190e9b4537f893d801ee",
+  "size": 839,
+  "source": "corpus-c/kp06_type1_differences.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "A☃\n",
+      "sha256": "1330e6bdd41ac9c353d2944c61a55259c314a566bb86586ca5d1b617e22e34e3",
+      "error": null
+    }
+  ]
+}

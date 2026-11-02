@@ -1,0 +1,184 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Sat, 3 Oct 2026 00:10:14 -0700
+Subject: [PATCH 21/22] H12: named properties through shared and inherited
+ resources
+
+A form whose /Resources is the page's resources object, or that has no
+/Resources, or a direct one without /Properties, drew text marked with an
+OFF optional-content group named only in the page's /Properties.
+
+Two causes. hayro-syntax's cycle guard refuses any object already on the
+lookup's parent chain, so a form reached through object 5 could not
+resolve /Resources 5 0 R and got empty resources; fonts and nested forms
+hid this because their getters walk the inherited chain. And the BDC
+handler read only the innermost /Properties.
+
+Resources::resolve_dict looks a referenced /Resources up afresh; forms,
+Type 3 fonts and glyph procedures, and tiling patterns use it. The guard
+itself is unchanged. Resources::get_property and get_property_ref walk
+the parent chain like the other getters, and the BDC handler walks it
+level by level through the per-dictionary property cache.
+
+Corpus C gains the three leaking shapes and four controls, all exact.
+---
+ hayro-interpret/src/font/type3.rs    |  8 +++---
+ hayro-interpret/src/interpret/mod.rs | 21 ++++++++++-----
+ hayro-interpret/src/pattern.rs       |  5 ++--
+ hayro-interpret/src/x_object.rs      |  3 ++-
+ hayro-syntax/src/page.rs             | 40 ++++++++++++++++++++++++++++
+ 5 files changed, 65 insertions(+), 12 deletions(-)
+
+diff --git a/hayro-interpret/src/font/type3.rs b/hayro-interpret/src/font/type3.rs
+index 5d1d557..c21fd50 100644
+--- a/hayro-interpret/src/font/type3.rs
++++ b/hayro-interpret/src/font/type3.rs
+@@ -194,14 +194,16 @@ impl<'a> Type3<'a> {
+             glyph.nesting_depth,
+         );
+ 
++        // `/Resources` are looked up afresh: the font (or its glyph procedure) may name an
++        // object it was reached through, such as the page's resources (H12).
+         let mut resources = Resources::from_parent(
+-            self.dict.get(RESOURCES).unwrap_or_default(),
++            Resources::resolve_dict(&self.dict),
+             glyph.parent_resources.clone(),
+         );
+ 
+         // Technically not valid, but also support by Adobe Acrobat. See PDFBOX-5294.
+-        if let Some(procs_resources) = program.dict().get::<Dict<'_>>(RESOURCES) {
+-            resources = Resources::from_parent(procs_resources, resources);
++        if program.dict().contains_key(RESOURCES) {
++            resources = Resources::from_parent(Resources::resolve_dict(program.dict()), resources);
+         }
+ 
+         if is_shape_glyph {
+diff --git a/hayro-interpret/src/interpret/mod.rs b/hayro-interpret/src/interpret/mod.rs
+index 734c951..289fac8 100644
+--- a/hayro-interpret/src/interpret/mod.rs
++++ b/hayro-interpret/src/interpret/mod.rs
+@@ -718,13 +718,22 @@ pub fn interpret<'a>(
+ 
+                 let mcid = dict_or_stream(bdc.1).and_then(|(props, _)| props.get::<i32>(MCID));
+ 
+-                // A name refers to an entry of the resources' `/Properties` dictionary,
+-                // resolved through the context's cache; anything else is used inline.
++                // A name refers to an entry of a `/Properties` dictionary, found by walking
++                // the resources chain outward like `Resources::get_property` (a form
++                // inherits the page's entries); each level's entry is resolved through the
++                // context's cache, which is keyed on the dictionary that held it. The
++                // reference is taken from the level the dictionary came from, so an
++                // optional-content group is identified by the same entry it was read from.
++                // Anything else is used inline.
+                 let named = bdc.1.clone().into_name().map(|name| {
+-                    (
+-                        context.named_property(&resources.properties, &name),
+-                        resources.properties.get_ref(name.as_ref()),
+-                    )
++                    let mut level = Some(resources);
++                    while let Some(l) = level {
++                        if let Some(dict) = context.named_property(&l.properties, &name) {
++                            return (Some(dict), l.properties.get_ref(name.as_ref()));
++                        }
++                        level = l.parent();
++                    }
++                    (None, resources.get_property_ref(&name))
+                 });
+ 
+                 let oc = match &named {
+diff --git a/hayro-interpret/src/pattern.rs b/hayro-interpret/src/pattern.rs
+index 0c2a597..840bd3e 100644
+--- a/hayro-interpret/src/pattern.rs
++++ b/hayro-interpret/src/pattern.rs
+@@ -15,7 +15,7 @@ use hayro_syntax::content::TypedIter;
+ use hayro_syntax::object::Dict;
+ use hayro_syntax::object::Stream;
+ use hayro_syntax::object::dict::keys::{
+-    BBOX, EXT_G_STATE, MATRIX, PAINT_TYPE, RESOURCES, SHADING, X_STEP, Y_STEP,
++    BBOX, EXT_G_STATE, MATRIX, PAINT_TYPE, SHADING, X_STEP, Y_STEP,
+ };
+ use hayro_syntax::object::{Object, dict_or_stream};
+ use hayro_syntax::page::Resources;
+@@ -250,8 +250,9 @@ impl<'a> TilingPattern<'a> {
+         );
+ 
+         let decoded = self.stream.decoded().ok()?;
++        // Looked up afresh: the pattern may name an object it was reached through (H12).
+         let resources = Resources::from_parent(
+-            self.stream.dict().get(RESOURCES).unwrap_or_default(),
++            Resources::resolve_dict(self.stream.dict()),
+             self.parent_resources.clone(),
+         );
+         let iter = TypedIter::new(decoded.as_ref());
+diff --git a/hayro-interpret/src/x_object.rs b/hayro-interpret/src/x_object.rs
+index a72c26c..afa8320 100644
+--- a/hayro-interpret/src/x_object.rs
++++ b/hayro-interpret/src/x_object.rs
+@@ -66,7 +66,8 @@ impl<'a> FormXObject<'a> {
+         let dict = stream.dict();
+ 
+         let decoded = stream.decoded().ok()?;
+-        let resources = dict.get::<Dict<'_>>(RESOURCES).unwrap_or_default();
++        // A fresh lookup: the form may name an object it was reached through (H12).
++        let resources = Resources::resolve_dict(dict);
+ 
+         let matrix = Affine::new(
+             dict.get::<[f64; 6]>(MATRIX)
+diff --git a/hayro-syntax/src/page.rs b/hayro-syntax/src/page.rs
+index b5d6ad1..19606aa 100644
+--- a/hayro-syntax/src/page.rs
++++ b/hayro-syntax/src/page.rs
+@@ -4,6 +4,7 @@ use crate::content::{TypedIter, UntypedIter};
+ use crate::object::Array;
+ use crate::object::Dict;
+ use crate::object::Name;
++use crate::object::ObjRef;
+ use crate::object::Rect;
+ use crate::object::Stream;
+ use crate::object::dict::keys::*;
+@@ -538,6 +539,45 @@ impl<'a> Resources<'a> {
+         self.get_resource::<Object<'_>>(name, &self.shadings)
+             .or_else(|| self.parent.as_ref().and_then(|p| p.get_shading(name)))
+     }
++
++    /// Get a named property list (the operand of `/Tag /Name BDC`) by name.
++    ///
++    /// Like the other getters, the innermost level whose `/Properties` entry
++    /// resolves wins; a form without its own entry inherits the page's
++    /// (PDF 32000-1 §8.10.2), which is what a hidden optional-content group
++    /// named only in the page's resources relies on.
++    pub fn get_property(&self, name: &Name<'_>) -> Option<Dict<'a>> {
++        self.get_resource::<Dict<'_>>(name, &self.properties)
++            .or_else(|| self.parent.as_ref().and_then(|p| p.get_property(name)))
++    }
++
++    /// The object reference of a named property list, walking the parent
++    /// chain like [`Resources::get_property`]: the innermost level whose
++    /// `/Properties` entry for `name` is a reference. Optional-content groups
++    /// are identified by reference, so a caller needs it next to the dictionary.
++    pub fn get_property_ref(&self, name: &Name<'_>) -> Option<ObjRef> {
++        self.properties
++            .get_ref(name.deref())
++            .or_else(|| self.parent.as_ref().and_then(|p| p.get_property_ref(name)))
++    }
++
++    /// The `/Resources` dictionary of a form, Type 3 font, glyph procedure or
++    /// pattern dictionary `owner`, or an empty one.
++    ///
++    /// A reference is resolved with a fresh lookup, not through `owner`'s own
++    /// parse context: that context remembers every object `owner` was reached
++    /// through, and hayro's cycle guard refuses all of them, so a form reached
++    /// through the page's resources object could not name that object as its
++    /// own `/Resources` (a back-reference to an ancestor, not a cycle). The
++    /// guard itself is unchanged; nothing here recurses, and the interpreter's
++    /// own form-cycle check and nesting cap bound what is drawn with the result.
++    pub fn resolve_dict(owner: &Dict<'a>) -> Dict<'a> {
++        match owner.get_ref(RESOURCES) {
++            Some(r) => owner.ctx().xref().get::<Dict<'a>>(r.into()),
++            None => owner.get::<Dict<'_>>(RESOURCES),
++        }
++        .unwrap_or_default()
++    }
+ }
+ 
+ // <https://github.com/apache/pdfbox/blob/a53a70db16ea3133994120bcf1e216b9e760c05b/pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDRectangle.java#L38>

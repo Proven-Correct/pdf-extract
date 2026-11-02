@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "f981803f0b79333dd30987d74c39a82d312f0f804e2dcbb58f57e5fa287b7b16",
+  "size": 752,
+  "source": "corpus-c/kp10_inherited.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Inherited\n",
+      "sha256": "5dde170f337fa8ec1aeb2a1c44bfe7cffcfef8b1414dadfd40e11856c32fe67b",
+      "error": null
+    }
+  ]
+}

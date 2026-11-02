@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "5e5baa663a45356a59c1c12666a1e387c827f5f3e77dc9f4dfd677a1a1f54bc4",
+  "size": 1038978,
+  "source": "corpus-d/clean_rotate90_skew.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "oropiatons of Lands. He has obstructed the Adminstration of Juste, by relia is ‘Assent to Laws for\ns made Judges dependent on his Wil alone forthe tenure of thor offices, ane ihearnt ‘and payment of\neudeof New Offices, and set hitherswarms ofOcers fo harass our people, andea outev sibutance\neace, Sanding Armes without the Consont of ou legislatures, He has tected to rende!\nMiltary\nhl power. Hehas combined with ators to subject usoa jrisicton foreign o vt cons NTand\n Hs Assent het Acts of pretended Legislation. When nthe Course of human evens, |bens\n the polical bands which have connected them with another, an wo assure among Te RoE of the\nn to which the Laws of Nature an of Nature's God entitle them. a decent respect ne SokeTe ‘of mankind\ne causes wich mpl them tothe sopraton. We hol these truths o besacar that all en are\nd by tei Creator with certain unakenable igh, that among these ae Lie, Liberty ane pursuit of\nhts, Governmons\nao insttued among Men, dering ther ust powers fom the eonsort of the governed,\nment becomes desrvtve of these ends, its the Fight ofthe People toate ort aboish ano Hela\non on such prciles and organizing ts powors in such frm, as to them shal seem mostHay ete\nce, indeed, wlitato that Governments log establishes should not be changed orghtanstransient\nnce hath shewn, that manking are more disposed to sutfor while evs are uferabie,a right\nto which they are accustomed. But when a ong rain of abuses ang usurpatons, Psene invariably the\nduce them under absolute Despotsm, itis ther ight itis therdy to wow of sit Government, and 10\nsecuriy. Such has been the patent suterance of hese Colonies ae suc 8D0 the necessity which\n Systoms of Gvernment. Th history ofthe present King of GreatBai is a history o repeat injuies\n obec the establishment of an absolte Tyranny over these States. To prove Wis et Facts be submited to\nAssento Laws, the most wholosome and necessary forthe public good, He has frbiden mis Governors12\ning importance, unless suspended in their operation til his Assent shoul bs ‘obtained; and when so\nd to attend to them. He has refused to pass other Laws fr the accomadation ofgh districtsof people,\nsh the right of Rapreseration inthe Legislature, aright inestimable to them and ormicae\ntyrants only.\nbodes al places unusual, uncomfortable, and distant rom te Gepostory of her pube Rlecords, forthe sole\n",
+        "sha256": "609ae3759405243b0d1c07d85e7b6401a1cd5fcf8775eb4898e1674ab2ae0850"
+      }
+    ]
+  }
+}

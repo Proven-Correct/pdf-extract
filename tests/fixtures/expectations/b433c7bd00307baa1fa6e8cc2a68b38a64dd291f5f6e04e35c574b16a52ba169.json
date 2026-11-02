@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "b433c7bd00307baa1fa6e8cc2a68b38a64dd291f5f6e04e35c574b16a52ba169",
+  "size": 743,
+  "source": "corpus-c/perp_7pt_12.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Base\nsup\n",
+      "sha256": "876513de2ba0c5ed3f9409526671702aea85ad2fddc07ce28f847d9289016833",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "a6760e3cfe507ad5a37bce9f7afe869fd7e34ed53a25bb67ba17df90a5492aae",
+  "size": 851977,
+  "source": "corpus-d/clean_two_column_blur.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "from the consent ofthe governed, That\n<istrcts\nof people, unless those people would\nwhenever any Form ofGovernment\nbecomes\nrelinquish\nthe right of Representation inthe\nestructve\noftheseends,\nitisthe Right ot\nLegislature,\naright inestimable\nto them and\nthe People to alter oro abolishit, and to\nformidable\nto tyrants only. He has called\ninstitute new Government, laying its\ntogether legislative bodies at places unusual,\nfoundation\non such principles and organizing\nuncomfortable, and stant from the\n‘ts powers\nin uchform,\nas to thom shall\n<opository\nofther public Records, or the\n‘seem most ikely to etect their Safety and _solepurpose\nof fatiguing them into\nHappiness. Prudence, indeed, wil Scale\ncompliance\nwith his measures. He has.\nthat\nGovernments long established should _—_dissolved Roprosentative Houses repeatedly,\n‘otbe changed for ight and transient\nfor opposing with manly firmness his\ncauses; andaccordingly\nallexperience hath invasions on te rights of the people. He has\nshown, that mankind are more disposed to\nrefused for along time, after such\nsor, wile evils are sutfrable,\nthan to right cssolutions,\nto causeothers\nto be elected:\nthemselves\nby abolishing theforms\nto which\nwhereby the Legislative powers, incapable of\nthey ae accustomed. But when along train\n_Anniilation, have returned tothe People at\n‘of abuses and usurpations, pursuing\nlarge for their exercise; the State remaining in\ninvariably the same Objectevinces a design _the mean ime exposed allthe dangers of\ntoreduce\nthem under absolute Despotism, it\ninvasion trom without, and convulsions\n{is their right. tis thor duty, to throw off such\nwithin. He has endeavoured\nto prevent tho\nGovernment,\nand to provide new Guards for\npopulation ofthese tates; for that purpose\ntheir future security. Such has been the\nobstructing the Laws for Naturalization of\nPatient sutferance of these Colonies; and\nForeigners; retusing to pass others to\n‘such isnow the necessity which constrains\nencourage\ntheir migrations hither, and raising\nthem to alter theirformer Systems of\nthe conditions of new Appropriationsof\nGovernment. The history\nofthe present King\nLands. He has obstructed the Adminstration\nof Great Briain sahistory of repeated\nof Justice, by refusing his Assent fo Laws for\ninjuries andusurpation,\nallhaving in direct\nestablishing Judiciary powers. He has made\n‘object the estabishment ofan absolute\nJudges dependent on his Wil alone, forthe\n“Tyranny\nover these States. To prove ths, let\ntenure oftheir offices, andthe amount and\nFacts be submitted toa candid word. He has\npayment oftheir salaries. He has erecteda\n‘roused his Assent to Laws, the most\nmulitude\nof New Offices, and sent hither\n‘wholesome and necessary forthe public\nswarms of Officers to harass our people, and\n(00d. He has forbidden his Governors to\neat out theirsubstance. He has kept among\npass Laws ofimmediate\nand pressing\nus,in times of peace, Standing Armies\n‘importance, uniess suspendedin thet\nwithout\nthe Consent of our legislatures. Ho\n‘operation ti his Assent should be obtained;\nhas affected to render the Miltary\nand when so suspended, he has utterly\nindependent\not and superior tothe Civil\n‘neglected\nto attend tothem. He has retused\npower. He has combined with others to\nto pass other Laws forthe accommodationof subject us to @jurisciction\nforeign to our\n",
+        "sha256": "2c4f9d07736906cdff1633d885752267c78c1dea22e76b00b4375a7de0aeb16d"
+      }
+    ]
+  }
+}

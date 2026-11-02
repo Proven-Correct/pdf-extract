@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "b1457fff608ab5e992dba1397fa1295cb9eb2ec32b7a29fcd7ec4cf48d4afda6",
+  "size": 748,
+  "source": "corpus-c/kp09_nested.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "OUTER INUTER\n",
+      "sha256": "fcf997388f49bbe272322f0f96b6b4933069bf4e354973509bf11262be92809b",
+      "error": null
+    }
+  ]
+}

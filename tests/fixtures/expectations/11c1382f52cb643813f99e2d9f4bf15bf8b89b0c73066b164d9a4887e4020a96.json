@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "11c1382f52cb643813f99e2d9f4bf15bf8b89b0c73066b164d9a4887e4020a96",
+  "size": 951,
+  "source": "corpus-c/kp11_hidden_ocg_basestate.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Plain\n",
+      "sha256": "987f0b80305fa21ef66b9d485f4388385503e5f6ceccc49551c10582cd18b6e4",
+      "error": null
+    }
+  ]
+}

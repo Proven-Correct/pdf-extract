@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "9aed1f3da6297010febf2d6145802117cfff3f03270a10c7569079df514c3cc3",
+  "size": 864401,
+  "source": "corpus-d/clean_heading_footnote_skew.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "Of the Causes Which Impel the Separation\nthrow of such Government, and to provide new Guards for their future security. Such has\nboon the pation sufferance ofthese Colonies; and such is now the necessity which\ncoestains them to alter thee former Systems of Government. The history of the present King\nStreet Britain Is a history of repeated inures and usurpations, all having in direct object\nthe establishment ofan absolute Tyranny over these Stale. To prove tis, let Fact be\nrbmited i 2 candid world. He as relused his Assent to Laws, the most wholesome and\nrecassary forthe public good, He has forbidden his Governors to pass Laws of immeciate\nhe pressing importance, unless suspended in thelr operation tl his Assent should be\nhtalned: and when so suspended, he has uterty neglected to attend to them, He has\nfetused to pass other Laws for the accommodation of large districts of people, unless those\n‘Jeople would ringuishthe night of Representaton in the Lepsiature, aight inestimable to\nro and formidable to tyrants only. He has called together legislative bodies at places\nnvsual uncomfortable, and distant from the depostory of their public Records, fr the sole\npurpose of fatiguing them into compliance with his measures. He has dssoWved\npresenta Houses repeatedly, for opposing with manly frmmness his invasions onthe\nFights ofthe poopl. He has retused fora longtime, after such dssoluons to cause others\ntobe elected, whereby the Legisiative powers, incapable of Annihiation have returned 10\nthe People at large for ther exercise; the State remaining inthe mean time exposed to all\nthe dangers of invasion trom without, and convulsions within. He has endeavoured 10\nprevent the population of these States; or thal purpose ebstucting the Laws for\nNaturlizason of Foreigners: refusing to pass others to encourage their migrations hither,\ndd raising the conditonsof new Appropriations of Lands. He has obstructed the\n‘Kaministration of Justice, by refusing his Assont to Laws for establishing Judiciary powers.\nfhe has mado Judges dependent on his Will lone, fr the tenure oftheir offices, and the\nre dnt and payment of their salaries. He has erected a mulitude of New Offices, and sent\nhither swarms of Officers\nto harass our people, and eat out their substance. He has kept\n‘anong us. in times of peace, Standing Armies without the Consent of our legislatures. He\nAa aloctad to render the Miltary independent of and superior tothe Civil power. He has\nven dor seco itn noestan suncrotney ew: hrsat\nRSIS SU\nNptnine Gaus tran evr toecmes rca on pee tonne\nA\nse pnd enw ran and seu ang Pe powers Pe teep\n",
+        "sha256": "c74046d20f31b8e965418374e6aff241e03ef54a04e486629ccfe5d8598de953"
+      }
+    ]
+  }
+}

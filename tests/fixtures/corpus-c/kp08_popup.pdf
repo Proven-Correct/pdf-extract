@@ -1,0 +1,49 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources 4 0 R /Contents 6 0 R /Annots [8 0 R] >>
+endobj
+4 0 obj
+<< /Font << /Helv 5 0 R >> >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+6 0 obj
+<< /Length 59 >>
+stream
+q BT /Helv 11 Tf 0 Tr 1 0 0 1 72 770 Tm <426F6479> Tj ET Q
+
+endstream
+endobj
+7 0 obj
+<< /Type /XObject /Subtype /Form /BBox [0 0 200 20] /Resources 4 0 R /Length 39 >>
+stream
+BT /Helv 11 Tf 2 5 Td (AnnotText) Tj ET
+endstream
+endobj
+8 0 obj
+<< /Type /Annot /Subtype /Popup /Rect [72 600 272 620] /P 3 0 R /AP << /N 7 0 R >> >>
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000241 00000 n 
+0000000286 00000 n 
+0000000383 00000 n 
+0000000492 00000 n 
+0000000647 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R >>
+startxref
+748
+%%EOF

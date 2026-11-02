@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "1ec7740372a1a3ef6537aaff3f087733e1e64cb3fb3a1f43c9e5d80f219130f7",
+  "size": 1162,
+  "source": "corpus-c/header_offset_500.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Contract\n",
+      "sha256": "f15524f69508df06c9a02b171ea8e9095800e0a0b6f5b8a480ee85e6dbb1d5f4",
+      "error": null
+    }
+  ]
+}

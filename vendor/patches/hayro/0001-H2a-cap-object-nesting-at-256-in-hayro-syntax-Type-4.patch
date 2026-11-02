@@ -1,0 +1,339 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Thu, 1 Oct 2026 15:22:39 -0400
+Subject: [PATCH 01/22] H2a: cap object nesting at 256 in hayro-syntax, Type 4
+ and PostScript parsers
+
+hayro parses arrays and dictionaries recursively, so 200,000 levels of
+nesting in a page dictionary, a resources dictionary or a content-stream
+operand overflowed even an 8 MiB stack and aborted the process. The same
+held for nested procedures in Type 4 (PostScript calculator) functions and
+for `<<`/`>>` runs in hayro-postscript's scanner.
+
+hayro-syntax: `Reader` tracks the current nesting depth; `Array::skip`,
+`Dict::skip` and `parse_dict_with` (every way of reading a dictionary) refuse
+to go deeper than `MAX_OBJECT_DEPTH` (256), so the object fails to parse like
+any other malformed object. Each refusal bumps a thread-local counter,
+`object_depth_limit_hits()`, so a caller can tell a nesting failure from
+other parse failures by sampling it around an operation; content operands are
+parsed with no document context, so a per-document counter could not see them.
+
+hayro-interpret: `parse_procedure_inner` takes a depth and refuses beyond the
+same cap, reporting through `note_object_depth_limit_hit()`.
+
+hayro-postscript: `<<`/`>>` skipping and array nesting are capped at 256 and
+fail with `Error::LimitCheck` (resolves the stack-overflow TODO).
+
+Tests (crates/core/tests/h2a_object_depth.rs): the four 200,000-deep hostile
+fixtures open and interpret on a 512 KiB stack, also in a child process (they
+aborted before this change); the 256/257 boundary for dictionaries, arrays
+and mixed nesting; per-thread counting; Type 4 and PostScript caps. The test
+kit's expected page count for the over-deep page dictionary drops to 0.
+---
+ hayro-interpret/src/function/type4.rs | 20 ++++++-
+ hayro-postscript/src/array.rs         |  6 ++
+ hayro-postscript/src/object.rs        | 23 +++++++-
+ hayro-syntax/src/byte_reader.rs       | 79 ++++++++++++++++++++++++++-
+ hayro-syntax/src/lib.rs               |  1 +
+ hayro-syntax/src/object/array.rs      |  9 +++
+ hayro-syntax/src/object/dict.rs       | 23 ++++++++
+ 7 files changed, 153 insertions(+), 8 deletions(-)
+
+diff --git a/hayro-interpret/src/function/type4.rs b/hayro-interpret/src/function/type4.rs
+index ffa6a37..2cbac2a 100644
+--- a/hayro-interpret/src/function/type4.rs
++++ b/hayro-interpret/src/function/type4.rs
+@@ -4,6 +4,7 @@ use hayro_syntax::object::Number;
+ use hayro_syntax::object::Stream;
+ use hayro_syntax::reader::Reader;
+ use hayro_syntax::reader::{ReaderContext, ReaderExt};
++use hayro_syntax::{MAX_OBJECT_DEPTH, note_object_depth_limit_hit};
+ use smallvec::SmallVec;
+ use std::array;
+ use std::ops::Rem;
+@@ -416,10 +417,23 @@ fn eval_inner(procedure: &[PostScriptOp], arg_stack: &mut InterpreterStack) -> O
+ 
+ fn parse_procedure(data: &[u8]) -> Option<Vec<PostScriptOp>> {
+     let mut r = Reader::new(data);
+-    parse_procedure_inner(&mut r)
++    parse_procedure_inner(&mut r, 1)
+ }
+ 
+-fn parse_procedure_inner(r: &mut Reader<'_>) -> Option<Vec<PostScriptOp>> {
++/// Parse one `{ ... }` procedure; `depth` is its nesting level, starting at 1
++/// for the outermost one.
++fn parse_procedure_inner(r: &mut Reader<'_>, depth: u32) -> Option<Vec<PostScriptOp>> {
++    // Nested procedures are parsed recursively (and later evaluated
++    // recursively), so a crafted function could otherwise overflow the stack.
++    // The cap is the one hayro-syntax applies to PDF objects; refusals are
++    // reported through the same counter.
++    if depth > MAX_OBJECT_DEPTH {
++        warn!("type 4 function nests deeper than {MAX_OBJECT_DEPTH} procedures");
++        note_object_depth_limit_hit();
++
++        return None;
++    }
++
+     let mut stack = ParseStack::new();
+ 
+     let mut ops = vec![];
+@@ -434,7 +448,7 @@ fn parse_procedure_inner(r: &mut Reader<'_>) -> Option<Vec<PostScriptOp>> {
+ 
+             break;
+         } else if r.peek_byte()? == b'{' {
+-            stack.push(parse_procedure_inner(r)?);
++            stack.push(parse_procedure_inner(r, depth + 1)?);
+         } else {
+             let op = PostScriptOp::from_reader(r, &mut stack)?;
+             ops.push(op);
+diff --git a/hayro-postscript/src/array.rs b/hayro-postscript/src/array.rs
+index b96b360..3ee75e0 100644
+--- a/hayro-postscript/src/array.rs
++++ b/hayro-postscript/src/array.rs
+@@ -37,6 +37,12 @@ fn skip_array(r: &mut Reader<'_>) -> Result<()> {
+     while depth > 0 {
+         match r.peek_byte().ok_or(Error::SyntaxError)? {
+             b'[' => {
++                // Skipping is iterative, but consumers walk nested arrays
++                // level by level through `Array::objects`, typically by
++                // recursion, so bound the depth they can be handed.
++                if depth >= object::MAX_NESTING_DEPTH {
++                    return Err(Error::LimitCheck);
++                }
+                 r.forward();
+                 depth += 1;
+             }
+diff --git a/hayro-postscript/src/object.rs b/hayro-postscript/src/object.rs
+index 4415475..e4fa6b6 100644
+--- a/hayro-postscript/src/object.rs
++++ b/hayro-postscript/src/object.rs
+@@ -18,7 +18,19 @@ pub enum Object<'a> {
+     Array(Array<'a>),
+ }
+ 
++/// The maximum number of nested `<<`/`>>` delimiters (skipped by [`read`]) and
++/// of nested arrays (see `array::parse`) the scanner accepts.
++///
++/// Deeper input fails with [`Error::LimitCheck`], PostScript's error for an
++/// exceeded implementation limit, instead of overflowing the stack.
++pub(crate) const MAX_NESTING_DEPTH: u32 = 256;
++
+ pub(crate) fn read<'a>(r: &mut Reader<'a>) -> Result<Object<'a>> {
++    read_nested(r, 0)
++}
++
++/// [`read`], after `depth` dictionary delimiters have already been skipped.
++fn read_nested<'a>(r: &mut Reader<'a>, depth: u32) -> Result<Object<'a>> {
+     skip_whitespace_and_comments(r);
+ 
+     let b = r.peek_byte().ok_or(Error::SyntaxError)?;
+@@ -35,10 +47,12 @@ pub(crate) fn read<'a>(r: &mut Reader<'a>) -> Result<Object<'a>> {
+             } else if r.peek_bytes(2) == Some(b"<<") {
+                 // TODO: Proper dict support. For now, skip `<<` and return
+                 // the next object so callers see the inner tokens.
++                if depth >= MAX_NESTING_DEPTH {
++                    return Err(Error::LimitCheck);
++                }
+                 r.forward();
+                 r.forward();
+-                // TODO: This can easily overflow the stack if we have nested <<<<<.
+-                read(r)
++                read_nested(r, depth + 1)
+             } else {
+                 string::parse_hex(r)
+                     .map(|s| Object::String(String::from_hex(s)))
+@@ -52,9 +66,12 @@ pub(crate) fn read<'a>(r: &mut Reader<'a>) -> Result<Object<'a>> {
+         b'>' => {
+             if r.peek_bytes(2) == Some(b">>") {
+                 // TODO: Proper dict support. Skip `>>` closing delimiter.
++                if depth >= MAX_NESTING_DEPTH {
++                    return Err(Error::LimitCheck);
++                }
+                 r.forward();
+                 r.forward();
+-                read(r)
++                read_nested(r, depth + 1)
+             } else {
+                 Err(Error::SyntaxError)
+             }
+diff --git a/hayro-syntax/src/byte_reader.rs b/hayro-syntax/src/byte_reader.rs
+index 9ea2957..e6f8747 100644
+--- a/hayro-syntax/src/byte_reader.rs
++++ b/hayro-syntax/src/byte_reader.rs
+@@ -2,6 +2,53 @@
+ 
+ use core::ops::Range;
+ 
++/// The maximum nesting depth of arrays and dictionaries that the object parser
++/// accepts.
++///
++/// Arrays and dictionaries are parsed recursively, so without a cap a crafted
++/// file (for example 200,000 nested `[`) overflows the stack and aborts the
++/// process. Real documents nest a handful of levels; an object that nests
++/// deeper than this fails to parse, as any other malformed object does, and
++/// [`object_depth_limit_hits`] records that it happened.
++pub const MAX_OBJECT_DEPTH: u32 = 256;
++
++#[cfg(feature = "std")]
++std::thread_local! {
++    // Thread-local rather than per-document: content streams are parsed with
++    // no reference to their document, so this is the one place every parse
++    // site can report to. A `Cell` makes the hot path a plain load and store.
++    static OBJECT_DEPTH_LIMIT_HITS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
++}
++
++/// Return how many times, on the current thread, a parse was refused because
++/// it would have nested deeper than [`MAX_OBJECT_DEPTH`].
++///
++/// The counter only ever increases. To learn whether an operation ran into the
++/// limit, read it before and after the operation, on the same thread. Without
++/// the `std` feature nothing is counted and this always returns 0.
++pub fn object_depth_limit_hits() -> u64 {
++    #[cfg(feature = "std")]
++    {
++        OBJECT_DEPTH_LIMIT_HITS.with(core::cell::Cell::get)
++    }
++
++    #[cfg(not(feature = "std"))]
++    {
++        0
++    }
++}
++
++/// Record that a parse was refused because of a nesting limit.
++///
++/// Called by this crate when [`MAX_OBJECT_DEPTH`] is reached; public so that
++/// parsers built on top of it (such as the PostScript calculator functions in
++/// `hayro-interpret`) report their own nesting limits through the same
++/// counter, see [`object_depth_limit_hits`].
++pub fn note_object_depth_limit_hit() {
++    #[cfg(feature = "std")]
++    OBJECT_DEPTH_LIMIT_HITS.with(|hits| hits.set(hits.get().saturating_add(1)));
++}
++
+ /// A reader for reading bytes and PDF objects.
+ #[derive(Clone, Debug)]
+ pub struct Reader<'a> {
+@@ -9,19 +56,47 @@ pub struct Reader<'a> {
+     pub data: &'a [u8],
+     /// The current byte-offset.
+     pub offset: usize,
++    /// How many arrays and dictionaries are currently being parsed, one inside
++    /// the other. Bounded by [`MAX_OBJECT_DEPTH`].
++    depth: u32,
+ }
+ 
+ impl<'a> Reader<'a> {
+     /// Create a new reader.
+     #[inline]
+     pub fn new(data: &'a [u8]) -> Self {
+-        Self { data, offset: 0 }
++        Self::new_with(data, 0)
+     }
+ 
+     /// Create a new reader at the given offset.
+     #[inline]
+     pub fn new_with(data: &'a [u8], offset: usize) -> Self {
+-        Self { data, offset }
++        Self {
++            data,
++            offset,
++            depth: 0,
++        }
++    }
++
++    /// Run `f`, which parses one array or dictionary, one nesting level deeper.
++    ///
++    /// Returns `None` without calling `f` if that level would exceed
++    /// [`MAX_OBJECT_DEPTH`], and records the refusal (see
++    /// [`object_depth_limit_hits`]).
++    #[inline]
++    pub(crate) fn nested<T>(&mut self, f: impl FnOnce(&mut Self) -> Option<T>) -> Option<T> {
++        if self.depth >= MAX_OBJECT_DEPTH {
++            warn!("object nesting exceeds the maximum depth of {MAX_OBJECT_DEPTH}");
++            note_object_depth_limit_hit();
++
++            return None;
++        }
++
++        self.depth += 1;
++        let result = f(self);
++        self.depth -= 1;
++
++        result
+     }
+ 
+     /// Returns `true` if the reader has reached the end of the data.
+diff --git a/hayro-syntax/src/lib.rs b/hayro-syntax/src/lib.rs
+index b676523..d82e225 100644
+--- a/hayro-syntax/src/lib.rs
++++ b/hayro-syntax/src/lib.rs
+@@ -108,6 +108,7 @@ pub mod byte_reader;
+ #[doc(hidden)]
+ pub mod reader;
+ 
++pub use byte_reader::{MAX_OBJECT_DEPTH, note_object_depth_limit_hit, object_depth_limit_hits};
+ pub use data::PdfData;
+ pub use filter::*;
+ pub use pdf::*;
+diff --git a/hayro-syntax/src/object/array.rs b/hayro-syntax/src/object/array.rs
+index 332f09a..20b84e1 100644
+--- a/hayro-syntax/src/object/array.rs
++++ b/hayro-syntax/src/object/array.rs
+@@ -70,6 +70,15 @@ object!(Array<'a>, Array);
+ 
+ impl Skippable for Array<'_> {
+     fn skip(r: &mut Reader<'_>, is_content_stream: bool) -> Option<()> {
++        // `Array::read` goes through here too, so this bounds the recursion
++        // into nested values for both reading and skipping.
++        r.nested(|r| Self::skip_unbounded(r, is_content_stream))
++    }
++}
++
++impl Array<'_> {
++    /// The body of [`Skippable::skip`], without the nesting check.
++    fn skip_unbounded(r: &mut Reader<'_>, is_content_stream: bool) -> Option<()> {
+         r.forward_tag(b"[")?;
+ 
+         loop {
+diff --git a/hayro-syntax/src/object/dict.rs b/hayro-syntax/src/object/dict.rs
+index 10424ed..631a039 100644
+--- a/hayro-syntax/src/object/dict.rs
++++ b/hayro-syntax/src/object/dict.rs
+@@ -158,6 +158,13 @@ impl Debug for Dict<'_> {
+ 
+ impl Skippable for Dict<'_> {
+     fn skip(r: &mut Reader<'_>, is_content_stream: bool) -> Option<()> {
++        r.nested(|r| Self::skip_unbounded(r, is_content_stream))
++    }
++}
++
++impl Dict<'_> {
++    /// The body of [`Skippable::skip`], without the nesting check.
++    fn skip_unbounded(r: &mut Reader<'_>, is_content_stream: bool) -> Option<()> {
+         r.forward_tag(b"<<")?;
+ 
+         loop {
+@@ -267,6 +274,22 @@ pub(crate) fn probe_dict<'a>(
+ }
+ 
+ fn parse_dict_with<'a, F>(
++    r: &mut Reader<'a>,
++    ctx: &ReaderContext<'a>,
++    start_tag: Option<&[u8]>,
++    end_tag: &[u8],
++    on_entry: F,
++) -> Option<&'a [u8]>
++where
++    F: FnMut(Name<'a>, usize, &Reader<'a>) -> Option<()>,
++{
++    // Every way of reading a dictionary (`Dict::read`, inline image
++    // dictionaries, the fallback xref scan) goes through here, so this bounds
++    // the recursion into nested values for all of them.
++    r.nested(|r| parse_dict_entries(r, ctx, start_tag, end_tag, on_entry))
++}
++
++fn parse_dict_entries<'a, F>(
+     r: &mut Reader<'a>,
+     ctx: &ReaderContext<'a>,
+     start_tag: Option<&[u8]>,

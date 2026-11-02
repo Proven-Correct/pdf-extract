@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "3f177f9ffe4dacddf63650d820b551f9a20cadbd0b5a36c7ab2922cd5ef62a8a",
+  "size": 1153,
+  "source": "corpus-c/kp06_type3_square.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "A□\n",
+      "sha256": "efc16baf0f4ccbc2d61c75afc66f738e942e025bf5ebcc1c7f3cc9405326b240",
+      "error": null
+    }
+  ]
+}

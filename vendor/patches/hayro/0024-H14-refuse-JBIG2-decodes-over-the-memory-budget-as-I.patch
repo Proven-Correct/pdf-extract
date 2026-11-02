@@ -1,0 +1,234 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Mon, 5 Oct 2026 12:50:15 -0700
+Subject: [PATCH 24/35] H14: refuse JBIG2 decodes over the memory budget as
+ ImageMemoryLimit
+
+hayro-syntax decodes JBIG2 images with a memory budget of
+JBIG2_BUDGET_BYTES_PER_PIXEL (2) bytes per pixel of
+DecodeLimits::max_image_pixels; no cap, no budget. A refusal by the
+budget is the new DecodeFailure::ImageMemoryLimit, counted once in the
+thread-local image_memory_limit_hits(); every other codec error stays
+ImageDecode. JPX_BUDGET_BYTES_PER_PIXEL (64) is defined alongside for the
+JPEG 2000 budget. hayro-interpret raises the new
+InterpreterWarning::ImageMemoryLimit for it, instead of
+ImageDecodeFailure or ImagePixelLimit, never as well.
+
+Core and the render crate surface it as WarningKind::ImageMemoryLimit
+(category "image", detail "memory limit: ..."), sampled in the same
+signal window as the pixel-limit counter: the larger of the
+thread-local delta and the interpreter sink's count. A refused image
+draws nothing; the page is otherwise rendered and recognised.
+
+The test kit gains jbig2: hand-assembled embedded streams in the shapes
+that exhaust the decoder (built from Huffman-coded dictionaries and
+text regions, uncompressed and all-white MMR bitmaps, so no entropy
+coder is needed), and the symbol-export bomb as a PDF, also a Python
+hostile fixture. Tests at every layer: crates/core/tests/h14_jbig2_budget.rs
+(the codec, hayro-syntax, hayro-interpret and core's open path, with
+peak RSS of the two largest refusals measured in a child process), the
+render and OCR warnings, the text path, and Python.
+---
+ hayro-interpret/src/interpret/mod.rs |  5 +++
+ hayro-interpret/src/x_object.rs      |  4 +-
+ hayro-syntax/src/filter/jbig2.rs     | 34 ++++++++++++---
+ hayro-syntax/src/filter/mod.rs       | 65 +++++++++++++++++++++++++++-
+ hayro-syntax/src/object/stream.rs    |  4 ++
+ 5 files changed, 103 insertions(+), 9 deletions(-)
+
+diff --git a/hayro-interpret/src/interpret/mod.rs b/hayro-interpret/src/interpret/mod.rs
+index d125291..c39ce6c 100644
+--- a/hayro-interpret/src/interpret/mod.rs
++++ b/hayro-interpret/src/interpret/mod.rs
+@@ -148,6 +148,11 @@ pub enum InterpreterWarning {
+     /// allow and was skipped without being decoded. Raised instead of
+     /// [`Self::ImageDecodeFailure`], never as well.
+     ImagePixelLimit,
++    /// An image's codec would have exceeded the memory budget that
++    /// [`DecodeLimits::max_image_pixels`](hayro_syntax::DecodeLimits::max_image_pixels)
++    /// sets, and the image was skipped. Raised instead of
++    /// [`Self::ImageDecodeFailure`] and [`Self::ImagePixelLimit`], never as well.
++    ImageMemoryLimit,
+ }
+ 
+ /// Limits on the work an interpreter may do, for processing untrusted input.
+diff --git a/hayro-interpret/src/x_object.rs b/hayro-interpret/src/x_object.rs
+index d524863..b52b0d9 100644
+--- a/hayro-interpret/src/x_object.rs
++++ b/hayro-interpret/src/x_object.rs
+@@ -459,11 +459,13 @@ fn decode_context<'a>(
+         Some(xref) => obj.stream.decoded_inline_image(&decode_params, xref),
+         None => obj.stream.decoded_image(&decode_params),
+     };
+-    // A refusal by the pixel cap is its own warning, never also a decode failure.
++    // A refusal by the pixel cap or a codec's memory budget is its own
++    // warning, never also a decode failure.
+     let decoded = decoded
+         .map_err(|e| {
+             (obj.warning_sink)(match e {
+                 DecodeFailure::ImagePixelLimit => InterpreterWarning::ImagePixelLimit,
++                DecodeFailure::ImageMemoryLimit => InterpreterWarning::ImageMemoryLimit,
+                 _ => InterpreterWarning::ImageDecodeFailure,
+             })
+         })
+diff --git a/hayro-syntax/src/filter/jbig2.rs b/hayro-syntax/src/filter/jbig2.rs
+index 6c8521c..076a5c9 100644
+--- a/hayro-syntax/src/filter/jbig2.rs
++++ b/hayro-syntax/src/filter/jbig2.rs
+@@ -2,7 +2,9 @@ use crate::bit_reader::BitWriter;
+ use crate::object::Dict;
+ use crate::object::Stream;
+ use crate::object::dict::keys::JBIG2_GLOBALS;
+-use crate::filter::check_image_pixels;
++use crate::filter::{
++    JBIG2_BUDGET_BYTES_PER_PIXEL, check_image_pixels, image_memory_budget, image_memory_limit_hit,
++};
+ use crate::object::stream::{
+     DecodeFailure, FilterResult, ImageColorSpace, ImageData, ImageDecodeParams,
+ };
+@@ -69,9 +71,7 @@ pub(crate) fn decode(
+ 
+         let writer = BitWriter::new(&mut packed, 1).ok_or(DecodeFailure::ImageDecode)?;
+         let mut decoder = BitWriterDecoder { writer };
+-        image
+-            .decode(&mut decoder)
+-            .map_err(|_| DecodeFailure::ImageDecode)?;
++        decode_within_budget(&image, &mut decoder, max_pixels)?;
+ 
+         (packed, 1)
+     } else {
+@@ -94,9 +94,7 @@ pub(crate) fn decode(
+         }
+ 
+         let mut decoder = Luma8Decoder { output: Vec::new() };
+-        image
+-            .decode(&mut decoder)
+-            .map_err(|_| DecodeFailure::ImageDecode)?;
++        decode_within_budget(&image, &mut decoder, max_pixels)?;
+ 
+         (decoder.output, 8)
+     };
+@@ -112,3 +110,25 @@ pub(crate) fn decode(
+         }),
+     })
+ }
++
++/// H14: decode under the memory budget the pixel cap implies. The page size
++/// was checked against the cap above, but the decoder's working set (symbol
++/// dictionaries and their exported copies, intermediate regions, gray-scale
++/// planes) is not bounded by the page size; the budget bounds its total. A
++/// refusal by the budget is its own failure, counted once; every other codec
++/// error is a broken image.
++fn decode_within_budget<D: hayro_jbig2::Decoder>(
++    image: &hayro_jbig2::Image<'_>,
++    decoder: &mut D,
++    max_pixels: Option<u64>,
++) -> Result<(), DecodeFailure> {
++    let mut ctx = hayro_jbig2::DecoderContext::default();
++    ctx.memory_budget = image_memory_budget(max_pixels, JBIG2_BUDGET_BYTES_PER_PIXEL);
++
++    image.decode_with(decoder, &mut ctx).map_err(|e| match e {
++        hayro_jbig2::DecodeError::Overflow(hayro_jbig2::OverflowError::MemoryBudget) => {
++            image_memory_limit_hit()
++        }
++        _ => DecodeFailure::ImageDecode,
++    })
++}
+diff --git a/hayro-syntax/src/filter/mod.rs b/hayro-syntax/src/filter/mod.rs
+index 70b8b39..95ff2ca 100644
+--- a/hayro-syntax/src/filter/mod.rs
++++ b/hayro-syntax/src/filter/mod.rs
+@@ -47,7 +47,14 @@ pub struct DecodeLimits {
+     /// [`DecodeFailure::ImagePixelLimit`] before any filter runs, so the cap
+     /// bounds what the decoders allocate, not only what they return. Streams
+     /// decoded without image parameters declare 0 × 0 and are never refused.
+-    /// The default, `None`, means no limit.
++    ///
++    /// The cap also sets the memory budget of the JBIG2 decoder,
++    /// [`JBIG2_BUDGET_BYTES_PER_PIXEL`] bytes per pixel of the cap, whose
++    /// working set (symbol and region bitmaps, gray-scale planes) is not
++    /// bounded by the image size; a decode that would exceed it fails with
++    /// [`DecodeFailure::ImageMemoryLimit`].
++    ///
++    /// The default, `None`, means no limit and no budget.
+     pub max_image_pixels: Option<u64>,
+ }
+ 
+@@ -161,6 +168,62 @@ pub(crate) fn note_image_pixel_limit_hit() {
+     IMAGE_PIXEL_LIMIT_HITS.with(|n| n.set(n.get().saturating_add(1)));
+ }
+ 
++/// The JBIG2 decoder's memory budget, in bytes per pixel of
++/// [`DecodeLimits::max_image_pixels`]. A text page of `P` pixels needs about
++/// half a byte per pixel in total (its page bitmap, regions tiling the page,
++/// a symbol dictionary of a few megabytes), so 2 leaves a fourfold margin at
++/// the cap and far more for ordinary scans; the hostile shapes (a symbol
++/// exported thousands of times, a gray-scale plane of 16 GiB from eight header
++/// bytes) cost hundreds of bytes per pixel or are unbounded.
++pub const JBIG2_BUDGET_BYTES_PER_PIXEL: u64 = 2;
++
++/// The JPEG 2000 decoder's memory budget, in bytes per pixel of
++/// [`DecodeLimits::max_image_pixels`]: about 9 bytes per pixel per component
++/// in channel planes, coefficients and output, so 64 covers a single-tile
++/// RGBA image at the cap with room to spare.
++pub const JPX_BUDGET_BYTES_PER_PIXEL: u64 = 64;
++
++#[cfg(feature = "std")]
++std::thread_local! {
++    // Per thread for the same reason as `STREAM_DECODE_LIMIT_HITS`.
++    static IMAGE_MEMORY_LIMIT_HITS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
++}
++
++/// Return how many image decodes on the current thread were refused with
++/// [`DecodeFailure::ImageMemoryLimit`](crate::object::stream::DecodeFailure::ImageMemoryLimit)
++/// because the codec would have exceeded its memory budget.
++///
++/// It only ever increases: read it before and after an operation, on the same thread.
++/// Without the `std` feature nothing is counted and this always returns 0.
++pub fn image_memory_limit_hits() -> u64 {
++    #[cfg(feature = "std")]
++    {
++        IMAGE_MEMORY_LIMIT_HITS.with(core::cell::Cell::get)
++    }
++
++    #[cfg(not(feature = "std"))]
++    {
++        0
++    }
++}
++
++/// Count one refusal by a codec's memory budget and return the failure that
++/// reports it.
++#[cfg(feature = "images")]
++pub(crate) fn image_memory_limit_hit() -> DecodeFailure {
++    #[cfg(feature = "std")]
++    IMAGE_MEMORY_LIMIT_HITS.with(|n| n.set(n.get().saturating_add(1)));
++
++    DecodeFailure::ImageMemoryLimit
++}
++
++/// The memory budget of a codec allowed `bytes_per_pixel` bytes for each
++/// pixel of `max_pixels`; none when there is no pixel cap.
++#[cfg(feature = "images")]
++pub(crate) fn image_memory_budget(max_pixels: Option<u64>, bytes_per_pixel: u64) -> Option<u64> {
++    max_pixels.map(|pixels| pixels.saturating_mul(bytes_per_pixel))
++}
++
+ /// Refuse an image of `width × height` pixels when that exceeds `max_pixels`,
+ /// counting the refusal. Called wherever an image's size first becomes known
+ /// before the allocation it governs: the declared dimensions, each codec's
+diff --git a/hayro-syntax/src/object/stream.rs b/hayro-syntax/src/object/stream.rs
+index fa8e847..2d77d9f 100644
+--- a/hayro-syntax/src/object/stream.rs
++++ b/hayro-syntax/src/object/stream.rs
+@@ -328,6 +328,10 @@ pub enum DecodeFailure {
+     /// [`DecodeLimits::max_image_pixels`](crate::DecodeLimits::max_image_pixels)
+     /// allow; it was refused before any filter ran.
+     ImagePixelLimit,
++    /// An image codec would have allocated more than its memory budget,
++    /// which [`DecodeLimits::max_image_pixels`](crate::DecodeLimits::max_image_pixels)
++    /// sets; it was refused before the allocation that would exceed it.
++    ImageMemoryLimit,
+ }
+ 
+ /// An image color space.

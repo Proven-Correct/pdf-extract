@@ -1,0 +1,66 @@
+# pdf-extract-tesseract-sys: the one crate (besides the Python binding) that
+# compiles `unsafe`. It builds Tesseract and Leptonica from vendor/ (feature
+# `vendored`, the default) or links the distribution's libraries through
+# pkg-config (feature `system-tesseract`), compiles the C++ shim in csrc/ that
+# turns C++ exceptions into error codes, and wraps the shim in a safe
+# `Instance` type. Spec 0002 §3.4.
+[package]
+name = "pdf-extract-tesseract-sys"
+description = "Tesseract and Leptonica, built or linked, behind an exception-safe C shim"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+# Claims the native libraries for this crate alone: a second crate in the
+# graph that also links Tesseract would be a cargo error, not two copies of
+# the process-wide parameters this crate sets once.
+links = "pdf_extract_tesseract"
+build = "build.rs"
+
+[lints]
+workspace = true
+
+[features]
+default = ["vendored"]
+# Exactly one of the two must be on; build.rs refuses both and neither.
+vendored = ["dep:cmake"]
+system-tesseract = ["dep:pkg-config"]
+
+[dependencies]
+# Derive for the public error type, as in the other workspace crates.
+thiserror = "2"
+# poll(2), fcntl(2) and signal names for the `pipe` module (process
+# isolation's deadlines, spec 0002 O32). Already in the graph; MIT OR
+# Apache-2.0.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[build-dependencies]
+# Drives the two vendored CMake builds (spec §3.4). MIT OR Apache-2.0; build
+# tool only, never shipped.
+cmake = { version = "0.1.58", optional = true }
+# Compiles csrc/shim.cpp. Already in the graph (cmake depends on it). MIT OR
+# Apache-2.0.
+cc = "1.2"
+# Finds the distribution's tesseract and lept for `system-tesseract`.
+# MIT OR Apache-2.0.
+pkg-config = { version = "0.3", optional = true }
+
+[dev-dependencies]
+# Decodes the committed test image (tests/data/hello-300dpi.png).
+png = "0.18"
+# `Instance: Send + !Sync` (spec §4.6).
+static_assertions = "1.1.0"
+# Parses src/*.rs in tests/shim_symbols.rs to map shim symbols to the Rust
+# functions that call them. Already in the lock file (pyo3-macros, testkit).
+syn = { version = "2", features = ["full", "visit"] }
+# Token streams of macro bodies in the same scan. Already in the lock file.
+proc-macro2 = "1"
+
+# The silence test redirects nothing in-process: it re-runs itself as a child
+# whose fds 1 and 2 are captured, so the child must print nothing at all —
+# not even libtest's "running N tests" banner. Hence its own `main`.
+[[test]]
+name = "silence"
+harness = false

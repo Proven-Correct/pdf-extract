@@ -1,0 +1,17 @@
+Licences in use:
+{{#each overview}}
+    {{{name}}} ({{id}}): {{count}} crates
+{{/each}}
+
+Each distinct licence text follows once, with the crates it covers.
+{{#each licenses}}
+
+----------------------------------------------------------------------
+{{{name}}} ({{id}})
+Used by:
+{{#each used_by}}
+    - {{crate.name}} {{crate.version}}
+{{/each}}
+
+{{{text}}}
+{{/each}}

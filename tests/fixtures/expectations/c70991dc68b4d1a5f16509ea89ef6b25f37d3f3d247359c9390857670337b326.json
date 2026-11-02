@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "c70991dc68b4d1a5f16509ea89ef6b25f37d3f3d247359c9390857670337b326",
+  "size": 1513,
+  "source": "corpus-b/hayro/text_with_rise.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Hello world below.\n",
+      "sha256": "d80fa7fbea0694cd40abf4d6d0eb50d13e14ddeac99b22031a4f4ab8f20697aa",
+      "error": null
+    }
+  ]
+}

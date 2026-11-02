@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "a7a57bda29f8a9cb6ee7f6de06e9d79a46c0913211f7d2aad38ebc59933ead94",
+  "size": 1196,
+  "source": "corpus-c/kp06_type0_identity_nonembedded.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "ABC a\n",
+      "sha256": "847fcbbfce0ddbe3e7c4eed612286e74967bba1fbe7b557cc6753745bc0bb738",
+      "error": null
+    }
+  ]
+}

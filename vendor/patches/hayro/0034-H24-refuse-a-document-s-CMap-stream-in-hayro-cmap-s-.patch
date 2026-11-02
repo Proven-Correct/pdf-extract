@@ -1,0 +1,235 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Wed, 21 Oct 2026 07:35:59 +0200
+Subject: [PATCH 34/35] H24: refuse a document's CMap stream in hayro-cmap's
+ binary format
+
+hayro-cmap parses any CMap data starting with "bcmap" as the binary
+format its embedded predefined CMaps are stored in. That parser trusts
+its input: it rebuilds each range as previous end + 1 + delta from
+Huffman-decoded values (bcmap/mod.rs, six sites), so hostile deltas
+overflow. With overflow checks, as in test and fuzz builds, that is a
+panic; in release the range wraps and the map is wrong. A /ToUnicode
+stream or a Type 0 /Encoding stream reached it straight from the
+document.
+
+The format is private to hayro-cmap and legitimately comes only from its
+resolver, so is_binary_cmap() now refuses such a stream at both places a
+document's CMap is parsed, the same way as a CMap that fails to parse: a
+ToUnicode map is absent, a Type 0 font without a usable encoding fails
+to load. Predefined CMaps named by the document, the UCS2 fallback and
+usecmap still resolve through the bundle and parse as before. hayro-cmap
+is not vendored; the gate is the fix until upstream checks the
+arithmetic.
+
+Comment-only, in the same patch:
+- hayro-jpeg2000: DecodeSettings::resolve_palette_indices no longer
+  claims an unresolved multi-component palette image comes back as
+  grayscale; it is refused (H16).
+- hayro-syntax and hayro-interpret: DecodeLimits::max_image_pixels,
+  DecodeFailure::ImagePixelLimit, image_pixel_limit_hits and
+  InterpreterWarning::ImagePixelLimit described only the declared-size
+  check before any filter; the cap is also checked against each codec's
+  header and against the size the codec reports after decoding (H13).
+- hayro-syntax jpx.rs: import order and a leading blank line, as rustfmt
+  wants them.
+
+The cmap fuzz driver drops "bcmap" input the same way, and the fuzz
+reproducer is committed to fuzz/regressions/cmap.
+
+Part of internal #121, #77, #56
+---
+ hayro-interpret/src/font/cid.rs      |  8 ++++++--
+ hayro-interpret/src/font/mod.rs      | 18 ++++++++++++++++++
+ hayro-interpret/src/interpret/mod.rs |  7 +++++--
+ hayro-jpeg2000/src/lib.rs            |  4 +++-
+ hayro-syntax/src/filter/jpx.rs       |  3 +--
+ hayro-syntax/src/filter/mod.rs       | 19 +++++++++++++------
+ hayro-syntax/src/object/stream.rs    | 10 ++++++----
+ 7 files changed, 52 insertions(+), 17 deletions(-)
+
+diff --git a/hayro-interpret/src/font/cid.rs b/hayro-interpret/src/font/cid.rs
+index 80fa5ec..7d25f37 100644
+--- a/hayro-interpret/src/font/cid.rs
++++ b/hayro-interpret/src/font/cid.rs
+@@ -2,8 +2,9 @@ use crate::font::blob::{CffFontBlob, OpenTypeFontBlob, Type1FontBlob};
+ use crate::font::generated::glyph_names;
+ use crate::font::standard_font::select_standard_font;
+ use crate::font::{
+-    FallbackFontQuery, FontFlags, FontQuery, has_font_program, note_font_substitution,
+-    read_ascent_descent, read_to_unicode, stretch_glyph, strip_subset_prefix,
++    FallbackFontQuery, FontFlags, FontQuery, has_font_program, is_binary_cmap,
++    note_font_substitution, read_ascent_descent, read_to_unicode, stretch_glyph,
++    strip_subset_prefix,
+ };
+ use crate::{CMapResolverFn, CacheKey, FontResolverFn};
+ use hayro_cmap::{BfString, CMap, CharacterCollection, CidFamily, WritingMode};
+@@ -670,6 +671,9 @@ fn read_encoding(object: &Object<'_>, cmap_resolver: &CMapResolverFn) -> Option<
+         }
+         Object::Stream(s) => {
+             let decoded = s.decoded().ok()?;
++            if is_binary_cmap(&decoded) {
++                return None;
++            }
+             let resolver = cmap_resolver.clone();
+             CMap::parse(&decoded, move |n| (resolver)(n))
+         }
+diff --git a/hayro-interpret/src/font/mod.rs b/hayro-interpret/src/font/mod.rs
+index 0e7113e..900427e 100644
+--- a/hayro-interpret/src/font/mod.rs
++++ b/hayro-interpret/src/font/mod.rs
+@@ -969,6 +969,9 @@ pub(crate) fn unicode_from_name(name: &str) -> Option<char> {
+ pub(crate) fn read_to_unicode(dict: &Dict<'_>, cmap_resolver: &CMapResolverFn) -> Option<CMap> {
+     dict.get::<Stream<'_>>(TO_UNICODE)
+         .and_then(|s| s.decoded().ok())
++        // Refused before the name fallback, which is only for a name: a stream
++        // in the binary format is a stream that fails to parse.
++        .filter(|data| !is_binary_cmap(data))
+         // See PDFJS-11915, where `Identity-H` is used for `ToUnicode`. I don't
+         // believe it's valid, but at least mupdf seems to be able to deal with it.
+         .or_else(|| {
+@@ -982,6 +985,21 @@ pub(crate) fn read_to_unicode(dict: &Dict<'_>, cmap_resolver: &CMapResolverFn) -
+         })
+ }
+ 
++/// Whether CMap data taken from the document (a `/ToUnicode` stream or a
++/// Type 0 `/Encoding` stream) is in hayro-cmap's binary format, which is then
++/// refused like a CMap that fails to parse.
++///
++/// hayro-cmap parses any data starting with `bcmap` as the binary format its
++/// embedded predefined CMaps are stored in. That parser trusts its input: it
++/// rebuilds each range as `previous end + 1 + delta`, which overflows on
++/// hostile deltas (a panic with overflow checks, a wrong range without). The
++/// format is private to hayro-cmap and legitimately comes only from the
++/// resolver, so only document data is checked: predefined CMaps named by the
++/// document, and `usecmap` inside a stream, still resolve and parse.
++pub(crate) fn is_binary_cmap(data: &[u8]) -> bool {
++    data.starts_with(b"bcmap")
++}
++
+ /// Read `/Ascent` and `/Descent` from a font descriptor, in text space units.
+ ///
+ /// Descriptor metrics are in thousandths of text space for every font kind
+diff --git a/hayro-interpret/src/interpret/mod.rs b/hayro-interpret/src/interpret/mod.rs
+index a263e41..a6d0393 100644
+--- a/hayro-interpret/src/interpret/mod.rs
++++ b/hayro-interpret/src/interpret/mod.rs
+@@ -143,9 +143,12 @@ pub enum InterpreterWarning {
+     UnsupportedFont,
+     /// An image failed to decode.
+     ImageDecodeFailure,
+-    /// An image declared more pixels than the document's
++    /// An image's size exceeded the document's
+     /// [`DecodeLimits::max_image_pixels`](hayro_syntax::DecodeLimits::max_image_pixels)
+-    /// allow and was skipped without being decoded. Raised instead of
++    /// and the image was skipped. The size is checked as declared, as its codec
++    /// reads it from its header or parameters, and as the codec reports it after
++    /// decoding (see [`DecodeFailure::ImagePixelLimit`](hayro_syntax::object::stream::DecodeFailure::ImagePixelLimit)),
++    /// so the image may have been partly or wholly decoded. Raised instead of
+     /// [`Self::ImageDecodeFailure`], never as well.
+     ImagePixelLimit,
+     /// An image's codec would have exceeded the memory budget that
+diff --git a/hayro-jpeg2000/src/lib.rs b/hayro-jpeg2000/src/lib.rs
+index 8800792..41e35ae 100644
+--- a/hayro-jpeg2000/src/lib.rs
++++ b/hayro-jpeg2000/src/lib.rs
+@@ -115,7 +115,9 @@ pub struct DecodeSettings {
+     /// If you disable this option, in case you have an image with palette
+     /// indices, they will not be resolved, but instead a grayscale image
+     /// will be returned, with each pixel value corresponding to the palette
+-    /// index of the location.
++    /// index of the location. A palette image with more than one component
++    /// (for example indices plus alpha) cannot be returned that way and is
++    /// refused with `ValidationError::TooManyChannels`.
+     pub resolve_palette_indices: bool,
+     /// Whether strict mode should be enabled when decoding.
+     ///
+diff --git a/hayro-syntax/src/filter/jpx.rs b/hayro-syntax/src/filter/jpx.rs
+index 2b5c4ab..a3255c9 100644
+--- a/hayro-syntax/src/filter/jpx.rs
++++ b/hayro-syntax/src/filter/jpx.rs
+@@ -1,10 +1,10 @@
+ use crate::bit_reader::BitWriter;
+ use crate::filter::FilterResult;
+-use crate::math::round_f32;
+ use crate::filter::{
+     JPX_BUDGET_BYTES_PER_PIXEL, check_image_pixels, guard_codec, image_memory_budget,
+     image_memory_limit_hit,
+ };
++use crate::math::round_f32;
+ use crate::object::stream::{DecodeFailure, ImageColorSpace, ImageData, ImageDecodeParams};
+ use alloc::borrow::Cow;
+ use alloc::vec;
+@@ -80,7 +80,6 @@ fn decode_image(
+     image: hayro_jpeg2000::Image<'_>,
+     params: &ImageDecodeParams,
+ ) -> Result<FilterResult<'static>, DecodeFailure> {
+-
+     let width = image.width();
+     let height = image.height();
+     let bpc = params.bpc.unwrap_or(image.original_bit_depth());
+diff --git a/hayro-syntax/src/filter/mod.rs b/hayro-syntax/src/filter/mod.rs
+index 38b030d..65f8fe4 100644
+--- a/hayro-syntax/src/filter/mod.rs
++++ b/hayro-syntax/src/filter/mod.rs
+@@ -42,11 +42,17 @@ pub struct DecodeLimits {
+     /// The maximum number of bytes one filter may produce for one stream.
+     /// The default, `u64::MAX`, means no limit.
+     pub max_stream_decoded_bytes: u64,
+-    /// The largest image, by the `width × height` its decode parameters
+-    /// declare, that may be decoded at all. A larger one fails with
+-    /// [`DecodeFailure::ImagePixelLimit`] before any filter runs, so the cap
+-    /// bounds what the decoders allocate, not only what they return. Streams
+-    /// decoded without image parameters declare 0 × 0 and are never refused.
++    /// The largest image, by `width × height`, that may be decoded. The size
++    /// is checked wherever it first becomes known: the size its decode
++    /// parameters declare, before any filter runs; the size each image codec
++    /// reads from its header or parameters, before the codec allocates for
++    /// it; and the size the codec reports once it has run (for CCITT, which
++    /// pairs `/Columns` with the declared height, it can exceed both). A
++    /// larger image fails with [`DecodeFailure::ImagePixelLimit`], so the
++    /// cap bounds what the decoders allocate, not only what they return.
++    /// Streams decoded without image parameters declare 0 × 0 and pass the
++    /// first check, but an image codec in their filter chain still applies
++    /// the other two.
+     ///
+     /// The cap also sets the memory budgets of the JBIG2 and JPEG 2000
+     /// decoders, [`JBIG2_BUDGET_BYTES_PER_PIXEL`] and
+@@ -152,7 +158,8 @@ std::thread_local! {
+ 
+ /// Return how many image decodes on the current thread were refused with
+ /// [`DecodeFailure::ImagePixelLimit`](crate::object::stream::DecodeFailure::ImagePixelLimit)
+-/// because the image declared more pixels than [`DecodeLimits::max_image_pixels`].
++/// because the image's size, declared, read from its codec's header or reported by
++/// the codec, exceeded [`DecodeLimits::max_image_pixels`].
+ ///
+ /// It only ever increases: read it before and after an operation, on the same thread.
+ /// Without the `std` feature nothing is counted and this always returns 0.
+diff --git a/hayro-syntax/src/object/stream.rs b/hayro-syntax/src/object/stream.rs
+index 6aca197..2824aa6 100644
+--- a/hayro-syntax/src/object/stream.rs
++++ b/hayro-syntax/src/object/stream.rs
+@@ -221,7 +221,7 @@ impl<'a> Stream<'a> {
+         // The pixel cap (H13) is checked where each size first becomes known, before
+         // the allocation it governs. First the declared dimensions: decrypting the
+         // data and every filter after that allocate in proportion to the image.
+-        // Non-image decodes pass default parameters (0 x 0) and are never refused.
++        // Non-image decodes pass default parameters (0 x 0) and are never refused here.
+         // The codecs then check their header sizes inside `Filter::apply`.
+         check_image_pixels(
+             u64::from(image_params.width),
+@@ -324,9 +324,11 @@ pub enum DecodeFailure {
+     /// A filter would have produced more data than the document's
+     /// [`DecodeLimits`](crate::DecodeLimits) allow.
+     LimitExceeded,
+-    /// An image declared more pixels than the document's
+-    /// [`DecodeLimits::max_image_pixels`](crate::DecodeLimits::max_image_pixels)
+-    /// allow; it was refused before any filter ran.
++    /// An image's size exceeded the document's
++    /// [`DecodeLimits::max_image_pixels`](crate::DecodeLimits::max_image_pixels):
++    /// as declared, refused before any filter ran; as read from its codec's
++    /// header or parameters, before the codec allocated for it; or as the codec
++    /// reported it, after decoding.
+     ImagePixelLimit,
+     /// An image codec would have allocated more than its memory budget,
+     /// which [`DecodeLimits::max_image_pixels`](crate::DecodeLimits::max_image_pixels)

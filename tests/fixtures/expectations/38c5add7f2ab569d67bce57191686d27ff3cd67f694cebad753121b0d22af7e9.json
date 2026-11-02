@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "38c5add7f2ab569d67bce57191686d27ff3cd67f694cebad753121b0d22af7e9",
+  "size": 2497,
+  "source": "corpus-b/pdfbox/4PP-Highlighting.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "LINE 1\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nLINE 11\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nLINE 21\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nLINE 31\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nLINE 41\nLAST line\nLINE 1\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nLINE 11\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nLINE 21\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nLINE 31\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nLINE 41\nLAST line\nLINE 1\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nLINE 11\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nLINE 21\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nLINE 31\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nLINE 41\nLAST line\nLINE 1\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nLINE 11\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nLINE 21\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nLINE 31\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nxxx line\nLINE 41\nLAST line\n",
+      "sha256": "a56ae56dd666e3c145d2f016bd38d34b76d8fbdced25f2132d73b3e8cd847410",
+      "error": null
+    }
+  ]
+}

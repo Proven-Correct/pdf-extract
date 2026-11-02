@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "ce50fb35b1fcaa08e575d5c18719d5380b0ba0b7845812a49ea1d8a823299360",
+  "size": 1425,
+  "source": "corpus-c/enc_aes_256_owner.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Encrypted aes_256 owner\n",
+      "sha256": "9810aae257516bce6878b6f3b1a2303696132812344750adb00ee7f33115ec2d",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,124 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Mon, 19 Oct 2026 06:20:49 +0100
+Subject: [PATCH 27/35] H17: refuse JBIG2 export flags that stop advancing
+ after the data
+
+The export-flag loop of a symbol dictionary (6.5.10) ran until the runs
+it decoded reached the dictionary's symbol count, and only a run of at
+least one symbol moves it forward. The arithmetic decoder pads its input
+with 0xFF and stops advancing at a marker, so once the data is used up it
+is a finite state machine reading nothing, and some IAEX streams then
+cycle through runs of 0 forever: a 99-byte stream spun at full CPU,
+charging nothing to the memory budget, and page_time_budget, checked only
+between operators, never got a look in.
+
+Two 0-length runs in a row, decoded after the arithmetic data is used
+up, are now refused with SymbolError::ExportStalled. Every such cycle
+decodes them; no encoder writes them, since a 0-length run is needed only
+first. Refusing any 0-length run after the data would break valid
+streams: a short one's runs all come from the padding, its leading 0
+among them. The Huffman path is unaffected; its reader fails at the end
+of the data.
+
+Refs internal #94
+---
+ hayro-jbig2/src/arithmetic_decoder.rs |  9 +++++++++
+ hayro-jbig2/src/decode/symbol.rs      | 25 ++++++++++++++++++++++---
+ hayro-jbig2/src/error.rs              |  3 +++
+ 3 files changed, 34 insertions(+), 3 deletions(-)
+
+diff --git a/hayro-jbig2/src/arithmetic_decoder.rs b/hayro-jbig2/src/arithmetic_decoder.rs
+index 8e6adfb..7a16580 100644
+--- a/hayro-jbig2/src/arithmetic_decoder.rs
++++ b/hayro-jbig2/src/arithmetic_decoder.rs
+@@ -41,6 +41,15 @@ impl<'a> ArithmeticDecoder<'a> {
+         self.decode(context)
+     }
+ 
++    /// Whether the decoder has stopped taking in data: it is past the end of
++    /// its input or at a marker (0xFF followed by a byte above 0x8F), where
++    /// BYTEIN no longer advances. The state is permanent, and from then on
++    /// the decoder is a finite state machine that reads nothing, so it can
++    /// cycle; a loop that only ends on what the data says can then spin.
++    pub(crate) fn is_exhausted(&self) -> bool {
++        self.current_byte() == 0xff && self.next_byte() > 0x8f
++    }
++
+     /// The INITDEC procedure from C.3.5.
+     ///
+     /// We use the version from Annex G in <https://www.itu.int/rec/T-REC-T.88-201808-I>.
+diff --git a/hayro-jbig2/src/decode/symbol.rs b/hayro-jbig2/src/decode/symbol.rs
+index a9fffe4..1d213ab 100644
+--- a/hayro-jbig2/src/decode/symbol.rs
++++ b/hayro-jbig2/src/decode/symbol.rs
+@@ -682,7 +682,10 @@ fn export_symbols(ctx: &mut SymbolDecodeContext<'_>) -> Result<Vec<Bitmap>> {
+     let total_symbols = ctx.total_symbols();
+     let budget = ctx.budget;
+ 
+-    let mut read_run_length = || -> Result<u32> {
++    // Returns the run length and whether the arithmetic decoder had run out
++    // of data by the time it was decoded. The Huffman reader fails at the end
++    // of its data, so it never runs out this way.
++    let mut read_run_length = || -> Result<(u32, bool)> {
+         let value = if ctx.header.flags.use_huffman {
+             ctx.h_ctx
+                 .export_run_length_table
+@@ -693,8 +696,10 @@ fn export_symbols(ctx: &mut SymbolDecodeContext<'_>) -> Result<Vec<Bitmap>> {
+                 .decode(&mut ctx.a_ctx.decoder)
+         }
+         .ok_or(HuffmanError::UnexpectedOob)?;
++        let exhausted = !ctx.header.flags.use_huffman && ctx.a_ctx.decoder.is_exhausted();
+ 
+-        u32::try_from(value).map_err(|_| HuffmanError::InvalidCode.into())
++        let value = u32::try_from(value).map_err(|_| HuffmanError::InvalidCode)?;
++        Ok((value, exhausted))
+     };
+     // The runs of exported indices; empty runs are not kept, so there are at
+     // most `total_symbols` of them.
+@@ -702,9 +707,23 @@ fn export_symbols(ctx: &mut SymbolDecodeContext<'_>) -> Result<Vec<Bitmap>> {
+     let mut export_count: u64 = 0;
+     let mut index: u32 = 0;
+     let mut should_export = false;
++    let mut previous_run_empty = false;
+ 
+     while index < total_symbols {
+-        let run_length = read_run_length()?;
++        let (run_length, exhausted) = read_run_length()?;
++
++        // Only a run of at least one symbol moves `index`, and once the
++        // arithmetic decoder has run out of data its state can cycle through
++        // runs of 0 forever (#94). Two 0-length runs in a row are refused
++        // once the data is gone: every such cycle decodes them, and no
++        // encoder writes them (a 0-length run is needed only first, when the
++        // first symbol is exported). Refusing any 0-length run after the data
++        // would break valid streams: a short one's runs are all decoded from
++        // the padding, its leading 0 among them.
++        if run_length == 0 && previous_run_empty && exhausted {
++            bail!(SymbolError::ExportStalled);
++        }
++        previous_run_empty = run_length == 0;
+ 
+         let end_index = index.checked_add(run_length).ok_or(OverflowError::Index)?;
+         if end_index > total_symbols {
+diff --git a/hayro-jbig2/src/error.rs b/hayro-jbig2/src/error.rs
+index b31adac..a8ddf30 100644
+--- a/hayro-jbig2/src/error.rs
++++ b/hayro-jbig2/src/error.rs
+@@ -118,6 +118,8 @@ pub enum SymbolError {
+     InvalidStripDelta,
+     /// Too many symbol instances in a text region.
+     TooManyInstances,
++    /// The export flags stopped advancing after the data ran out.
++    ExportStalled,
+ }
+ 
+ /// Arithmetic overflow errors.
+@@ -246,6 +248,7 @@ impl fmt::Display for SymbolError {
+             Self::Invalid => write!(f, "invalid symbol encountered"),
+             Self::InvalidStripDelta => write!(f, "strip delta overflow"),
+             Self::TooManyInstances => write!(f, "too many symbol instances"),
++            Self::ExportStalled => write!(f, "export flags stopped advancing"),
+         }
+     }
+ }

@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "sha256": "9d715ce4e964f6ccbf50e1d1c42ca5f01425a079a5c39a9581c876c56afca1b3",
+  "size": 45598,
+  "source": "corpus-b/pdfbox/PDFBOX-3110-poems-beads.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 2,
+  "pages": [
+    {
+      "index": 0,
+      "text": "ARGAN, seul dans sa chambre, assis, une table devant lui, compte des parties d'apothicaire avec \ndes jetons; il fait, parlant à lui-même, les dialogues suivants:\nTrois et deux font cinq, et cinq font dix, et dix font vingt; trois et deux font cinq.\n\"Plus, du vingt-quatrième, un petit clystère insinuatif, préparatif et rémollient, pour amollir, humecter \net rafraîchir les entrailles de monsieur?\" Ce qui me plaît de monsieur Fleurant, mon apothicaire, \nc'est que ses parties sont toujours fort civiles. \"Les entrailles de monsieur, trente sols.\" Oui; mais, \nmonsieur Fleurant, ce n'est pas tout que d'être civil; il faut être aussi raisonnable et ne pas \nécorcher les malades. Trente sols un lavement! Je suis votre serviteur, je vous l'ai déjà dit; vous ne \nme les avez mis dans les autres parties qu'à vingt sols; et vingt sols en langage d'apothicaire, \nc'est-à-dire dix sols; les voilà, dix sols.\n\"Plus, dudit jour, un bon clystère détersif, composé avec catholicon double, rhubarbe, miel rosat, et \nautres, suivant l'ordonnance, pour balayer, laver et nettoyer le bas-ventre de monsieur, trente sols.\" \nAvec votre permission, dix sols.\n\"Plus, dudit jour, le soir, un julep hépatique, soporatif et somnifère, composé pour faire dormir \nmonsieur, trente-cinq sols.\" Je ne me plains pas de celui-là; car il me ﬁt bien dormir. Dix, quinze, \nseize, et dix-sept sols six deniers.\n\"Plus, du vingt-cinquième, une bonne médecine purgative et corroborative, composée de casse \nrécente avec séné levantin, et autres, suivant l'ordonnance de monsieur Purgon, pour expulser et \névacuer la bile de monsieur, quatre livres. Ah! monsieur Fleurant, c'est se moquer: il faut vivre avec \nles malades. Monsieur Purgon ne vous a pas ordonné de mettre quatre francs. Mettez, mettez trois \nlivres, s'il vous plaît. Vingt et trente sols.\n\"Plus, dudit jour, une potion anodine et astringente, pour faire reposer monsieur, trente sols.\" Bon, \ndix et quinze sols.\nWer reitet so spät durch Nacht und Wind?\nEs ist der Vater mit seinem Kind;\nEr hat den Knaben wohl in dem Arm,\nEr fasst ihn sicher, er hält ihn warm.\nMein Sohn, was birgst du so bang dein Gesicht? \n—\nSiehst, Vater, du den Erlkönig nicht?\nDen Erlenkönig mit Kron’ und Schweif? —\nMein Sohn, es ist ein Nebelstreif. —\n„Du liebes Kind, komm, geh mit mir!\nGar schöne Spiele spiel’ ich mit dir;\nManch’ bunte Blumen sind an dem Strand,\nMeine Mutter hat manch gülden Gewand.“ —\nMein Vater, mein Vater, und hörest du nicht,\nWas Erlenkönig mir leise verspricht? —\nSei ruhig, bleibe ruhig, mein Kind;\nIn dürren Blättern säuselt der Wind. —\n„Willst, feiner Knabe, du mit mir gehn?\nMeine Töchter sollen dich warten schön;\nMeine Töchter führen den nächtlichen Reihn\nUnd wiegen und tanzen und singen dich ein.“ —\nMein Vater, mein Vater, und siehst du nicht dort\nErlkönigs Töchter am düstern Ort? —\nMein Sohn, mein Sohn, ich seh’ es genau:\nEs scheinen die alten Weiden so grau. —\n„Ich liebe dich, mich reizt deine schöne Gestalt;\nUnd bist du nicht willig, so brauch’ ich Gewalt.“ —\nMein Vater, mein Vater, jetzt faßt er mich an!\nErlkönig hat mir ein Leids getan! —\nDem Vater grauset’s; er reitet geschwind,\nEr hält in Armen das ächzende Kind,\nErreicht den Hof mit Mühe und Not;\nIn seinen Armen das Kind war tot.\n",
+      "sha256": "b55b1fb0b94f7e41bf2c911a6b6e160fb83a1ad6098a1fb746b42ea87be60ac6",
+      "error": null
+    },
+    {
+      "index": 1,
+      "text": "\"Plus, du vingt-sixième, un clystère carminatif, pour chasser les vents de monsieur, trente sols.\" \nDix sols, monsieur Fleurant.\n\"Plus, le clystère de monsieur, réitéré le soir, comme dessus, trente sols.\" Monsieur Fleurant, dix \nsols.\n\"Plus, du vingt-septième, une bonne médecine, composée pour hâter d'aller et chasser dehors \nles mauvaises humeurs de monsieur, trois livres.\" Bon, vingt et trente sols; je suis bien aise que \nvous soyez raisonnable.\n\"Plus, du vingt-huitième, une prise de petit-lait clariﬁé et dulcoré pour adoucir, léniﬁer, tempérer et \nrafraîchir le sang de monsieur, vingt sols.\" Bon, dix sols.\n\"Plus, une potion cordiale et préservative, composée avec douze grains de bézoard, sirop de \nlimon et grenades, et autres, suivant l'ordonnance, cinq livres.\" Ah! monsieur Fleurant, tout doux, \ns'il vous plaît; si vous en usez comme cela, on ne voudra plus être malade; contentez-vous de \nquatre francs. Vingt et quarante sols. Trois et deux font cinq, et cinq font dix et dix font vingt. \nSoixante et trois livres quatre sols six deniers.\nSi bien donc que, de ce mois, j'ai pris une, deux, trois, quatre, cinq, six, sept et huit médecines; \net un, deux, trois, quatre, cinq, six, sept, huit, neuf, dix, onze et douze lavements; et, l'autre mois, \nil y avait douze médecines et vingt lavements. Je ne m'étonne pas si je ne me porte pas si bien \nce mois-ci que l'autre. Je le dirai à monsieur Purgon, aﬁn qu'il mette ordre à cela.\nAllons, qu'on m'ôte tout ceci. Il n'y a personne. J'ai beau dire: on me laisse toujours seul: il n'y a \npas moyen de les arrêter ici.\n(Il agite une sonnette pour faire venir ses gens.)\nIls n'entendent point, et ma sonnette ne fait pas assez de bruit. Drelin, drelin, drelin. Point \nd'affaire. Drelin, drelin, drelin. Ils sont sourds... Toinette! Drelin, drelin, drelin. Tout comme si je ne \nsonnais point. Chienne, coquine ! Drelin, drelin, drelin. J'enrage!\n(Il ne sonne plus, mais il crie.)\nDrelin, drelin, drelin. Carogne, à tous les diables! Est-il possible qu'on laisse comme cela un \npauvre malade tout seul? Drelin drelin, drelin. Voilà qui est pitoyable! Drelin, drelin, drelin. Ah! \nmon Dieu! Ils me laisseront ici mourir. Drelin, drelin, drelin.\n",
+      "sha256": "249ae785142fb6dffee847d9b9fccca6f1039b851e83ab53ef34c04fd8be1375",
+      "error": null
+    }
+  ]
+}

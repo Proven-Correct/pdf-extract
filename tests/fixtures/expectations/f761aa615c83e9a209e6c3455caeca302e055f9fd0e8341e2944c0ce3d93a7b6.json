@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "f761aa615c83e9a209e6c3455caeca302e055f9fd0e8341e2944c0ce3d93a7b6",
+  "size": 21515,
+  "source": "corpus-d/sparse_below_min_chars_skew.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "Exhibit 12: Notice of Flings.\n",
+        "sha256": "9a585b602f77219877ccb9845e55ca67c86ca62d23a8dd1698f64bc480807d4c"
+      }
+    ]
+  }
+}

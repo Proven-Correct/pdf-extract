@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "23a7a75918f9f0c3826d29efcec1e7c1c2b54d1cafcb88e63fdcebfa55c477dc",
+  "size": 2276,
+  "source": "corpus-c/kp06_type3_unmapped.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "A□\u0000\u0001\t\n È\n",
+      "sha256": "ed3791dc7bfc32657b64557867269c4f53fa5bcf8387ac10e69e0743cdedfc1a",
+      "error": null
+    }
+  ]
+}

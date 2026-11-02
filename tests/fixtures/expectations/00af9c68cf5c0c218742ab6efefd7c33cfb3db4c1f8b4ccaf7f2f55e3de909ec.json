@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "00af9c68cf5c0c218742ab6efefd7c33cfb3db4c1f8b4ccaf7f2f55e3de909ec",
+  "size": 751,
+  "source": "corpus-c/kp05_trailing.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Hello   \nWorld\n",
+      "sha256": "970c2462d08efb5bfa0db22a89329b6e03e470309327c6b5422431bef792b844",
+      "error": null
+    }
+  ]
+}

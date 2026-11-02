@@ -1,0 +1,444 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Mon, 19 Oct 2026 09:09:04 +0100
+Subject: [PATCH 28/35] H18: catch image-codec panics at the codec boundary
+
+Run each call into an image codec crate (zune-jpeg, hayro-ccitt,
+hayro-jbig2, hayro-jpeg2000) inside catch_unwind through one helper,
+guard_codec, and turn a panic into DecodeFailure::ImageDecode, so a codec
+bug skips one image instead of failing the page. Only the codec calls are
+guarded: image parameters, JBIG2Globals resolution and the rest of the
+parser still panic.
+
+The catch is compiled out under cfg(fuzzing) (set by cargo fuzz) and
+without std, so fuzzing still sees every codec panic; the manifest
+declares the cfg. The test-only feature codec-panic-hook adds
+arm_codec_panic_for_test (panic inside the guard on the next codec call)
+and arm_unguarded_image_panic_for_test (panic in the codec module, after
+parameter resolution, just before the guard), both per thread and cleared when they fire.
+
+Refs internal #76
+---
+ hayro-syntax/Cargo.toml          |  10 +++
+ hayro-syntax/src/filter/ccitt.rs |  10 ++-
+ hayro-syntax/src/filter/dct.rs   | 114 +++++++++++++++++--------------
+ hayro-syntax/src/filter/jbig2.rs |  24 ++++---
+ hayro-syntax/src/filter/jpx.rs   |  12 ++--
+ hayro-syntax/src/filter/mod.rs   | 101 +++++++++++++++++++++++++++
+ 6 files changed, 203 insertions(+), 68 deletions(-)
+
+diff --git a/hayro-syntax/Cargo.toml b/hayro-syntax/Cargo.toml
+index 38b683f..fd736a8 100644
+--- a/hayro-syntax/Cargo.toml
++++ b/hayro-syntax/Cargo.toml
+@@ -28,6 +28,10 @@ repository = "https://github.com/LaurenzV/hayro"
+ resolver = "2"
+ 
+ [features]
++# H18: test-only; `arm_codec_panic_for_test` makes the next guarded image-codec
++# call on the thread panic inside the codec guard. Costs one thread-local read
++# per guarded codec call when enabled.
++codec-panic-hook = ["std"]
+ default = [
+     "std",
+     "images",
+@@ -153,3 +157,9 @@ unused_import_braces = "warn"
+ unused_lifetimes = "warn"
+ unused_macro_rules = "warn"
+ unused_qualifications = "warn"
++
++# H18: `cargo fuzz` sets `--cfg fuzzing`, which compiles the codec panic guard
++# out (filter/mod.rs, `guard_codec`).
++[lints.rust.unexpected_cfgs]
++level = "warn"
++check-cfg = ["cfg(fuzzing)"]
+diff --git a/hayro-syntax/src/filter/ccitt.rs b/hayro-syntax/src/filter/ccitt.rs
+index 7a2cc5e..9bf629a 100644
+--- a/hayro-syntax/src/filter/ccitt.rs
++++ b/hayro-syntax/src/filter/ccitt.rs
+@@ -2,7 +2,7 @@ use crate::object::Dict;
+ use crate::object::dict::keys::{
+     BLACK_IS_1, COLUMNS, ENCODED_BYTE_ALIGN, END_OF_BLOCK, END_OF_LINE, K, ROWS,
+ };
+-use crate::filter::check_image_pixels;
++use crate::filter::{check_image_pixels, guard_codec};
+ use crate::object::stream::{
+     DecodeFailure, FilterResult, ImageColorSpace, ImageData, ImageDecodeParams,
+ };
+@@ -48,6 +48,7 @@ pub(crate) fn decode(
+         u64::from(rows)
+     };
+     check_image_pixels(u64::from(settings.columns), max_rows, max_pixels)?;
++    super::fire_armed_panic(super::ArmedPanic::OutsideGuard);
+ 
+     // Whenever possible (if we don't have an indexed color space), we convert
+     // the data as 8-bit instead of 1-bit, so that it can be easier converted
+@@ -108,7 +109,9 @@ pub(crate) fn decode(
+             bit_count: 0,
+         };
+         let mut context = DecoderContext::new(settings);
+-        let result = hayro_ccitt::decode(data, &mut decoder, &mut context);
++        // H18: a panic in the codec fails the image outright, whatever rows
++        // it had pushed.
++        let result = guard_codec(|| Ok(hayro_ccitt::decode(data, &mut decoder, &mut context)))?;
+ 
+         // If we decoded at least one row, let's be lenient and return what we got.
+         // See also 0001763.pdf.
+@@ -144,7 +147,8 @@ pub(crate) fn decode(
+             decoded_rows: 0,
+         };
+         let mut context = DecoderContext::new(settings);
+-        let result = hayro_ccitt::decode(data, &mut decoder, &mut context);
++        // H18: as above.
++        let result = guard_codec(|| Ok(hayro_ccitt::decode(data, &mut decoder, &mut context)))?;
+ 
+         if result.is_err() && decoder.decoded_rows == 0 {
+             return Err(DecodeFailure::ImageDecode);
+diff --git a/hayro-syntax/src/filter/dct.rs b/hayro-syntax/src/filter/dct.rs
+index c3b907f..ae2be66 100644
+--- a/hayro-syntax/src/filter/dct.rs
++++ b/hayro-syntax/src/filter/dct.rs
+@@ -1,6 +1,6 @@
+ use crate::object::Dict;
+ use crate::object::dict::keys::COLOR_TRANSFORM;
+-use crate::filter::check_image_pixels;
++use crate::filter::{check_image_pixels, guard_codec};
+ use crate::object::stream::{
+     DecodeFailure, FilterResult, ImageColorSpace, ImageData, ImageDecodeParams,
+ };
+@@ -30,65 +30,73 @@ pub(crate) fn decode(
+     // are too large (if they are too small, they will just be padded later on).
+     let data = maybe_patch_jpeg_dimensions(data, image_params).ok_or(FAILED)?;
+ 
+-    let options = DecoderOptions::default()
+-        .set_max_width(u16::MAX as usize)
+-        .set_max_height(u16::MAX as usize);
+-    let mut decoder = zune_jpeg::JpegDecoder::new_with_options(ZCursor::new(&*data), options);
+-    decoder.decode_headers().map_err(|_| FAILED)?;
+-
+-    // H13: the frame size, known now and allocated by `decode()`. Already at
+-    // most the declared area (the SOF was patched down above); checked anyway
+-    // so that every codec follows the same rule.
+-    let (frame_width, frame_height) = decoder.dimensions().ok_or(FAILED)?;
+-    check_image_pixels(frame_width as u64, frame_height as u64, max_pixels)?;
+-
+     let color_transform = params.get::<u8>(COLOR_TRANSFORM);
+-    let input_color_space = decoder.input_colorspace().unwrap();
+-
+-    let mut out_colorspace = if let Some(num_components) = image_params.num_components
+-        && !matches!(num_components, 1 | 3 | 4)
+-    {
+-        ColorSpace::MultiBand(NonZeroU32::new(num_components as u32).ok_or(FAILED)?)
+-    } else {
+-        match input_color_space {
+-            ColorSpace::YCbCr => {
+-                if color_transform.is_none_or(|c| c == 1) {
+-                    ColorSpace::RGB
+-                } else {
+-                    ColorSpace::YCbCr
++    super::fire_armed_panic(super::ArmedPanic::OutsideGuard);
++
++    // H18: everything from here to the decoded pixels is zune-jpeg's work
++    // (and the YCCK fix-up of its output), so a panic in it is a broken image.
++    let (decoded, out_colorspace, width, height) = guard_codec(|| {
++        let options = DecoderOptions::default()
++            .set_max_width(u16::MAX as usize)
++            .set_max_height(u16::MAX as usize);
++        let mut decoder = zune_jpeg::JpegDecoder::new_with_options(ZCursor::new(&*data), options);
++        decoder.decode_headers().map_err(|_| FAILED)?;
++
++        // H13: the frame size, known now and allocated by `decode()`. Already at
++        // most the declared area (the SOF was patched down above); checked anyway
++        // so that every codec follows the same rule.
++        let (frame_width, frame_height) = decoder.dimensions().ok_or(FAILED)?;
++        check_image_pixels(frame_width as u64, frame_height as u64, max_pixels)?;
++
++        let input_color_space = decoder.input_colorspace().unwrap();
++
++        let mut out_colorspace = if let Some(num_components) = image_params.num_components
++            && !matches!(num_components, 1 | 3 | 4)
++        {
++            ColorSpace::MultiBand(NonZeroU32::new(num_components as u32).ok_or(FAILED)?)
++        } else {
++            match input_color_space {
++                ColorSpace::YCbCr => {
++                    if color_transform.is_none_or(|c| c == 1) {
++                        ColorSpace::RGB
++                    } else {
++                        ColorSpace::YCbCr
++                    }
+                 }
++                ColorSpace::RGB | ColorSpace::RGBA => ColorSpace::RGB,
++                ColorSpace::Luma | ColorSpace::LumaA => ColorSpace::Luma,
++                // TODO: Find test case with color transform on cmyk
++                CMYK => CMYK,
++                ColorSpace::YCCK => ColorSpace::YCCK,
++                _ => ColorSpace::RGB,
+             }
+-            ColorSpace::RGB | ColorSpace::RGBA => ColorSpace::RGB,
+-            ColorSpace::Luma | ColorSpace::LumaA => ColorSpace::Luma,
+-            // TODO: Find test case with color transform on cmyk
+-            CMYK => CMYK,
+-            ColorSpace::YCCK => ColorSpace::YCCK,
+-            _ => ColorSpace::RGB,
+-        }
+-    };
++        };
+ 
+-    // In case image had APP14 marker, we might have to override the colorspace.
+-    if input_color_space == CMYK && decoder.info().unwrap().components == 3 {
+-        out_colorspace = ColorSpace::RGB;
+-    }
++        // In case image had APP14 marker, we might have to override the colorspace.
++        if input_color_space == CMYK && decoder.info().unwrap().components == 3 {
++            out_colorspace = ColorSpace::RGB;
++        }
+ 
+-    decoder.set_options(DecoderOptions::default().jpeg_set_out_colorspace(out_colorspace));
+-    let mut decoded = decoder.decode().map_err(|_| FAILED)?;
+-
+-    if out_colorspace == ColorSpace::YCCK {
+-        // See <https://github.com/mozilla/pdf.js/blob/69595a29192b7704733404a42a2ebb537601117b/src/core/jpg.js#L1331>
+-        for c in decoded.chunks_mut(4) {
+-            let y = c[0] as f32;
+-            let cb = c[1] as f32;
+-            let cr = c[2] as f32;
+-            c[0] = (434.456 - y - 1.402 * cr) as u8;
+-            c[1] = (119.541 - y + 0.344 * cb + 0.714 * cr) as u8;
+-            c[2] = (481.816 - y - 1.772 * cb) as u8;
++        decoder.set_options(DecoderOptions::default().jpeg_set_out_colorspace(out_colorspace));
++        let mut decoded = decoder.decode().map_err(|_| FAILED)?;
++
++        if out_colorspace == ColorSpace::YCCK {
++            // See <https://github.com/mozilla/pdf.js/blob/69595a29192b7704733404a42a2ebb537601117b/src/core/jpg.js#L1331>
++            for c in decoded.chunks_mut(4) {
++                let y = c[0] as f32;
++                let cb = c[1] as f32;
++                let cr = c[2] as f32;
++                c[0] = (434.456 - y - 1.402 * cr) as u8;
++                c[1] = (119.541 - y + 0.344 * cb + 0.714 * cr) as u8;
++                c[2] = (481.816 - y - 1.772 * cb) as u8;
++            }
+         }
+-    }
+ 
+-    let width = decoder.dimensions().unwrap().0 as u32;
+-    let height = decoder.dimensions().unwrap().1 as u32;
++        let width = decoder.dimensions().unwrap().0 as u32;
++        let height = decoder.dimensions().unwrap().1 as u32;
++
++        Ok((decoded, out_colorspace, width, height))
++    })?;
+ 
+     let image_data = ImageData {
+         alpha: None,
+diff --git a/hayro-syntax/src/filter/jbig2.rs b/hayro-syntax/src/filter/jbig2.rs
+index 076a5c9..ce85448 100644
+--- a/hayro-syntax/src/filter/jbig2.rs
++++ b/hayro-syntax/src/filter/jbig2.rs
+@@ -3,7 +3,8 @@ use crate::object::Dict;
+ use crate::object::Stream;
+ use crate::object::dict::keys::JBIG2_GLOBALS;
+ use crate::filter::{
+-    JBIG2_BUDGET_BYTES_PER_PIXEL, check_image_pixels, image_memory_budget, image_memory_limit_hit,
++    JBIG2_BUDGET_BYTES_PER_PIXEL, check_image_pixels, guard_codec, image_memory_budget,
++    image_memory_limit_hit,
+ };
+ use crate::object::stream::{
+     DecodeFailure, FilterResult, ImageColorSpace, ImageData, ImageDecodeParams,
+@@ -26,9 +27,14 @@ pub(crate) fn decode(
+     let globals = params
+         .get::<Stream<'_>>(JBIG2_GLOBALS)
+         .and_then(|g| g.decoded().ok());
++    super::fire_armed_panic(super::ArmedPanic::OutsideGuard);
+ 
+-    let image = hayro_jbig2::Image::new_embedded(data, globals.as_deref())
+-        .map_err(|_| DecodeFailure::ImageDecode)?;
++    // H18: the globals above are hayro-syntax's (xref and Flate) and stay
++    // outside the codec guard; only hayro-jbig2's own calls are inside it.
++    let image = guard_codec(|| {
++        hayro_jbig2::Image::new_embedded(data, globals.as_deref())
++            .map_err(|_| DecodeFailure::ImageDecode)
++    })?;
+ 
+     // H13: `new_embedded` read only the segment headers; the page size (an
+     // unknown height already resolved from the end-of-stripe segments) is
+@@ -125,10 +131,12 @@ fn decode_within_budget<D: hayro_jbig2::Decoder>(
+     let mut ctx = hayro_jbig2::DecoderContext::default();
+     ctx.memory_budget = image_memory_budget(max_pixels, JBIG2_BUDGET_BYTES_PER_PIXEL);
+ 
+-    image.decode_with(decoder, &mut ctx).map_err(|e| match e {
+-        hayro_jbig2::DecodeError::Overflow(hayro_jbig2::OverflowError::MemoryBudget) => {
+-            image_memory_limit_hit()
+-        }
+-        _ => DecodeFailure::ImageDecode,
++    guard_codec(|| {
++        image.decode_with(decoder, &mut ctx).map_err(|e| match e {
++            hayro_jbig2::DecodeError::Overflow(hayro_jbig2::OverflowError::MemoryBudget) => {
++                image_memory_limit_hit()
++            }
++            _ => DecodeFailure::ImageDecode,
++        })
+     })
+ }
+diff --git a/hayro-syntax/src/filter/jpx.rs b/hayro-syntax/src/filter/jpx.rs
+index cdfff1b..2b5c4ab 100644
+--- a/hayro-syntax/src/filter/jpx.rs
++++ b/hayro-syntax/src/filter/jpx.rs
+@@ -2,7 +2,8 @@ use crate::bit_reader::BitWriter;
+ use crate::filter::FilterResult;
+ use crate::math::round_f32;
+ use crate::filter::{
+-    JPX_BUDGET_BYTES_PER_PIXEL, check_image_pixels, image_memory_budget, image_memory_limit_hit,
++    JPX_BUDGET_BYTES_PER_PIXEL, check_image_pixels, guard_codec, image_memory_budget,
++    image_memory_limit_hit,
+ };
+ use crate::object::stream::{DecodeFailure, ImageColorSpace, ImageData, ImageDecodeParams};
+ use alloc::borrow::Cow;
+@@ -35,12 +36,15 @@ pub(crate) fn decode(
+         target_resolution: None,
+         max_memory_bytes: image_memory_budget(max_pixels, JPX_BUDGET_BYTES_PER_PIXEL),
+     };
++    super::fire_armed_panic(super::ArmedPanic::OutsideGuard);
+ 
+     // H13: `Image::new` parses the headers only. Checked at full resolution
+     // even when a smaller target is requested, because the decoder's per-tile
+     // records and coefficient buffers follow the full-resolution geometry
+     // whatever resolution it outputs.
+-    let full = hayro_jpeg2000::Image::new(data, &settings).map_err(codec_failure)?;
++    //
++    // H18: each call into hayro-jpeg2000 runs in the codec guard.
++    let full = guard_codec(|| hayro_jpeg2000::Image::new(data, &settings).map_err(codec_failure))?;
+     check_image_pixels(
+         u64::from(full.width()),
+         u64::from(full.height()),
+@@ -54,7 +58,7 @@ pub(crate) fn decode(
+                 target_resolution: target,
+                 ..settings
+             };
+-            hayro_jpeg2000::Image::new(data, &settings).map_err(codec_failure)?
++            guard_codec(|| hayro_jpeg2000::Image::new(data, &settings).map_err(codec_failure))?
+         }
+     };
+ 
+@@ -96,7 +100,7 @@ fn decode_image(
+         },
+     };
+     let has_alpha = image.has_alpha();
+-    let bitmap = image.decode().map_err(codec_failure)?;
++    let bitmap = guard_codec(|| image.decode().map_err(codec_failure))?;
+ 
+     let (mut data, mut alpha) = if !has_alpha {
+         (bitmap, None)
+diff --git a/hayro-syntax/src/filter/mod.rs b/hayro-syntax/src/filter/mod.rs
+index b993692..772dbea 100644
+--- a/hayro-syntax/src/filter/mod.rs
++++ b/hayro-syntax/src/filter/mod.rs
+@@ -247,6 +247,107 @@ pub(crate) fn check_image_pixels(
+     }
+ }
+ 
++/// H18: run one call into an image codec crate (zune-jpeg, hayro-ccitt,
++/// hayro-jbig2, hayro-jpeg2000), turning a panic inside it into
++/// [`DecodeFailure::ImageDecode`], so a codec bug skips one image instead of
++/// failing the page.
++///
++/// Only the codec call goes in here: resolving the image's parameters, the
++/// `JBIG2Globals` stream and the rest of hayro-syntax stay outside, so a
++/// parser bug still panics. `AssertUnwindSafe` holds because `f` borrows only
++/// the encoded data, decoder state local to the one decode, and copies of its
++/// settings. The thread-local counters are bumped inside the guard only after
++/// a codec call has returned, immediately before returning the error (the
++/// JPEG frame check, the memory-budget mappings), and a decoder left
++/// half-written by a panic is dropped unread. Our own code that does run
++/// inside (the pixel sinks the CCITT and JBIG2 codecs call back into, the
++/// JPEG frame check and YCCK fix-up) touches only that local state.
++///
++/// Fuzzing builds (`cfg(fuzzing)`, set by `cargo fuzz` for every crate) and
++/// `no_std` builds compile the catch out, so there a codec panic propagates.
++#[cfg(feature = "images")]
++pub(crate) fn guard_codec<T>(
++    f: impl FnOnce() -> Result<T, DecodeFailure>,
++) -> Result<T, DecodeFailure> {
++    #[cfg(all(feature = "std", not(fuzzing)))]
++    {
++        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++            fire_armed_panic(ArmedPanic::InsideGuard);
++            f()
++        }))
++        .unwrap_or(Err(DecodeFailure::ImageDecode))
++    }
++
++    #[cfg(not(all(feature = "std", not(fuzzing))))]
++    {
++        fire_armed_panic(ArmedPanic::InsideGuard);
++        f()
++    }
++}
++
++/// Whether [`guard_codec`] catches codec panics in this build: false under
++/// `cfg(fuzzing)`, without `std`, and without `images` (no codecs). Lets a test assert which build it runs in
++/// without naming the `fuzzing` cfg itself.
++#[doc(hidden)]
++pub const CODEC_PANICS_CAUGHT: bool =
++    cfg!(all(feature = "std", feature = "images", not(fuzzing)));
++
++/// Where an armed test panic fires (feature `codec-panic-hook`).
++#[cfg_attr(not(feature = "codec-panic-hook"), allow(dead_code))]
++#[derive(Copy, Clone, PartialEq, Eq)]
++pub(crate) enum ArmedPanic {
++    /// Inside [`guard_codec`], as if the codec itself had panicked.
++    InsideGuard,
++    /// In a codec module, after the image's parameters (and JBIG2's
++    /// globals) are resolved and just before the first guarded call: a panic
++    /// on the image path that the guard must not catch. A guard widened to
++    /// the module's body, or to [`Filter::apply`], would catch it.
++    OutsideGuard,
++}
++
++#[cfg(feature = "codec-panic-hook")]
++std::thread_local! {
++    // Per thread so that a test arming it cannot disturb decodes running on
++    // other threads of the same process.
++    static ARMED_PANIC: core::cell::Cell<Option<ArmedPanic>> = const { core::cell::Cell::new(None) };
++}
++
++/// Make the next guarded image-codec call on this thread panic inside the
++/// codec guard, as a codec bug would (feature `codec-panic-hook`). The flag
++/// clears when it fires, so exactly one decode fails. For tests of the codec
++/// panic boundary: no known input panics a codec reliably, and fuzzing exists
++/// to find and fix any that does.
++#[cfg(feature = "codec-panic-hook")]
++#[doc(hidden)]
++pub fn arm_codec_panic_for_test() {
++    ARMED_PANIC.with(|a| a.set(Some(ArmedPanic::InsideGuard)));
++}
++
++/// Make the next image-codec decode on this thread panic just before the codec
++/// guard is entered, after the image's parameters are resolved: on the image
++/// path but outside the codec call (feature `codec-panic-hook`). The flag clears when it fires. For tests that
++/// the guard catches codec panics only.
++#[cfg(feature = "codec-panic-hook")]
++#[doc(hidden)]
++pub fn arm_unguarded_image_panic_for_test() {
++    ARMED_PANIC.with(|a| a.set(Some(ArmedPanic::OutsideGuard)));
++}
++
++/// Panic if a test armed a panic for `site`, clearing the flag first.
++#[cfg(feature = "images")]
++#[cfg_attr(not(feature = "codec-panic-hook"), allow(unused_variables))]
++#[inline]
++pub(crate) fn fire_armed_panic(site: ArmedPanic) {
++    #[cfg(feature = "codec-panic-hook")]
++    if ARMED_PANIC.with(|a| a.get()) == Some(site) {
++        ARMED_PANIC.with(|a| a.set(None));
++        match site {
++            ArmedPanic::InsideGuard => panic!("codec panic injected for testing"),
++            ArmedPanic::OutsideGuard => panic!("image-path panic injected for testing"),
++        }
++    }
++}
++
+ /// A data filter.
+ #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+ pub enum Filter {

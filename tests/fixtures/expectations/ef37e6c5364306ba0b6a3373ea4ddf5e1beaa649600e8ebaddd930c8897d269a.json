@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "ef37e6c5364306ba0b6a3373ea4ddf5e1beaa649600e8ebaddd930c8897d269a",
+  "size": 1342,
+  "source": "corpus-b/hayro/encrypted_aes_256.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Hello World!\n",
+      "sha256": "03ba204e50d126e4674c005e04d82e84c21366780af1f43bd54a37816b6ab340",
+      "error": null
+    }
+  ]
+}

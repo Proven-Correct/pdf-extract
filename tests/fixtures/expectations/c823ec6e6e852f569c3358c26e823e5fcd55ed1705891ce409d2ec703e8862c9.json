@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "c823ec6e6e852f569c3358c26e823e5fcd55ed1705891ce409d2ec703e8862c9",
+  "size": 64609,
+  "source": "corpus-b/pdfbox/acroform.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Heinz Mustermann\nMy Button\n\u0014\nThis is a line \nThis is a second line \nAnd a third line\nFormatted Richttext \nIn a multi-Line field\nABC\nXYZ\n123\nEarth\nMars\nSun\nVenus\nVW\nChicken\nSIGN\n",
+      "sha256": "8d8176f8dab31ad230c27eb37381e0237abb70364325a2f856e565e8985e3aa8",
+      "error": null
+    }
+  ]
+}

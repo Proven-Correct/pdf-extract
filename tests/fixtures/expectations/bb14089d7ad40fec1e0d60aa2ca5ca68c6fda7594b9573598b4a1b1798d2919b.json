@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "sha256": "bb14089d7ad40fec1e0d60aa2ca5ca68c6fda7594b9573598b4a1b1798d2919b",
+  "size": 227,
+  "source": "corpus-c/catalog_no_pages.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 0,
+  "pages": []
+}

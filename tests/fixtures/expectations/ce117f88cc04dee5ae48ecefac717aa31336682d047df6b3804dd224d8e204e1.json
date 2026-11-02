@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "ce117f88cc04dee5ae48ecefac717aa31336682d047df6b3804dd224d8e204e1",
+  "size": 1112,
+  "source": "corpus-b/pdfbox/PDFBOX-6249-cns1-nonembedded-latin.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Hello Tika 123 中文\n",
+      "sha256": "c49949b0e340018d6f3585c9eb1a4e80b9a4488caa69575d074bb99e1d1dc22f",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Thu, 1 Oct 2026 16:17:25 -0400
+Subject: [PATCH 08/22] H6: Unicode fallbacks for CID fonts without ToUnicode
+
+(a) `Type0Font::new` loaded the UCS2 CMap of the font's character
+collection (Adobe-Japan1, -GB1, -CNS1, -Korea1) only when the font
+program was not embedded. A CID of a known collection denotes the same
+character whether or not the program is embedded, so the map is now
+used whenever there is no `ToUnicode` map.
+
+(b) For an embedded OpenType/TrueType program with no `ToUnicode` map
+and no known collection (typically `Identity` ordering), map the code
+to its glyph as drawing does (CID, then `/CIDToGIDMap`) and look the
+glyph up in the program's `cmap`, inverted once per font on first use.
+When several characters share a glyph, the lowest code point is used.
+Substitute (non-embedded) fonts are excluded: their glyph IDs have no
+relation to the PDF's CIDs.
+---
+ hayro-interpret/src/font/cid.rs | 51 ++++++++++++++++++++++++++++++---
+ 1 file changed, 47 insertions(+), 4 deletions(-)
+
+diff --git a/hayro-interpret/src/font/cid.rs b/hayro-interpret/src/font/cid.rs
+index c223de5..c704696 100644
+--- a/hayro-interpret/src/font/cid.rs
++++ b/hayro-interpret/src/font/cid.rs
+@@ -19,7 +19,7 @@ use skrifa::raw::collections::int_set::Domain;
+ use skrifa::{FontRef, GlyphId, MetadataProvider};
+ use std::collections::HashMap;
+ use std::ops::Deref;
+-use std::sync::Arc;
++use std::sync::{Arc, OnceLock};
+ 
+ #[derive(Debug)]
+ pub(crate) struct Type0Font {
+@@ -46,6 +46,9 @@ pub(crate) struct Type0Font {
+     character_collection: Option<CharacterCollection>,
+     /// Ascent and descent in text space units, from the descendant font's descriptor.
+     ascent_descent: Option<(f32, f32)>,
++    /// The embedded font program's `cmap` inverted (glyph to character), built on first
++    /// use as the last resort for Unicode.
++    reverse_cmap: OnceLock<HashMap<GlyphId, char>>,
+ }
+ 
+ impl Type0Font {
+@@ -120,9 +123,10 @@ impl Type0Font {
+         let mut to_unicode = read_to_unicode(dict, cmap_resolver);
+         let mut to_unicode_is_cid_indexed = false;
+ 
+-        // If there is no ToUnicode map, try to get the UCS2 CMap.
+-        if fallback
+-            && to_unicode.is_none()
++        // If there is no ToUnicode map, try to get the UCS2 CMap. CIDs of a known
++        // character collection mean the same characters whether or not the font program
++        // is embedded, so this applies to embedded fonts as well.
++        if to_unicode.is_none()
+             && let Some(cc) = character_collection.as_ref()
+             && let Some(ucs2_name) = cc.family.ucs2_cmap()
+             && let Some(data) = (cmap_resolver)(ucs2_name)
+@@ -161,6 +165,7 @@ impl Type0Font {
+             to_unicode_is_cid_indexed,
+             character_collection,
+             ascent_descent,
++            reverse_cmap: OnceLock::new(),
+         })
+     }
+ 
+@@ -427,6 +432,20 @@ impl Type0Font {
+             return to_unicode.lookup_bf_string(key);
+         }
+ 
++        // Neither a `ToUnicode` map nor a known character collection: if the embedded
++        // program has a `cmap`, the glyph the code selects tells us the character. Only for
++        // embedded programs, since a substitute font's glyph IDs say nothing about the
++        // PDF's CIDs.
++        if !self.fallback
++            && let FontType::OpenType(t) = &self.font_type
++        {
++            let cid = u16::try_from(self.code_to_cid(code)?).ok()?;
++            let glyph = self.cid_to_gid_map.map(cid);
++            let reverse = self.reverse_cmap.get_or_init(|| reverse_cmap(t));
++
++            return reverse.get(&glyph).copied().map(BfString::Char);
++        }
++
+         None
+     }
+ }
+@@ -535,6 +554,30 @@ impl CidToGIdMap {
+     }
+ }
+ 
++/// Invert a font's `cmap`. When several characters map to one glyph (for example U+0020
++/// and U+00A0 to the space glyph), the lowest code point wins, so the result does not
++/// depend on the order of the subtable.
++fn reverse_cmap(font: &OpenTypeFontBlob) -> HashMap<GlyphId, char> {
++    let mut reverse = HashMap::new();
++
++    for (code_point, glyph) in font.font_ref().charmap().mappings() {
++        let Some(c) = char::from_u32(code_point) else {
++            continue;
++        };
++
++        if glyph == GlyphId::NOTDEF {
++            continue;
++        }
++
++        reverse
++            .entry(glyph)
++            .and_modify(|e: &mut char| *e = (*e).min(c))
++            .or_insert(c);
++    }
++
++    reverse
++}
++
+ fn read_widths(arr: &Array<'_>) -> Option<HashMap<u32, f32>> {
+     let mut map = HashMap::new();
+     let mut iter = arr.flex_iter();

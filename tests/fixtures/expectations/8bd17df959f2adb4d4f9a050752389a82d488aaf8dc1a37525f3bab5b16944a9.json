@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "8bd17df959f2adb4d4f9a050752389a82d488aaf8dc1a37525f3bab5b16944a9",
+  "size": 1083,
+  "source": "corpus-c/kp11_hidden_ocg_bdc.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "VisibleOCG\nPlain\n",
+      "sha256": "c9f011dc07828c1ea37783891d09fc0b34c977990a2a6e494de2c4dedf84188c",
+      "error": null
+    }
+  ]
+}

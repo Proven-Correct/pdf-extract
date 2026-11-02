@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "07b62f4bedaa49be2d889c74807937192559bd1b04200bd8969ebaf75a018735",
+  "size": 8702993,
+  "source": "built/clean_body_09pt_noise.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "‘mon inthe Course of human events, becomes necessary fr one people o dissolve the paltical bands which\n‘haveconaced\nthom withanoter, and oassume among the powers ol he ear, thesara\nard qual\nsation to which te Laws of Nature ang of Nature's God etter, a decent respect to the opinions ofmankind\n‘eauies tat hay should declare the causes which impa hem otheseparation. We ld thesetu\nfobe\n‘sot vidi, that ll men are crest equal,thal hey are endowed by hor Creator wit cota unaienatle\nFights,\ntat among thee\nae Lil, Liberty and he pursuitofHappiness, That tosecure\nthese rights,\nGovernmant ar netted among Man. dering thal just power rom the congent fhe governed, That\n‘whenever any Form ofGovernment becomesdastuctve\nof hese ends, tis the Right of he Peopie oer orto\n‘bolsh\nand instute new Government, yng foundation on such pinciples an organizing ts powers in\n‘uzh form, as\nthem shal seem mos kayo eect he Salety and Happiness.\nPrusnce.ndoed,\nwil tate\nthat Governments\nlong establishedshoud\nfot be changed for igh and transient\ncauses;and accordingly al\n‘experience\nhat shewn, that marknd are moresposeosur, whileevs are suterabe, thanoh\n‘themselves by abolishing the forms fo which hey are accustomed, But when along rainofabuses and\n_srpatons,\npursuing invariablythe same Object evinces a design to reduce them under absolute Desposm.\n|s Moir rqht. t's ther dy 1 throw of suchGovernmert, ano provide new Guards for thor future secu.\n‘Such has been te patent eilerance ofthese Colones and such eno he necessity which constrains ther 0\nater ther former Systm\nof Goverment. Te history ofthe present King o Great Briain is a Noy of repeated\nInjuries and usurpaon,\naf having in drectcoject theesabshment\nofan abeolie Tyranny overthese States.\n‘Toprove this, t Factsbe subst oa card worl He has refused hie Assent o Laws, he moe wholesome\n‘and necessary\nlor te pb good. He has lotidden his Governor o pass Laws ol inmadiat ane presng\nImportance,\nuniess suspended inthe operaton ths Assert shou be cbained; and when so suspended, he\nhas utleynoglecte\nio atondio thom. He has retused i pas other Laws forthe accommodation large\nsre\nof people, uiess ose people woul airauih he ron of Rpresontaton\nnto Lops, gM\nInasimable to tem and fomidabe to yas ony. He hascaled together legsiaive bodies at paces unusual\n‘uncomfortable, and att om the depositor of tor pubic Records, forthe\necl purpote ot aguing them nto\ncomplance\nwit his measures. He has dssoved Representative Hovses repeatedly,\noropposing wit many\ntimes his invasions\non the rigs of peopl. He has refused\nforalong tine aller uch dsolzions, ©\n‘cause ohers tobe eectoc: whereby the Lepslave powers, incapable of Annihilation, haveretuned\ntothe\nPeopleat aie for the exer the State remainng nb mean tine exposedo al he dangor of ivasion\n‘rom witout, and convulsons wan. He has endeavoured o revert the populaon ofthese States: for tat\nuous abatcting th LawsforNatualzaton\nofFreier: aluing to pase ters o encourage thor\nmigrations her, and raising he conctions ofnew Appropriations of Lands. He has obstructed the\n‘asinsation of Jusica, by relusing hs Ascot toLaws fr establishing Judea powers. He has made udpes\n<epernt\non his Wilalone forthe true her fees, and the amount and payment oftheir sitios.Ho has\n‘rected mute of New Offices, and sort hither swarms of Otic o harass ou people, and ea ox their\nsubstance. He has kept among us, in Ses o pace, Standing Armes wioutthe Corset of eurlegiiatures.\n‘Hehasateced torender the Matar independent of and superior tothe Cv power. He hascombinedwih\n‘fers to subject Us\na jrsdictonforegn\nfo or cansttution, and unacknowledged\nby OU laws: ving Ws\n‘Assent\nfo the Act of pretended Legislation. When nthe Course of human events, becomes necessary fr\n‘ne poopie fo dole the gottel bards whch have cernected hom wihanther, ard to assume among the\n",
+        "sha256": "5ff1cd6f27490f40ee0f42a53c48e87832dfbac14d1aa9ef99e73ea77b261234"
+      }
+    ]
+  }
+}

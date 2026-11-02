@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "7400ec41f4274975fc4ae2d3eea076a2910491a74c97a7c2dfa653a84eac9c0a",
+  "size": 57107,
+  "source": "corpus-b/pdfbox/sample_fonts_solidconvertor.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Courier: Toto je pokusný text s češtinou\n– ěščřžýáíé\nTimes: Toto je pokusný text s češtinou – ěščřžýáíé\nTahoma: Toto je pokusný text s češtinou – ěščřžýáíé\nArial: Toto je pokusný text s češtinou – ěščřžýáíé\nArial Narrow: Toto je pokusný text s češtinou – ěščřžýáíé\nArial Black: Toto je pokusný text s češtinou – ěščřžýáíé\nArial Rounded: Toto je pokusný text s češtinou – ěščřžýáíé\nVerdana: Toto je pokusný text s češtinou – ěščřžýáíé\nSans serif: Toto je pokusný text s češtinou – ěščřžýáíé\n",
+      "sha256": "06a2a72a01cc20813c1d843c642ce69d470c227df98b24076c8287e1695c14ce",
+      "error": null
+    }
+  ]
+}

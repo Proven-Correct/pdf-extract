@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "109e25d0a223e7611da8b020a6bb5b867f94413df0a5a35fc1c5bd31315b9486",
+  "size": 1238,
+  "source": "corpus-c/kp24_w_FEFF_after.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "A ﻿B\n",
+      "sha256": "a950cee02d26260d4d2d38d784964e0cf602694ecd35420fda5215dc0b7befc0",
+      "error": null
+    }
+  ]
+}

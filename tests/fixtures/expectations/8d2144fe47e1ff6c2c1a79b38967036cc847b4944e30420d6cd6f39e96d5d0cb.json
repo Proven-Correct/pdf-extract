@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "8d2144fe47e1ff6c2c1a79b38967036cc847b4944e30420d6cd6f39e96d5d0cb",
+  "size": 747,
+  "source": "corpus-c/kp01_space_22pt_3.75.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Alpha Beta\n",
+      "sha256": "ed220039e906e32c27a646de68be9036c5020df646a82f3565a40bba6a6fdef2",
+      "error": null
+    }
+  ]
+}

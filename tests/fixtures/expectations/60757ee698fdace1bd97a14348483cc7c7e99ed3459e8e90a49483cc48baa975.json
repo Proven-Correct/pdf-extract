@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "60757ee698fdace1bd97a14348483cc7c7e99ed3459e8e90a49483cc48baa975",
+  "size": 765,
+  "source": "corpus-c/kp20_damaged_content.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "GoodOp\nPartial\nAfterGarbage\n",
+      "sha256": "f61641b9f71934b83ef277348e19bacda461cce38e90fbc1f76703d886561a73",
+      "error": null
+    }
+  ]
+}

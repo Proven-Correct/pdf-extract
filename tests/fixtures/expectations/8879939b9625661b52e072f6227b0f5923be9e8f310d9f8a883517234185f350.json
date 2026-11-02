@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "8879939b9625661b52e072f6227b0f5923be9e8f310d9f8a883517234185f350",
+  "size": 1389,
+  "source": "corpus-c/kp24_t3_uni0085_after.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "A B\n",
+      "sha256": "51d047fa370749664b967a76fe4625a33864c109d54bc306b6b9d4be428d3666",
+      "error": null
+    }
+  ]
+}

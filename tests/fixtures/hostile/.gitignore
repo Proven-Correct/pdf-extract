@@ -1,0 +1,5 @@
+# Hostile fixtures are generated at test time by pdf-extract-testkit::hostile
+# (some are hundreds of megabytes) and are never committed. The small,
+# committed variants live in corpus-c/.
+*
+!.gitignore

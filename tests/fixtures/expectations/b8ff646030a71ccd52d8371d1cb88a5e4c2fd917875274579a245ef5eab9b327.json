@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "b8ff646030a71ccd52d8371d1cb88a5e4c2fd917875274579a245ef5eab9b327",
+  "size": 1385,
+  "source": "corpus-c/kp24_t3_space_after.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "A B\n",
+      "sha256": "c36bc118e5e9457ca489bc3adde2566dc951ec68b1b696128ef116048d3d6044",
+      "error": null
+    }
+  ]
+}

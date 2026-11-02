@@ -1,0 +1,113 @@
+# pdf-extract-core: the pure-Rust PDF text-extraction library. No Python, no
+# unsafe. Opens documents, indexes their pages and owns the close protocol;
+# text extraction builds on the same handles.
+[package]
+name = "pdf-extract-core"
+description = "PDF text extraction core for pdf-extract"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Hooks for the rendering and OCR crates (run 0002 §3.3): `Page::with_hayro_page`
+# hands out the hayro page, and `ocr_support::TextPageBuilder` builds an OCR
+# `TextPage`. Both expose internals the documented API keeps hidden, so only
+# pdf-extract-render and pdf-extract-ocr enable it. `render_support` gives the
+# renderer the text path's warning details.
+render-support = []
+# The fork's test-only codec panic hook (H18, feature `codec-panic-hook`),
+# re-exported as `arm_codec_panic_for_test` for the Python binding's
+# `_native._arm_codec_panic_for_test`. One thread-local read per guarded codec call.
+test-hooks = ["hayro-syntax/codec-panic-hook"]
+# The `fuzz_api` module (fuzzing limits and entry-point drivers) for the
+# `fuzz/` crate's targets and the regression replay tests (design D6, D7).
+# Hidden, unstable, and never enabled by a shipped crate.
+fuzzing = []
+
+[dependencies]
+# The patched fork (see [patch.crates-io] in the workspace Cargo.toml). Exact
+# pins: the patches in vendor/patches/hayro apply to these releases only, and a
+# caret requirement would let a future upstream release silently stop matching
+# the vendored copy.
+hayro-syntax = "=0.7.2"
+hayro-interpret = "=0.7.0"
+# Not used directly. Exact pins on the other hayro crates the fork pulls in, so
+# `cargo update` cannot move them under the fork: hayro-cmap and hayro-ccitt
+# come from crates.io; hayro-jbig2 and hayro-jpeg2000 are vendored too and
+# resolve onto vendor/ through [patch.crates-io], whose copies these pins must
+# match. Note hayro-jpeg2000 stays on 0.3.5: hayro-syntax 0.7.2 requires
+# ^0.3.5, and the newer 0.4 line is not compatible with it.
+# `default-features = false` matches how the fork itself depends on them: a pin
+# with default features would, by feature unification, switch on extras
+# (hayro-jbig2's `image` feature pulls in the `image` crate) that nothing here
+# uses.
+hayro-cmap = { version = "=0.1.0", default-features = false }
+hayro-jbig2 = { version = "=0.3.0", default-features = false }
+hayro-jpeg2000 = { version = "=0.3.5", default-features = false }
+hayro-ccitt = { version = "=0.3.0", default-features = false }
+# Geometry types of hayro-interpret's `Device` trait, which the text device
+# implements. Same version hayro-interpret uses.
+kurbo = "0.13"
+# Compile-time `Send + Sync` assertions on the public handles (spec §3.3).
+static_assertions = "1.1.0"
+# Derives for the public error enums; already used by the test kit.
+thiserror = "2"
+# Fast substring search for header detection and the encryption probe over
+# whole files (up to `max_file_size`). Already in the graph via hayro-syntax.
+memchr = "2"
+# Levenshtein distance for the public `parity` module (design spec §13.2).
+# MIT; also what tests/parity.rs measured with before the module existed.
+strsim = "0.11"
+
+# The model checker behind src/sync.rs, present only in the `--cfg loom`
+# build that runs tests/loom_close.rs (MIT). A target-cfg dependency rather
+# than a feature, so `--all-features` builds never pull it in or swap the
+# shim.
+[target.'cfg(loom)'.dependencies]
+loom = "0.7.2"
+
+[dev-dependencies]
+# The fork with its codec panic hook on (H18), for the codec-boundary tests
+# (tests/h18_codec_guard.rs). Feature unification turns it on for the library
+# the tests link as well.
+hayro-syntax = { version = "=0.7.2", features = ["codec-panic-hook"] }
+# This crate itself with `fuzzing`, so `tests/fuzz_regressions.rs` and the
+# `fuzz_api` unit tests are built by a plain `cargo test` (the per-push CI
+# job runs no feature-specific test of them). A self dev-dependency only
+# adds the feature to test builds; the library as other crates see it is
+# unchanged.
+pdf-extract-core = { path = ".", features = ["fuzzing"] }
+# Fixture generators (builder, hostile files, page trees) for the tests of the
+# fork (H1, H2, H3).
+pdf-extract-testkit = { path = "../testkit" }
+# The PostScript scanner the fork patches (H2a). Normally reached only through
+# hayro-cmap; the nesting-cap tests call it directly.
+hayro-postscript = "=0.1.0"
+# The argument type of hayro-interpret's public `Function::eval`.
+smallvec = "1"
+# Compresses the streams of the decode-limit tests (H2b). Already in the
+# graph through hayro-syntax and the test kit.
+flate2 = "1"
+# The P1 benchmark harness (report-only). No default features: plotting and
+# HTML reports are not needed for CI's bencher-format output.
+criterion = { version = "0.8.2", default-features = false }
+# `getrusage` for the benchmark's peak-RSS report. Already in the graph.
+libc = "0.2"
+# The parity gate (tests/parity.rs, spec §4.13): reads the fixture manifest
+# (TOML) and the oracle expectations (JSON) with serde, hashes fixtures, and
+# reports per-page Levenshtein similarity (through the `parity` module). All
+# are already in the graph through the test kit's tests.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+toml = "0.9"
+
+# P1 benchmark (report-only; see the header of benches/open.rs).
+[[bench]]
+name = "open"
+harness = false

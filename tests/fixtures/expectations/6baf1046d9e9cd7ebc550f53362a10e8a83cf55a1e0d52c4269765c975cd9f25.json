@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "6baf1046d9e9cd7ebc550f53362a10e8a83cf55a1e0d52c4269765c975cd9f25",
+  "size": 1305,
+  "source": "corpus-c/ocg_form_indirect_resources_copy.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "PAGEVIS\nFORMVIS\n",
+      "sha256": "d3cd68c7bdd107f28a1acb756b464bcf06ab99aeec39023d8390ee7f08ea1659",
+      "error": null
+    }
+  ]
+}

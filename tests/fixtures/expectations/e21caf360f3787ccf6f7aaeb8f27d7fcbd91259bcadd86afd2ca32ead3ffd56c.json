@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "e21caf360f3787ccf6f7aaeb8f27d7fcbd91259bcadd86afd2ca32ead3ffd56c",
+  "size": 16209,
+  "source": "corpus-c/kp21_nested_forms_60.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "L1\nL2\nL3\nL4\nL5\nL6\nL7\nL8\nL9\nL10\nL11\nL12\nL13\nL14\nL15\nL16\nL17\nL18\nL19\nL20\nL21\nL22\nL23\nL24\nL25\nL26\nL27\nL28\nL29\nL30\nL31\nL32\nL33\nL34\nL35\nL36\nL37\nL38\nL39\nL40\nL41\nL42\nL43\nL44\nL45\nL46\nL47\nL48\nL49\nL50\nL51\nL52\nL53\nL54\nL55\nL56\nL57\nL58\nL59\nL60\n",
+      "sha256": "c6f5e982fbdd855786db63259943cf4bbb15d28c469573fea23949f80255c6c1",
+      "error": null
+    }
+  ]
+}

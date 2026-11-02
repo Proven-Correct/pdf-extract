@@ -1,0 +1,58 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Mon, 19 Oct 2026 14:55:44 +0100
+Subject: [PATCH 31/35] H21: keep the reference words while a refinement's
+ reference column is negative
+
+With a positive GRREFERENCEDX the reference column under the first pixels
+of a row (x - dx) is left of the reference. maybe_reload_buffers then
+zeroed the three reference words that start_row had loaded at column 0 and
+left their start at 0, and its reload test (ref_x + 1 >= start + 32, or
+ref_x < start) stayed false until ref_x reached 31. Reference columns 0-30,
+and the template's right-hand pixel at ref_x = -1, therefore read as white,
+so every refinement placed right of its reference (text-region and
+symbol-dictionary refinements included) decoded to other pixels, with or
+without typical prediction, which reads the same words. Negative offsets,
+either vertical offset and the right edge were unaffected.
+
+Leave the column-0 words in place while the column is negative: pixels left
+of the reference already read as 0 through the wrapped offset, column 0 is
+where the right-hand pixel lands at ref_x = -1, and the words serve until
+the existing test reloads them at ref_x = 31.
+
+New round-trip tests code noisy targets against noisy references with the
+test kit's MQ encoder at (1, 0), (1, 1) and (1, -1), at a size that crosses
+two word boundaries as well, with the offsets that already decoded as a
+control.
+
+Fixes internal #115
+---
+ hayro-jbig2/src/decode/generic_refinement.rs | 14 ++++++++------
+ 1 file changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/hayro-jbig2/src/decode/generic_refinement.rs b/hayro-jbig2/src/decode/generic_refinement.rs
+index cfc4b18..d6d513f 100644
+--- a/hayro-jbig2/src/decode/generic_refinement.rs
++++ b/hayro-jbig2/src/decode/generic_refinement.rs
+@@ -260,13 +260,15 @@ impl<'a> RefinementContextGatherer<'a> {
+             self.reg_cur = ContextGatherer::load_word(region, self.reg_y, new_start);
+         }
+ 
++        // While the reference column is left of the reference (a positive
++        // GRREFERENCEDX), keep the words `start_row` loaded at column 0: the
++        // template's right-hand pixel reaches column 0 at ref_x = -1, columns
++        // further left read as 0 through the wrapped offset, and the words
++        // stay valid until ref_x reaches 31. Zeroing them here, as before,
++        // read reference columns 0-30 as white, because the test below does
++        // not reload until then.
+         let ref_x_signed = x as i32 - self.reference_dx;
+-        if ref_x_signed < 0 {
+-            self.ref_cur_x = 0;
+-            self.ref_m1 = 0;
+-            self.ref_cur = 0;
+-            self.ref_p1 = 0;
+-        } else {
++        if ref_x_signed >= 0 {
+             let ref_x = ref_x_signed as u32;
+ 
+             if ref_x + 1 >= self.ref_cur_x + WORD_BITS || ref_x < self.ref_cur_x {

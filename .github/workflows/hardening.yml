@@ -1,0 +1,183 @@
+# Hardening runs: a fuzz smoke test of the five cargo-fuzz targets and the
+# Rust test suite under AddressSanitizer and ThreadSanitizer (design D8, D9;
+# ADR 0087). Manual dispatch ONLY, never on a schedule or a push: the
+# repository is internal and billed, so long fuzzing runs locally
+# (tools/fuzz/run.sh, counted in fuzz/ledger.json) and this workflow is the
+# short, on-demand CI counterpart. ci.yml's per-push pipeline does not depend
+# on anything here.
+#
+# Dispatch: gh workflow run hardening.yml --ref <branch> \
+#             -f job=fuzz-smoke|asan|tsan|all -f fuzz_minutes=10
+#
+# Cost at the defaults: the smoke run is five targets x 10 minutes plus their
+# builds, about one runner-hour; each sanitizer run is one to two.
+#
+# Both halves run on the dated nightly pinned in fuzz/rust-toolchain.toml and
+# tools/sanitizers/run.sh (NIGHTLY); bump all three together.
+name: Hardening
+
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        description: Which hardening run to perform
+        type: choice
+        options: [fuzz-smoke, asan, tsan, all]
+        default: fuzz-smoke
+      fuzz_minutes:
+        description: Fuzzing minutes per target for fuzz-smoke (1-60)
+        type: number
+        default: 10
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  NIGHTLY: nightly-2026-10-01
+  # cargo-fuzz defaults --target to the triple it was itself built for, and
+  # the prebuilt binary taiki-e/install-action fetches is a musl build, for
+  # which the nightly has no std installed: name the runner's own triple.
+  FUZZ_TRIPLE: x86_64-unknown-linux-gnu
+
+# One run per ref and job selection at a time; a second dispatch queues
+# rather than cancelling a run that has already spent its minutes.
+concurrency:
+  group: hardening-${{ github.ref }}-${{ inputs.job }}
+  cancel-in-progress: false
+
+jobs:
+  # Each target starts from its seeds plus the committed regression set, with
+  # no corpus cache and no ledger update (the ledger counts local hours
+  # only). Any finding (crash, panic, timeout past -timeout, RSS past
+  # -rss_limit_mb) makes cargo fuzz exit non-zero, failing the job, and the
+  # reproducer in fuzz/artifacts/<target>/ is uploaded. The libFuzzer flags
+  # are design D6's, the same ones tools/fuzz/run.sh uses.
+  fuzz-smoke:
+    if: inputs.job == 'fuzz-smoke' || inputs.job == 'all'
+    name: fuzz-smoke (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [open, text, render, cmap, unicode]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check fuzz_minutes
+        env:
+          FUZZ_MINUTES: ${{ inputs.fuzz_minutes }}
+        run: |
+          case $FUZZ_MINUTES in
+            ''|*[!0-9]*) echo "fuzz_minutes must be a whole number" >&2; exit 1 ;;
+          esac
+          if [ "$FUZZ_MINUTES" -lt 1 ] || [ "$FUZZ_MINUTES" -gt 60 ]; then
+            echo "fuzz_minutes must be between 1 and 60 (the job timeout is 120)" >&2
+            exit 1
+          fi
+      - run: rustup toolchain install "$NIGHTLY" --profile minimal --component rust-src
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz@0.13.2
+      # The cmap target's seeds are not committed: they are the CMap streams
+      # of corpus B and C plus the fuzz crate's hand-written text CMaps,
+      # generated the same way tools/fuzz/run.sh seeds a local session.
+      - name: Generate cmap seeds
+        if: matrix.target == 'cmap'
+        run: |
+          mkdir -p fuzz/seeds/cmap
+          python3 tools/fuzz/seed-cmaps.py fuzz/seeds/cmap --corpus tests/fixtures/corpus-c \
+            --corpus tests/fixtures/corpus-b/hayro --corpus tests/fixtures/corpus-b/pdfbox
+          RUSTFLAGS="--cfg fuzzing" cargo +"$NIGHTLY" run --quiet --locked --release \
+            --manifest-path fuzz/Cargo.toml --bin synthetic_cmaps -- fuzz/seeds/cmap >/dev/null
+      - name: Fuzz ${{ matrix.target }}
+        env:
+          TARGET: ${{ matrix.target }}
+          FUZZ_MINUTES: ${{ inputs.fuzz_minutes }}
+        run: |
+          # Document targets read corpus B and C directly; unicode has
+          # committed seeds and cmap the ones generated above. The regression set may still be
+          # empty for a target, and libFuzzer refuses a missing directory,
+          # so only existing seed directories are passed.
+          case $TARGET in
+            open|text|render) seeds=(tests/fixtures/corpus-b tests/fixtures/corpus-c) ;;
+            *) seeds=("fuzz/seeds/$TARGET") ;;
+          esac
+          seeds+=("fuzz/regressions/$TARGET")
+          dirs=()
+          for d in "${seeds[@]}"; do
+            if [ -d "$d" ]; then dirs+=("$d"); fi
+          done
+          # The first corpus directory is the writable one; the seeds are
+          # read only.
+          mkdir -p "fuzz/corpus/$TARGET"
+          cargo +"$NIGHTLY" fuzz run --target "$FUZZ_TRIPLE" "$TARGET" "fuzz/corpus/$TARGET" "${dirs[@]}" -- \
+            -max_total_time=$((FUZZ_MINUTES * 60)) -timeout=20 -rss_limit_mb=2560 -max_len=4194304
+      # The fuzzing spec keeps a finding's input and its minimised form.
+      # libFuzzer stops at the first crash, so this minimises each crash,
+      # timeout or oom input it left before upload.
+      - name: Minimise findings
+        if: failure()
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          shopt -s nullglob
+          for f in "fuzz/artifacts/$TARGET"/crash-* "fuzz/artifacts/$TARGET"/timeout-* "fuzz/artifacts/$TARGET"/oom-*; do
+            # As in tools/fuzz/run.sh: no -max_len (the minimiser asserts on
+            # one), and the output, minimized-from-<sha1>, lands beside it.
+            cargo +"$NIGHTLY" fuzz tmin --target "$FUZZ_TRIPLE" "$TARGET" "$f" -- -timeout=20 -rss_limit_mb=2560 \
+              -artifact_prefix="fuzz/artifacts/$TARGET/" || true
+          done
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}/
+          if-no-files-found: ignore
+
+  # The workspace test suite under a sanitizer, vendored Leptonica, Tesseract
+  # and the C++ shim instrumented too. All the build logic is in
+  # tools/sanitizers/run.sh, so a local run is the same run; the script also
+  # lints the suppression files first. The full output is uploaded on
+  # failure, so the sanitizer's report survives the run. Two jobs rather
+  # than a matrix: a job-level `if` cannot see the matrix, and each is
+  # selected on its own.
+  asan:
+    if: inputs.job == 'asan' || inputs.job == 'all'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      # An instrumented build of the workspace, std and Tesseract is several
+      # times the size of a plain one.
+      - uses: ./.github/actions/free-disk
+      - run: rustup toolchain install "$NIGHTLY" --profile minimal --component rust-src
+      - uses: ./.github/actions/tessdata
+      - run: tools/sanitizers/run.sh asan
+        env:
+          PXE_SANITIZER_LOG_DIR: ${{ runner.temp }}/sanitizer-logs
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: sanitizer-report-asan
+          path: ${{ runner.temp }}/sanitizer-logs/
+          if-no-files-found: ignore
+
+  tsan:
+    if: inputs.job == 'tsan' || inputs.job == 'all'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/free-disk
+      - run: rustup toolchain install "$NIGHTLY" --profile minimal --component rust-src
+      - uses: ./.github/actions/tessdata
+      - run: tools/sanitizers/run.sh tsan
+        env:
+          PXE_SANITIZER_LOG_DIR: ${{ runner.temp }}/sanitizer-logs
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: sanitizer-report-tsan
+          path: ${{ runner.temp }}/sanitizer-logs/
+          if-no-files-found: ignore

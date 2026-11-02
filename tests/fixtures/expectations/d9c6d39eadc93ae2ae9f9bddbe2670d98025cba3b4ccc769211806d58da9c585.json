@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "d9c6d39eadc93ae2ae9f9bddbe2670d98025cba3b4ccc769211806d58da9c585",
+  "size": 667,
+  "source": "corpus-c/kp18_missing_font_resource.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "NoFontRes\n",
+      "sha256": "0fd21bc4527a0c4baf17f18fdc8637e84e0d687a9b93dff25459d7bd50a9fe29",
+      "error": null
+    }
+  ]
+}

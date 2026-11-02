@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "93256e712348392f3841a51d6e6e16774dcf5e2405073ebc55c64b64ac606446",
+  "size": 12418,
+  "source": "corpus-b/pdfbox/openoffice-test-document.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Test\n",
+      "sha256": "c9d04c9565fc665c80681fb1d829938026871f66e14f501e08531df66938a789",
+      "error": null
+    }
+  ]
+}

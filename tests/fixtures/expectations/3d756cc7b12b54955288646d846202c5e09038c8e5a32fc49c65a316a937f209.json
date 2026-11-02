@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "3d756cc7b12b54955288646d846202c5e09038c8e5a32fc49c65a316a937f209",
+  "size": 41305,
+  "source": "corpus-b/pdfbox/preEnc_20141025_105451.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "See attached file.\n",
+      "sha256": "86be9520a7cd07c511b113f55873fb80e900fd8c049738309e2fadd1589f7b61",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "ec8ec8c4545b21d1a06f5a89da87bf542938a793a3d3678dc01ac0a850488ffa",
+  "size": 804456,
+  "source": "corpus-d/clean_body_09pt_blur.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "‘mon inthe Course of human events. bcomes necessary fr one people o dissolve the pliticl bands which\n‘havecomacied\nthem with another,and to assume among the powersol he ear, the soparat and equal\n‘stato which the Laws ofNate ang of Nature's God ette om. a decent respect the opinons ofmankind\n‘requires thal hay should declare the causes whichimpelthem othe separation. We hold these tusfobe\n‘of evident, thatallmen arecrestd equal,thal thay are endowed by thor Creator wit corn unaienatle\nFights, that among these are Lie, Liberty and the pursut of Happiness. That io secur hese rhs,\nCGovernmants are netted among Men, dering thi just power rom the consent fhe governed, That\n\\wrenover any Form of Goverment becomes dasructve of hese ends, tis the ight of he Peopie oar orto\nbol\nand toinstute new Goverment, yng ts foundation on such principles ad organizing ts powers in\n‘suchfom, tothem shal seem mos kyo eect ther Set and Happiness.Prudence, indeed, wildictate\n{hat Governments long established shoud ot be changed for ight and transient causes; ae accor\nall\n‘experience hat shewn, that mankind are more disposedto sur, while evs are suterabe, than to right\n‘themselves by abolishing the forms to which hey are accustomed. But when along ain of abuses and\n_srpatons, pursuing invariablythe same Object evinces a design toreduce them under absolute Despotsm. ©\n‘their rg, isthe duty 1 throw of such Goverment, and to provide new Guardsforthe future secu.\n‘Sich has been te patent eulerance of hese Colones and sich snow he necessity which constrains tern 0\nater therformer Systoms of Goverment. Te history ofthe present King of Great Briain is a Nistor of repeated\nInj\nand usurpation, af having in rect choc the establishment of an absolite Tyranny over hese States.\n“Toprove tis, et Factsbe submited to a candid worl He has refused his Assent o Laws,the mostwholosome\nand necessary lor the pubic good. He has lord\nhis Goveror o pass Laws ol mada ané pressing\nImportance, unless suspended nthe operaton bith Assert shou be ctained: and when so suspended, he\nthas utlery noglected o ated o thom. He has retused topas other Laws forthe accommodation ot large\nrcs of peooe, ues Mose people woud airauih he ron of Rpresentaton nto Lepsiature gM\nInestmable o tem ard fomidabe lo ars ny He has cae together legsiaive bodes at paces uns\nuncomfortable, and att om the deposior of ter pubic Records, forthe scl purpote ot aguing them nto\ncomplance win his measures. He has dssoved Representative Hovses repeated, fo opposing with many\ntimes hisinvasions on therigs of he people. He has refused foralor tine afer uch disolzions. ©\n‘cause ohers tobe eectoc: whereby the Lepslave powers,incapable of Annlaion,haveretuned tothe\nPeople a ge fr re exercise, the State remaiing ine mean ene exposed al he dangersof vasion\n‘rom without, and convuisens wen. He has endeavoured o revert the population ofthese States: fo tat\n‘urpowecbstnting the Laws for Natura\nof Foreigner; retsing to pass oer o encourage thelr\n‘migrations her, and raising the conctions ofnew Appropriations of Lands. He has obstucied the\n‘Nainisationof Jus, by retusing hs Assent toLaws for establishing Judciary powers. He has made Judges\n‘apendent\non hie Wa alone, forthe tenure o her fees. and the amount and payment of hi salaries. He has\n‘rected mutaide of New Offices, and sort hither swarms of Oticr o harass Ou people and eat ox their\n‘substance. He has kept among us, in tes o pace, Standing Armes wiout he Corset of ourlegisiatres.\n‘Hehasateced torender the Matar independent of and super othe Cv power. He has combined wh\n‘fers to subject Us 0 a jursdicton loregn 1 or cansttion and unacknowledged by OU laws: ving hs\n‘Asso to ther Act of pretended Legisaton When nthe Couse of human events, becomes necessary fr\n‘oe poco fo sole the pottel ards whch have connected hem wihanother, ardassume\namong the\n",
+        "sha256": "4fcfb787862157688d030f6611c808de244fc3d674b53e7cfa66267dbba41878"
+      }
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "90b8684a09e9e08938c72be6e4ece3486e9cc54c1bbefb8b71bbdcf29250f6ee",
+  "size": 619,
+  "source": "corpus-c/empty_page.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ]
+}

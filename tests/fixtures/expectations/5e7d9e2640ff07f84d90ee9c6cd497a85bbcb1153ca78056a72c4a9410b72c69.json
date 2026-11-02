@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "5e7d9e2640ff07f84d90ee9c6cd497a85bbcb1153ca78056a72c4a9410b72c69",
+  "size": 722,
+  "source": "corpus-c/kp09_named.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "ABC\n",
+      "sha256": "8470d56547eea6236d7c81a644ce74670ca0bbda998e13c629ef6bb3f0d60b69",
+      "error": null
+    }
+  ]
+}

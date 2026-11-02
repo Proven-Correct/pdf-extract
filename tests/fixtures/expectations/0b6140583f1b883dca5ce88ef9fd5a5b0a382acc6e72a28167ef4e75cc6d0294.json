@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "0b6140583f1b883dca5ce88ef9fd5a5b0a382acc6e72a28167ef4e75cc6d0294",
+  "size": 666,
+  "source": "corpus-c/tw_20.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "a \nb \nc\n",
+      "sha256": "01ccc150a7d7477ec1c5adba0b1aaf14cb869212e00985bef0969f8eeb4c5dc1",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Thu, 1 Oct 2026 23:30:16 -0400
+Subject: [PATCH 17/22] H10g: add a cancel flag to the interpreter budget
+
+The budget could stop interpretation on an operator count or a
+deadline, but there was no way for the device, or anyone else, to stop
+it once nothing more was wanted from the page, for example once a text
+extractor has collected as many characters as it allows. Interpretation
+then ran on to the end of the page, or to a budget error.
+
+`InterpretBudget` gains `cancel: Option<Arc<AtomicBool>>` (`None` by
+default). It is read before every operator, one relaxed atomic load;
+once the flag is set, the budget is exhausted with the new reason
+`BudgetExhaustion::Cancelled` and interpretation stops at the next
+operator like any other exhaustion. The flag travels with the settings,
+so nested interpretations (Type3 glyph procedures, tiling patterns,
+soft masks) stop too. The first reason recorded is kept: a budget
+already exhausted by its operator limit or deadline stays so.
+---
+ hayro-interpret/src/interpret/mod.rs | 24 +++++++++++++++++++++++-
+ 1 file changed, 23 insertions(+), 1 deletion(-)
+
+diff --git a/hayro-interpret/src/interpret/mod.rs b/hayro-interpret/src/interpret/mod.rs
+index ada3fbc..734c951 100644
+--- a/hayro-interpret/src/interpret/mod.rs
++++ b/hayro-interpret/src/interpret/mod.rs
+@@ -23,7 +23,7 @@ use hayro_syntax::page::{Page, Resources};
+ use kurbo::{Affine, Point, Shape};
+ use smallvec::smallvec;
+ use std::sync::Arc;
+-use std::sync::atomic::{AtomicU8, AtomicU32, AtomicU64, Ordering};
++use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
+ use std::time::Instant;
+ 
+ pub(crate) mod path;
+@@ -167,6 +167,14 @@ pub struct InterpretBudget {
+     /// How many operators to interpret between two checks of the deadline, since reading the
+     /// clock for every operator would be needlessly expensive. A value of 0 is treated as 1.
+     pub check_interval: u32,
++    /// A flag that stops interpretation once it is set, for example by a device that has
++    /// seen all it needs, or by another thread.
++    ///
++    /// It is read before every operator (one relaxed atomic load), so interpretation stops
++    /// at the next operator after the flag is set, with
++    /// [`BudgetExhaustion::Cancelled`] recorded. Like the counters, it is shared with every
++    /// nested interpretation that runs with these settings.
++    pub cancel: Option<Arc<AtomicBool>>,
+     state: Arc<BudgetState>,
+ }
+ 
+@@ -184,6 +192,8 @@ pub enum BudgetExhaustion {
+     Ops,
+     /// The deadline passed.
+     Deadline,
++    /// The [`InterpretBudget::cancel`] flag was set.
++    Cancelled,
+ }
+ 
+ /// What happened during interpretation, as recorded by an [`InterpretBudget`].
+@@ -215,6 +225,7 @@ struct BudgetState {
+ 
+ const EXHAUSTED_OPS: u8 = 1;
+ const EXHAUSTED_DEADLINE: u8 = 2;
++const EXHAUSTED_CANCELLED: u8 = 3;
+ 
+ impl InterpretBudget {
+     /// The default number of operators between two deadline checks.
+@@ -226,6 +237,7 @@ impl InterpretBudget {
+             max_ops,
+             deadline,
+             check_interval: Self::DEFAULT_CHECK_INTERVAL,
++            cancel: None,
+             state: Arc::new(BudgetState::default()),
+         }
+     }
+@@ -244,6 +256,7 @@ impl InterpretBudget {
+         match self.state.exhausted.load(Ordering::Relaxed) {
+             EXHAUSTED_OPS => Some(BudgetExhaustion::Ops),
+             EXHAUSTED_DEADLINE => Some(BudgetExhaustion::Deadline),
++            EXHAUSTED_CANCELLED => Some(BudgetExhaustion::Cancelled),
+             _ => None,
+         }
+     }
+@@ -264,6 +277,15 @@ impl InterpretBudget {
+ 
+         let ops = self.state.ops.fetch_add(1, Ordering::Relaxed) + 1;
+ 
++        if self
++            .cancel
++            .as_ref()
++            .is_some_and(|c| c.load(Ordering::Relaxed))
++        {
++            self.exhaust(EXHAUSTED_CANCELLED);
++            return false;
++        }
++
+         if self.max_ops.is_some_and(|max| ops > max) {
+             self.exhaust(EXHAUSTED_OPS);
+             return false;

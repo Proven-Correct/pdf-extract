@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "a1df296165ec7bd2d1c14ebfcdac22d46ec0ed2a0bf1475ee7695a6d19d8deb8",
+  "size": 156824,
+  "source": "corpus-d/clean_numbered_list.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "1.\nthe accommodationof large districts of people.\n2. unless those people would relinquish the right of\n‘8. Representation in the Legislature, aright inestimable\nto them.\n4 and formidable to tyrants only. He has called together legisatve.\n‘5. bodies at places unusual, uncomiortable, and.\n6. distant from the depository of their pubic.\n7. Records, for the sole purpose of fatiguing them.\n8. into compliance with his measures. He has dissolved Representative\n‘9. Houses repeatedly, for opposing with manly firmness his invasionson,\n10. the rights ofthe people. Ho.\n11.\nhas refused for along time, after.\n12. such dissolutions, to cause others to be elected.\n18. whereby the Legislative powers, incapable of Annihilation, have returned.\n1410 the People a large for their exercise; the State.\n418. remaining in the mean time exposed.\n16.10 ll the dangers of invasion from.\n17. without, and convulsions within. He has endeavoured to\n18. prevent\nthe population of these States; fr that purpose.\n19. obstructing the Laws for Naturalization of Foreigners: refusing o pass.\n20. others to encourage their migrations hither.\n",
+        "sha256": "5305b94955e3d495f2f679ed58a70d0dd010e5c51db19c1ff10bd942114293de"
+      }
+    ]
+  }
+}

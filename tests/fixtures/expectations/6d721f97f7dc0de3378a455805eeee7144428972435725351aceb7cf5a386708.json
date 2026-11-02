@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "6d721f97f7dc0de3378a455805eeee7144428972435725351aceb7cf5a386708",
+  "size": 763,
+  "source": "corpus-b/hayro/issue994.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Lexer difference test\nRed box below = pdf.js parsed \"5f\" as fill\nNo red box = MuPDF treated \"5f\" as keyword\n",
+      "sha256": "87e9dc95df5a0acc2ae409858d9c1d2749a2d2c15aa986e73baa990058f0c87f",
+      "error": null
+    }
+  ]
+}

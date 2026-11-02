@@ -1,0 +1,109 @@
+# Builder calls replayed by both test kits (spec §4.12, golden test).
+#
+# Read by crates/testkit/examples/pytest_fixtures.rs (Rust PdfBuilder, writes
+# golden/<doc>.pdf and golden/widths.tsv) and by tests/python/test_testing.py
+# (pdf_extract.testing), which compares its own bytes and widths with those
+# files. One script for both sides means the two can only differ through the
+# builders. Numbers are decimal strings: both sides parse them to f64 and
+# narrow to f32, which is exactly what the Python binding does with a float.
+#
+# Tab-separated; the text is always the last field and may contain spaces
+# (but no tab or newline). Lines starting with '#' and blank lines are ignored.
+#   doc    NAME                          start a new document
+#   page   [W H]                         new page (default 595 x 842)
+#   text   X Y FONTSIZE MODE TEXT        insert_text on the latest page
+#   width  FONTSIZE TEXT                 text_width, compared bit for bit
+
+doc	empty
+doc	blank_a4
+page
+doc	hello
+page
+text	72	72	11	0	Hello world
+doc	mixed
+page
+text	72	100	11	0	Line one.
+text	72	113	11	0	line two.
+text	72.5	300.25	7.5	0	Block two, fractional.
+text	100.1	200.3	22	0	Inexact decimals 0.1
+text	-10	-20	11	0	Off the page
+text	123456.79	9999.5	0.001	0	Far away and tiny
+text	40	400	11	0	
+text	40	420	11	0	   leading spaces
+text	40	440	11	0	Café — “quoted” €5 ½ ß ÿ Ÿ œ ‰ • … ™ ©
+text	40	460	11	0	!"#$%&'()*+,-./0123456789:;<=>?@[\]^_`{|}~
+text	72	500	11	0	Mode 0
+text	72	520	11	1	Mode 1
+text	72	540	11	2	Mode 2
+text	72	560	11	3	Mode 3
+text	72	580	11	4	Mode 4
+text	72	600	11	5	Mode 5
+text	72	620	11	6	Mode 6
+text	72	640	11	7	Mode 7
+page	612	792
+text	36	36	12	0	US Letter
+page	100.5	200.25
+text	1.1	2.2	3.3	2	Odd page size
+page	842	595
+text	0	0	100.7	0	Landscape
+page	595	842
+doc	many_pages
+page
+text	72	72	11	0	Page 1 of 25
+page
+text	72	72	11	0	Page 2 of 25
+page
+text	72	72	11	0	Page 3 of 25
+page
+text	72	72	11	0	Page 4 of 25
+page
+text	72	72	11	0	Page 5 of 25
+page
+text	72	72	11	0	Page 6 of 25
+page
+text	72	72	11	0	Page 7 of 25
+page
+text	72	72	11	0	Page 8 of 25
+page
+text	72	72	11	0	Page 9 of 25
+page
+text	72	72	11	0	Page 10 of 25
+page
+text	72	72	11	0	Page 11 of 25
+page
+text	72	72	11	0	Page 12 of 25
+page
+text	72	72	11	0	Page 13 of 25
+page
+text	72	72	11	0	Page 14 of 25
+page
+text	72	72	11	0	Page 15 of 25
+page
+text	72	72	11	0	Page 16 of 25
+page
+text	72	72	11	0	Page 17 of 25
+page
+text	72	72	11	0	Page 18 of 25
+page
+text	72	72	11	0	Page 19 of 25
+page
+text	72	72	11	0	Page 20 of 25
+page
+text	72	72	11	0	Page 21 of 25
+page
+text	72	72	11	0	Page 22 of 25
+page
+text	72	72	11	0	Page 23 of 25
+page
+text	72	72	11	0	Page 24 of 25
+page
+text	72	72	11	0	Page 25 of 25
+width	11	Hello world
+width	11	
+width	7.5	Block two, fractional.
+width	0.001	tiny
+width	100.7	Landscape
+width	11	Café — “quoted” €5 ½ ß ÿ Ÿ œ ‰ • … ™ ©
+width	12.345	The quick brown fox jumps over the lazy dog
+width	1000	WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW
+width	0	zero size

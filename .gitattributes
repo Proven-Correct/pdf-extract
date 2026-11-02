@@ -1,0 +1,13 @@
+# Fixture bytes are hashed (manifest.toml, expectations, snapshots): never let
+# git rewrite line endings in them, whatever core.autocrlf says.
+tests/fixtures/corpus-c/** -text
+tests/fixtures/corpus-b/** -text
+tests/fixtures/snapshots/** -text
+tests/fixtures/expectations/** -text
+# The vendored C/C++ trees must stay byte-identical to their checksummed
+# archives (tools/vendor/check-c-sources.sh): no line-ending rewriting either.
+vendor/tesseract/** -text
+vendor/leptonica/** -text
+# Written by tools/license/gen-notices.sh and compared byte for byte in CI;
+# some licence texts it copies (generic-array's) use CRLF line endings.
+THIRD_PARTY_NOTICES -text

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "39f2c9f49d1470fe0f8604e20fe95998b3b64cc2660b655cdf3fc1b274461c30",
+  "size": 744,
+  "source": "corpus-c/diag_3x8.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Base sup\n",
+      "sha256": "591eff44f235f20904f1bf3482f4936405277b724678c21e35afae643f9f8e43",
+      "error": null
+    }
+  ]
+}

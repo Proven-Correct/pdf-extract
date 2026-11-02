@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "d00c8b828be45bf68b056fd7b69d944f0d4af73005a7a85b3011adc9b69ba2f3",
+  "size": 662,
+  "source": "corpus-c/valid.txt",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "NamedTxt\n",
+      "sha256": "21514fe39596517096ccf28e13f564b3e221f7e69df33b6d3a817fb3da4c0ca6",
+      "error": null
+    }
+  ]
+}

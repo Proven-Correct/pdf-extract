@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "4a6d52dcfceb810136a6a17379b22ccfe7533bb7279fefd094d1760fa8c04c97",
+  "size": 370735,
+  "source": "corpus-d/clean_body_09pt.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "\\wmon inthe Course of human events, becomes necessary fr one peopleto ssolve the palticl bands which\n‘havecomaced\nthom withanoter,ano assume among the powers ol he ear, thesparat\nard qual\nsation io which the Laws of Nature ang of Nature's God ete them, a decent respect to the opinions ofmankind\n‘requires thal hay should declare the causes which impel them othe separation. We ld these tu to be\n‘ot-videt, that all men arecrestd\nequal,thal hey are endowed by hor Creator wit certain unaienatle\nFights, tat among the ae Lie, Liberty and he pursutof Happiness. That tosecure these rigs\nCGovernmant anette among Man. dering thi just power rom the consent he governed, That\n‘whenever any Form of Government becomes desnuctve of heee ends,\ntis the Rightofhe opieoer orto\n‘bolsh\nand\ninstute new Government, yng\nfoundation on such pinciples ané organizing i powersin\n‘uzh\nform, a1 them shal seem moskayo eect ha Salety and Happiness Prudence, ndoed, wil tate\nthatGovernments long established shoud fot be changed forighan transient causes;and accordingly al\n‘experience han shewn, that marknd are more disposedo sur, while evs are suterabe, thanoh\n‘themselves by abolishing the forms to which hey ae accustomed, But when along rainofabusesand\n_surpatons,\nparsung variably thesame Object evinces a design to reduce them under absolute Desposm.\n|s meirrqht, t's ther dy 1 throw of suchGovernmert, ano provide new Guards for thor future secu.\n‘Such has been te patient eiferance ofthese Colones and such snow he necessity whic constrains tern 0\nater thor former Systmof Goverment. Te history ofthe present King of Great Briain is aNoy of repeated\nInjuries and usurpatons, af having in dretcoject the esabshment ofan abeolie Tyranny overthese States.\n‘Toprove this, t Factsbe subst oa card worl He has refused hie Assent o Laws, he moe whoaeame\n‘andnecessary\nlor tepe good. He has lotidden his Governor o pass Laws of inmadiat ané pressing\nImportance,\nues sespended inthar operaton ith Assert shou be cbaied and when so suspended, he\nhas uty neglected oatond io thom. He has retused i pas ther Laws forthe accommodation large\nsre f people, ues ose people woul oirauih he rant of presentation ntoLope, ght\nInastmable otm and fomidabie fo rans only. He hscaled together legsaive bodies t paces una\n‘uncomfortable, and etn om the depositor of ter pubic Records, fr the ecle purpoee ot aguing them nto\ncomplance win his measures. He has dssoved Representative Hovses repeatedly, or opposing with many\ntires his invasions\non fherigsof poop. He has refused fora long tine ater auch dasolxion. 0\n‘cause ohers tobe eectoc: whereby theLepslave\npomers,incapable\nof Annihilation, haveretuned\ntothe\nPeopleat age for the exerse the State remainng nb mean tine exposedo al he dangor of vasion\n‘rom witout, and convulsens wahin. He has endeavoured o revert the populaon ofthese States: fotat\nppupoweabatuting th Laws for Naturalization of Freier: aluing to pase others o encourage thor\n!mgratons her, and raising he conctions of new Appopristons of Lancs. He has obstructed the\n‘esinsation\nof Jusica, by rlusing hs Ascot 1 Laws fe establishing Jude powers. He has made udpes\n<perdnt\non his Wilalone, forthe true her fees, and the mount and payment oftheir sitios.He has\n‘rected multide of New Offices, an sort hither swarms ofOtic to harassOu people, and eat ou their\n‘ubstance. He has kept among us,n See of peace, landing Armes wihoutthe Consent fourlgiistres.\nHe has afte orendar he Mitaryindopendort ofan superior tothe Col power. He has combinedwith\n‘fers to subject us\na jrsdictonforegn\n1 orcanstttion, and unacknowledged\nby OU ls: ving Ws\n‘Assent\nthe Acts\nof petended Legisiaion When nthe Couse of human events, I becomes necessary fr\n‘one poopie fodiate the gotteal bards whch have connected thon wih anther, ard to assume among the\n",
+        "sha256": "4fbffa5ee1f9f02e6fbe80ad7898bf3ce348fbc5523940fb01880620c87c82d8"
+      }
+    ]
+  }
+}

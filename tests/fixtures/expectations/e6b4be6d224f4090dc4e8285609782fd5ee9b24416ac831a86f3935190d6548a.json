@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "e6b4be6d224f4090dc4e8285609782fd5ee9b24416ac831a86f3935190d6548a",
+  "size": 8766,
+  "source": "corpus-c/flate_bomb_8mib.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ]
+}

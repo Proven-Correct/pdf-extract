@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "c9f2d1070a5871e0cac7497573704f7ecdcf5e0deb7f298fb66a40569a95d615",
+  "size": 852,
+  "source": "corpus-c/kp11_ocg_no_ocprops.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "ShownOCG\n",
+      "sha256": "c72d3bbac6425de87191efceeff11fef40a8f4310b83c59b0143871fb6c5c586",
+      "error": null
+    }
+  ]
+}

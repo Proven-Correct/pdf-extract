@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "b364ed2dd543e34179a7cb4fe2670dfbf1b0c6fd97859a65b92ceb1be8cd9376",
+  "size": 30109,
+  "source": "corpus-b/pdfbox/AngledExample.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": " \nVertical Text \nHorizontal Text \n",
+      "sha256": "53dd2dcd1c13074227d43f3c69f3ef570e6cf8de9117eb5ef9465f541fb79c64",
+      "error": null
+    }
+  ]
+}

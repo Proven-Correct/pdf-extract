@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "dd4947a7b825c2827729065cfff07115f0742d2c7bdcb048628097c62d1acbb3",
+  "size": 21130,
+  "source": "corpus-b/pdfbox/BidiSample.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "العربية\nالعربية\ntest الختبار\n14 april 1434٤٣٤١ إبريل  ٤١\n14-april-1434٤٣٤١-إبريل-٤١\n(january)\n(يناير)\n«self test»\n«ذاتي إختبار»\nA line with an Arabic العربية word embedded.\n",
+      "sha256": "e29322ad7467689c5db621727414de88856cd75939ff1749d1a125b46374402e",
+      "error": null
+    }
+  ]
+}

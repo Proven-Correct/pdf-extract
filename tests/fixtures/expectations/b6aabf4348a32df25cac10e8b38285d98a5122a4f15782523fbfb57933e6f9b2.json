@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "b6aabf4348a32df25cac10e8b38285d98a5122a4f15782523fbfb57933e6f9b2",
+  "size": 1047,
+  "source": "corpus-c/enc_rc4_128_owner.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Encrypted rc4_128 owner\n",
+      "sha256": "04ba31adb39afd8ef150d2c63ef6683d49748d2ef6769474f3440d3285d651d5",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "69781a604bb5302ab67b21475fde0a9d3b408a146e2bbf34eabde4f14ed1c209",
+  "size": 7498,
+  "source": "corpus-b/pdfbox/CombTest.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "a b c d e f\ng h\na b c d e f\ng h\na b c d e f\ng h\n",
+      "sha256": "cd298ade40a5e87af36eedf11057d2a0974d7f88f75c1946f65a9d4c4603d06f",
+      "error": null
+    }
+  ]
+}

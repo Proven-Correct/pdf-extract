@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "sha256": "662ae9c1ba71470c7a19ba392350dc8cbab3eb5a7e0188e1ff42190626091379",
+  "size": 68,
+  "source": "corpus-c/plain_text.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": false,
+    "exception": "FileDataError",
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 0,
+  "pages": []
+}

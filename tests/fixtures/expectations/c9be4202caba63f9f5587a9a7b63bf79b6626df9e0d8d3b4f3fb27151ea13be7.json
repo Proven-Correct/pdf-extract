@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "c9be4202caba63f9f5587a9a7b63bf79b6626df9e0d8d3b4f3fb27151ea13be7",
+  "size": 31327,
+  "source": "corpus-d/clean_one_line_skew.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "‘This page is intentionally left blank except for this one line\n",
+        "sha256": "3ec8c669cefd1009bfffcc4566ac70fbaf04c475b5951d0e4a40dcbcba1315d5"
+      }
+    ]
+  }
+}

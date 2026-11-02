@@ -1,0 +1,41 @@
+# Installs the pinned OCR model and exports TESSDATA_PREFIX (spec 0002
+# §3.7, D-17). The model is tessdata_fast's eng.traineddata, pinned by its
+# git blob sha: fetched through the GitHub blob API (one 4.1 MB download,
+# cached under the sha) and verified with `git hash-object`, so a changed
+# file can never be used silently. The OCR expectations committed later in
+# the run were produced against exactly this file.
+name: tessdata
+description: Install the pinned tessdata_fast eng.traineddata and export TESSDATA_PREFIX
+inputs:
+  token:
+    description: Token for the GitHub API (avoids the anonymous rate limit)
+    default: ${{ github.token }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/tessdata
+        key: tessdata-fast-eng-bbef4675053b5b468cdb477053e28b1c698ba08e
+    - shell: bash
+      env:
+        BLOB: bbef4675053b5b468cdb477053e28b1c698ba08e
+        DIR: ${{ runner.temp }}/tessdata
+        TOKEN: ${{ inputs.token }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$DIR"
+        if [ ! -f "$DIR/eng.traineddata" ]; then
+          curl -fsSL --retry 3 \
+            -H "Authorization: Bearer $TOKEN" \
+            -H 'Accept: application/vnd.github.raw' \
+            -o "$DIR/eng.traineddata" \
+            "https://api.github.com/repos/tesseract-ocr/tessdata_fast/git/blobs/$BLOB"
+        fi
+        got=$(git hash-object "$DIR/eng.traineddata")
+        if [ "$got" != "$BLOB" ]; then
+          echo "eng.traineddata blob $got, expected $BLOB" >&2
+          rm -f "$DIR/eng.traineddata"
+          exit 1
+        fi
+        echo "TESSDATA_PREFIX=$DIR" >> "$GITHUB_ENV"

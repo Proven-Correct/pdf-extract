@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "91d6e1fe907c04bd0f1219efbad42b588fa395b41341e0b3bb7182ce52a6f247",
+  "size": 1357,
+  "source": "corpus-c/ocg_form_precedence_direct_off.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.15",
+    "platform": "macOS-14.8.7-x86_64",
+    "generated": "2026-10-14"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "PAGEVIS\nPAGEMARK\nFORMVIS\n",
+      "sha256": "774ca60dd4074ae4e5fa4599035de505d3a4f1b4184bf62e09af1e7dcc28799a",
+      "error": null
+    }
+  ]
+}

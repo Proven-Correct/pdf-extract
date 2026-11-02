@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "633044817c1047365f488f2a9d3e68535e4044b046e802b8d93ac64fa1e24b67",
+  "size": 845736,
+  "source": "corpus-d/clean_body_10pt_blur.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "‘Wen inthe Course of human events, it becomes necessary for one people to dissolve the political\n‘bands which have connected them with another, and to assume among the powors of the earth, the\n‘separate and equal staton to whichthe Laws of Nature and of Nature's God entitle them a decent\n\"espect tothe opinions of mankind requires that they should declare the causes which impel them to\nthe separation. We hold these truths tobe set-evidert, thatallmen ae created equal, thatthey are\n‘endowed by thei Creator wih certain unalienable Rights, that among these are Lie, Liberty and the\npursuit\nof Happiness, That to secur these rights,Governments\naeinstituted among Men, deriving\ntheir ust powers from the consent of the governed, That whenever any Form of Government\nbecomes destructive ofthese ends is the Fight of the People toalter orto abolishit, and o insite\n‘new Government, laying ts foundation on such principles and organizing its powers in such form, as.\ntothem shall seem mos ikely to etlect their Safety and Happiness. Prudence, indeed, wil dictate that\nGovernments long established should not be changed for ight and transient causes: and accordingly\nallexperience hath shewn, that mankind are more disposed to suffer, wile evs are sutterable, than\nto right omsolves by abolishing the forms to which they are accustomed. But when along tain of\n‘abuses\nand usurpatons, pursuing variably the same Object evinces a design to reduce them under\n‘absolute Despotism, itis thei righ, tistheir dy, to throw offsuch Government, ad to provide new\n‘Guards for ther future security. Such has been the patient sufterance ofthese Colonies: and suchis.\n‘ow the necessity which constrains them to alter ther former Systems of Government. The history of\nthe present King of Great Britain isa history of repeated injuries and usurpation all having in direct,\n‘objectthe establishment of an absolute Tyranny over these States. To prove ths, let Facts be\n‘submitted\n10 a eancid word. Ho has rotusod hs Assan! to Laws, the most wholesome and necessary\nforthe public good. He has forbidden his Governors to pass Laws of immediate and pressing\nlimportance, unless suspended in their operation tit his Assent should be obtained; and when so\n‘suspended, he has uttery neglected to attend to them. He has refused to pass other Laws forthe\n‘accommodaton of large distrcts of peope, unless those people would reinqush theright of\nRepresentation\ninthe Legislature, aright inestimable tothem and formidable to tyrant only, He has\nCaled together lepsative bodies at places unusual, uncomfortable, and dstat from the depository of\ntheir public Records, for he sole purpose of fatiguing them into compliance with his measures. He\nhhas dissolved Representative Houses repeatedly, or opposing with many firmness hisinvasions on\nthe rights ofthe people. He has reused for along time, ater suchdssolutons,\nto cause others to be\n‘lected: whereby the Legisiative\npowers,incapable\nof Annifilaion, have returned\ntothe People at\nlarge for ther exercise; the State remaining inthe mean ime exposed to al the dangers of invasion\n{rom without, and convulsions\nwithin. He has endeavoured to prevent the population ofthese States:\n{or that purpose obstructing the Laws for Naturalization of Foreigners; refusing to pass oters to\n‘encourage their migrations hither, and raising the conditons of new Appropriations of Lands. He has\n‘bstructed the Administration of Justice, by refusing his Assent to Laws for establishing Juiciary\n‘powers. He has made Judges dependent on his Walalone, forthe tenure of their offces, and the\n‘amount and payment of ther salaries. He has erected a mulitude of New Otfces, and sent hither\n‘swarms of Officers to harass our people, and eat out thei substance. He has kept among us, in times\n‘of peace, Standing Armies without the Consent of cur lgislatures. He has affected\nto render tho\n",
+        "sha256": "15f9302ea259bb03da41496292af98865fe5e35503e893854560460eaf63998d"
+      }
+    ]
+  }
+}

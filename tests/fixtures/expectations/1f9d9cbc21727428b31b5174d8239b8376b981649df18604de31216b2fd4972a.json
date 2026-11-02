@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "1f9d9cbc21727428b31b5174d8239b8376b981649df18604de31216b2fd4972a",
+  "size": 1042,
+  "source": "corpus-c/enc_rc4_40_user.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": true,
+    "is_encrypted": true
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": null,
+      "sha256": null,
+      "error": "ValueError: document closed or encrypted"
+    }
+  ]
+}

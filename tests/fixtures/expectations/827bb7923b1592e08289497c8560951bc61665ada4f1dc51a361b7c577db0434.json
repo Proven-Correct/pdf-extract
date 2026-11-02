@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "827bb7923b1592e08289497c8560951bc61665ada4f1dc51a361b7c577db0434",
+  "size": 954,
+  "source": "corpus-b/hayro/text_rendering_stroking_clipping.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "BCDEFG\nBCDEFG\n",
+      "sha256": "285ef6effb495146203313bf79297e6cedf567a4175c361826ef211ac5926d86",
+      "error": null
+    }
+  ]
+}

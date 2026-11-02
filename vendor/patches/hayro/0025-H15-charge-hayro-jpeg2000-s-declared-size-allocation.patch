@@ -1,0 +1,1214 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Mon, 5 Oct 2026 13:34:23 -0700
+Subject: [PATCH 25/35] H15: charge hayro-jpeg2000's declared-size allocations
+ to a per-decode budget
+
+hayro_jpeg2000::DecodeSettings gains max_memory_bytes. Image::new prices
+the tile records from the header (one Tile per tile, each with a copy of
+every component's parameters) and refuses a header whose records alone
+exceed the limit; the tile count becomes checked arithmetic. Each decode
+starts a fresh budget in its DecoderContext and charges, before
+allocating: the tile records, the channel planes (palette-indexed images
+included), the coefficient buffer, the precinct, code-block, layer and
+tag-tree records, the position-progression precinct list, the code-block
+and IDWT buffers, the output buffer and the palette-resolved planes.
+Reused buffers grow through reserves that charge exactly the capacity
+they add. A refusal is ValidationError::MemoryBudget.
+
+hayro-syntax passes 64 bytes per pixel of max_image_pixels in both
+DecodeSettings it builds and maps the refusal to
+DecodeFailure::ImageMemoryLimit, counted in image_memory_limit_hits().
+---
+ hayro-jpeg2000/src/budget.rs          | 127 ++++++++++++++++++++++++++
+ hayro-jpeg2000/src/error.rs           |   4 +
+ hayro-jpeg2000/src/j2c/bitplane.rs    |  11 +++
+ hayro-jpeg2000/src/j2c/build.rs       |  50 ++++++++--
+ hayro-jpeg2000/src/j2c/codestream.rs  |  55 ++++++++++-
+ hayro-jpeg2000/src/j2c/decode.rs      |  57 ++++++++++--
+ hayro-jpeg2000/src/j2c/idwt.rs        |  21 +++--
+ hayro-jpeg2000/src/j2c/progression.rs |  36 ++++++++
+ hayro-jpeg2000/src/j2c/tag_tree.rs    |  19 ++++
+ hayro-jpeg2000/src/j2c/tile.rs        |  22 ++++-
+ hayro-jpeg2000/src/lib.rs             |  56 +++++++++---
+ hayro-jpeg2000/src/math.rs            |   2 +-
+ hayro-syntax/src/filter/jpx.rs        |  38 ++++++--
+ hayro-syntax/src/filter/mod.rs        |  14 ++-
+ 14 files changed, 461 insertions(+), 51 deletions(-)
+ create mode 100644 vendor/hayro-jpeg2000/src/budget.rs
+
+diff --git a/hayro-jpeg2000/src/budget.rs b/hayro-jpeg2000/src/budget.rs
+new file mode 100644
+index 0000000..cac851c
+--- /dev/null
++++ b/hayro-jpeg2000/src/budget.rs
+@@ -0,0 +1,127 @@
++//! A cumulative memory budget for one decode.
++//!
++//! JPEG 2000 sizes most of its working set from values the codestream
++//! declares rather than from the length of its data: one tile record per
++//! tile of the reference grid (which component subsampling makes up to
++//! 255² times larger than the image), one channel plane per component, one
++//! code-block, two tag trees and a run of layer records per precinct, all
++//! from a few header bytes. Each is bounded on its own, but nothing bounds
++//! their sum, so a codestream of a few hundred bytes can ask for terabytes.
++//!
++//! A [`MemoryBudget`] is created from
++//! [`DecodeSettings::max_memory_bytes`](crate::DecodeSettings::max_memory_bytes)
++//! at the start of every decode and lives in the
++//! [`DecoderContext`](crate::DecoderContext) for that decode; header parsing
++//! uses a budget of its own, so that `Image::new` refuses a header whose tile
++//! records alone exceed the limit. Each site that allocates in proportion to
++//! a declared value charges the bytes it is about to allocate *before*
++//! allocating them; a charge that would take the running total over the
++//! budget fails with
++//! [`ValidationError::MemoryBudget`](crate::ValidationError::MemoryBudget).
++//! Charges are never refunded, so the budget bounds the total allocated over
++//! the decode, which is an upper bound on the peak.
++//!
++//! Buffers the decoder reuses across tiles and code-blocks (the coefficient
++//! buffer, the IDWT buffers, the code-block decode buffers and the structural
++//! record lists, which are cleared per tile but keep their capacity) grow
++//! through [`MemoryBudget::reserve`] and [`MemoryBudget::reserve_exact`],
++//! which charge exactly the capacity they add and add it themselves, so
++//! `Vec`'s own amortised growth never allocates past what was charged and
++//! reusing capacity costs nothing. Allocations linear in the input (marker
++//! and box contents, tile-part and segment lists, packet data) are not
++//! charged.
++
++use alloc::vec::Vec;
++use core::cell::Cell;
++
++use crate::error::{Result, ValidationError, bail};
++
++/// The bytes left for one decode; `None` means unlimited.
++#[derive(Debug, Default)]
++pub(crate) struct MemoryBudget {
++    remaining: Cell<Option<u64>>,
++}
++
++impl MemoryBudget {
++    /// A budget of `limit` bytes, or an unlimited one for `None`.
++    pub(crate) fn new(limit: Option<u64>) -> Self {
++        Self {
++            remaining: Cell::new(limit),
++        }
++    }
++
++    /// Charges `bytes` against the budget, failing without charging anything
++    /// when that would exceed it.
++    pub(crate) fn charge(&self, bytes: u64) -> Result<()> {
++        if let Some(remaining) = self.remaining.get() {
++            match remaining.checked_sub(bytes) {
++                Some(left) => self.remaining.set(Some(left)),
++                None => bail!(ValidationError::MemoryBudget),
++            }
++        }
++
++        Ok(())
++    }
++
++    /// Charges `count` values of type `T`, as a `Vec<T>` of that length or
++    /// capacity would allocate.
++    pub(crate) fn charge_array<T>(&self, count: u64) -> Result<()> {
++        self.charge(count.saturating_mul(size_of::<T>() as u64))
++    }
++
++    /// Whether `bytes` more would still be within the budget.
++    fn fits(&self, bytes: u64) -> bool {
++        self.remaining
++            .get()
++            .is_none_or(|remaining| bytes <= remaining)
++    }
++
++    /// Makes room in `vec` for `len` values, growing it to exactly the
++    /// capacity charged: at least double its capacity, as `Vec` itself
++    /// would, so that many small reservations stay linear, or just `len`
++    /// when doubling would not fit the budget but `len` does. Nothing is
++    /// charged while the capacity suffices.
++    pub(crate) fn reserve<T>(&self, vec: &mut Vec<T>, len: u64) -> Result<()> {
++        let capacity = vec.capacity() as u64;
++        if len <= capacity {
++            return Ok(());
++        }
++
++        let doubled = len.max(capacity.saturating_mul(2));
++        let size = size_of::<T>() as u64;
++        let target = if self.fits((doubled - capacity).saturating_mul(size)) {
++            doubled
++        } else {
++            len
++        };
++        self.grow_to(vec, target)
++    }
++
++    /// [`MemoryBudget::reserve`] for `additional` values more than `vec`
++    /// holds now.
++    pub(crate) fn reserve_more<T>(&self, vec: &mut Vec<T>, additional: u64) -> Result<()> {
++        let len = (vec.len() as u64).saturating_add(additional);
++        self.reserve(vec, len)
++    }
++
++    /// Makes room in `vec` for exactly `len` values, charging the capacity
++    /// added. Nothing is charged while the capacity suffices.
++    pub(crate) fn reserve_exact<T>(&self, vec: &mut Vec<T>, len: u64) -> Result<()> {
++        if len <= vec.capacity() as u64 {
++            return Ok(());
++        }
++
++        self.grow_to(vec, len)
++    }
++
++    /// Charges and reserves `vec`'s growth from its capacity to `target`.
++    fn grow_to<T>(&self, vec: &mut Vec<T>, target: u64) -> Result<()> {
++        self.charge_array::<T>(target - vec.capacity() as u64)?;
++        // Only a target beyond the address space (no budget, a 32-bit
++        // target) fails here; refusing it is kinder than the
++        // capacity-overflow panic `reserve_exact` would raise.
++        let target = usize::try_from(target).map_err(|_| ValidationError::ImageTooLarge)?;
++        vec.reserve_exact(target - vec.len());
++        Ok(())
++    }
++}
+diff --git a/hayro-jpeg2000/src/error.rs b/hayro-jpeg2000/src/error.rs
+index d9e8a17..7bce5c4 100644
+--- a/hayro-jpeg2000/src/error.rs
++++ b/hayro-jpeg2000/src/error.rs
+@@ -87,6 +87,9 @@ pub enum ValidationError {
+     MissingStepSize,
+     /// Invalid quantization exponents.
+     InvalidExponents,
++    /// Decoding would exceed the memory budget set by
++    /// [`DecodeSettings::max_memory_bytes`](crate::DecodeSettings::max_memory_bytes).
++    MemoryBudget,
+ }
+ 
+ /// Errors related to decoding operations.
+@@ -192,6 +195,7 @@ impl fmt::Display for ValidationError {
+             }
+             Self::MissingStepSize => write!(f, "missing exponent step size"),
+             Self::InvalidExponents => write!(f, "invalid quantization exponents"),
++            Self::MemoryBudget => write!(f, "the decode would exceed its memory budget"),
+         }
+     }
+ }
+diff --git a/hayro-jpeg2000/src/j2c/bitplane.rs b/hayro-jpeg2000/src/j2c/bitplane.rs
+index 26f60f0..8efc551 100644
+--- a/hayro-jpeg2000/src/j2c/bitplane.rs
++++ b/hayro-jpeg2000/src/j2c/bitplane.rs
+@@ -16,6 +16,7 @@ use super::arithmetic_decoder::{ArithmeticDecoder, ArithmeticDecoderContext};
+ use super::build::{CodeBlock, SubBandType};
+ use super::codestream::CodeBlockStyle;
+ use super::decode::{DecompositionStorage, TileDecodeContext};
++use crate::budget::MemoryBudget;
+ use crate::error::{DecodingError, Result, bail};
+ use crate::reader::BitReader;
+ 
+@@ -31,6 +32,7 @@ pub(crate) fn decode(
+     tile_ctx: &mut TileDecodeContext,
+     storage: &DecompositionStorage<'_>,
+     strict: bool,
++    budget: &MemoryBudget,
+ ) -> Result<()> {
+     tile_ctx.bit_plane_decode_context.reset(
+         code_block,
+@@ -38,6 +40,7 @@ pub(crate) fn decode(
+         style,
+         total_bitplanes,
+         strict,
++        budget,
+     )?;
+     tile_ctx.bit_plane_decode_buffers.reset();
+ 
+@@ -421,12 +424,20 @@ impl BitPlaneDecodeContext {
+         code_block_style: &CodeBlockStyle,
+         total_bitplanes: u8,
+         strict: bool,
++        budget: &MemoryBudget,
+     ) -> Result<()> {
+         let (width, height) = (code_block.rect.width(), code_block.rect.height());
+         let padded_width = width + COEFFICIENTS_PADDING * 2;
+         let padded_height = height + COEFFICIENTS_PADDING * 2;
+         let num_coefficients = padded_width as usize * padded_height as usize;
+ 
++        // H15: the three buffers are reused from code-block to code-block;
++        // a larger code-block than any before grows them.
++        let n = num_coefficients as u64;
++        budget.reserve(&mut self.coefficients, n)?;
++        budget.reserve(&mut self.neighbor_significances, n)?;
++        budget.reserve(&mut self.coefficient_states, n)?;
++
+         self.coefficients.clear();
+         self.coefficients
+             .resize(num_coefficients, Coefficient::default());
+diff --git a/hayro-jpeg2000/src/j2c/build.rs b/hayro-jpeg2000/src/j2c/build.rs
+index 20fc492..b4609a9 100644
+--- a/hayro-jpeg2000/src/j2c/build.rs
++++ b/hayro-jpeg2000/src/j2c/build.rs
+@@ -4,6 +4,7 @@ use super::decode::{DecompositionStorage, TileDecompositions};
+ use super::rect::IntRect;
+ use super::tag_tree::TagTree;
+ use super::tile::{ResolutionTile, Tile};
++use crate::budget::MemoryBudget;
+ use crate::error::{DecodingError, Result};
+ use alloc::vec;
+ use core::iter;
+@@ -11,11 +12,23 @@ use core::ops::Range;
+ 
+ /// Build and allocate all necessary structures to process the code-blocks
+ /// for a specific tile. Also parses the segments for each code-block.
+-pub(crate) fn build(tile: &Tile<'_>, storage: &mut DecompositionStorage<'_>) -> Result<()> {
+-    build_decompositions(tile, storage)
++///
++/// Everything built here is sized by the tile's declared geometry (the
++/// precinct and code-block exponents, the layer count), so each list's
++/// growth is charged to `budget` before the pushes that need it (H15).
++pub(crate) fn build(
++    tile: &Tile<'_>,
++    storage: &mut DecompositionStorage<'_>,
++    budget: &MemoryBudget,
++) -> Result<()> {
++    build_decompositions(tile, storage, budget)
+ }
+ 
+-fn build_decompositions(tile: &Tile<'_>, storage: &mut DecompositionStorage<'_>) -> Result<()> {
++fn build_decompositions(
++    tile: &Tile<'_>,
++    storage: &mut DecompositionStorage<'_>,
++    budget: &MemoryBudget,
++) -> Result<()> {
+     let mut total_coefficients = 0;
+ 
+     for component_tile in tile.component_tiles() {
+@@ -24,9 +37,12 @@ fn build_decompositions(tile: &Tile<'_>, storage: &mut DecompositionStorage<'_>)
+     }
+ 
+     if storage.coefficients.is_empty() {
++        // A fresh buffer replaces whatever capacity the empty one had.
++        budget.charge_array::<f32>(total_coefficients as u64)?;
+         // Fast path that requests pre-zeroed memory from the OS where available.
+         storage.coefficients = vec![0.0; total_coefficients];
+     } else {
++        budget.reserve_exact(&mut storage.coefficients, total_coefficients as u64)?;
+         storage.coefficients.resize(total_coefficients, 0.0);
+     }
+     let mut coefficient_counter = 0;
+@@ -57,12 +73,13 @@ fn build_decompositions(tile: &Tile<'_>, storage: &mut DecompositionStorage<'_>)
+                 resolution_tile.rect.height(),
+             );
+ 
+-            let precincts = build_precincts(resolution_tile, sub_band_rect, tile, storage)?;
++            let precincts = build_precincts(resolution_tile, sub_band_rect, tile, storage, budget)?;
+ 
+             let added_coefficients = (sub_band_rect.width() * sub_band_rect.height()) as usize;
+             let coefficients = coefficient_counter..(coefficient_counter + added_coefficients);
+             coefficient_counter += added_coefficients;
+ 
++            budget.reserve_more(&mut storage.sub_bands, 1)?;
+             let idx = storage.sub_bands.len();
+             storage.sub_bands.push(SubBand {
+                 sub_band_type,
+@@ -88,11 +105,13 @@ fn build_decompositions(tile: &Tile<'_>, storage: &mut DecompositionStorage<'_>)
+                 rect: resolution_tile.rect,
+             };
+ 
++            budget.reserve_more(&mut storage.decompositions, 1)?;
+             storage.decompositions.push(decomposition);
+         }
+ 
+         let d_end = storage.decompositions.len();
+ 
++        budget.reserve_more(&mut storage.tile_decompositions, 1)?;
+         storage.tile_decompositions.push(TileDecompositions {
+             decompositions: d_start..d_end,
+             first_ll_sub_band,
+@@ -109,8 +128,10 @@ fn build_precincts(
+     sub_band_rect: IntRect,
+     tile: &Tile<'_>,
+     storage: &mut DecompositionStorage<'_>,
++    budget: &MemoryBudget,
+ ) -> Result<Range<usize>> {
+     let start = storage.precincts.len();
++    budget.reserve_more(&mut storage.precincts, resolution_tile.num_precincts())?;
+ 
+     for precinct_data in resolution_tile
+         .precincts()
+@@ -163,8 +184,13 @@ fn build_precincts(
+             code_blocks_y,
+             tile,
+             storage,
+-        );
++            budget,
++        )?;
+ 
++        budget.reserve_more(
++            &mut storage.tag_tree_nodes,
++            TagTree::node_count(code_blocks_x, code_blocks_y).saturating_mul(2),
++        )?;
+         let code_inclusion_tree =
+             TagTree::new(code_blocks_x, code_blocks_y, &mut storage.tag_tree_nodes);
+         let zero_bitplane_tree =
+@@ -182,6 +208,7 @@ fn build_precincts(
+     Ok(start..end)
+ }
+ 
++#[allow(clippy::too_many_arguments)]
+ fn build_code_blocks(
+     code_block_area: IntRect,
+     sub_band_rect: IntRect,
+@@ -190,7 +217,8 @@ fn build_code_blocks(
+     code_blocks_y: u32,
+     tile: &Tile<'_>,
+     storage: &mut DecompositionStorage<'_>,
+-) -> Range<usize> {
++    budget: &MemoryBudget,
++) -> Result<Range<usize>> {
+     let mut y = code_block_area.y0;
+ 
+     let code_block_width = tile_instance.code_block_width();
+@@ -198,6 +226,14 @@ fn build_code_blocks(
+ 
+     let start = storage.code_blocks.len();
+ 
++    // One `CodeBlock` and `num_layers` `Layer`s per code-block.
++    let count = u64::from(code_blocks_x) * u64::from(code_blocks_y);
++    budget.reserve_more(&mut storage.code_blocks, count)?;
++    budget.reserve_more(
++        &mut storage.layers,
++        count.saturating_mul(u64::from(tile.num_layers)),
++    )?;
++
+     for y_idx in 0..code_blocks_y {
+         let mut x = code_block_area.x0;
+ 
+@@ -248,7 +284,7 @@ fn build_code_blocks(
+ 
+     let end = storage.code_blocks.len();
+ 
+-    start..end
++    Ok(start..end)
+ }
+ 
+ pub(crate) struct Decomposition {
+diff --git a/hayro-jpeg2000/src/j2c/codestream.rs b/hayro-jpeg2000/src/j2c/codestream.rs
+index 8535a6b..c5ca0d1 100644
+--- a/hayro-jpeg2000/src/j2c/codestream.rs
++++ b/hayro-jpeg2000/src/j2c/codestream.rs
+@@ -6,6 +6,8 @@ use alloc::vec::Vec;
+ use super::DecodeSettings;
+ use super::bitplane::BITPLANE_BIT_SIZE;
+ use super::build::SubBandType;
++use super::tile::Tile;
++use crate::budget::MemoryBudget;
+ use crate::error::{MarkerError, Result, ValidationError, bail, err};
+ use crate::reader::BitReader;
+ 
+@@ -22,6 +24,10 @@ pub(crate) struct Header<'a> {
+     pub(crate) skipped_resolution_levels: u8,
+     /// Whether strict mode is enabled for decoding.
+     pub(crate) strict: bool,
++    /// What the decoder's per-tile records will cost (H15): one `Tile` per
++    /// tile, each with its own copy of every component's parameters.
++    /// Charged to each decode's memory budget before any tile is built.
++    pub(crate) tile_record_bytes: u64,
+ }
+ 
+ #[derive(Debug, Clone)]
+@@ -116,6 +122,27 @@ pub(crate) fn read_header<'a>(
+     let cod = cod.ok_or(MarkerError::Missing("COD"))?;
+     let qcd = qcd.ok_or(MarkerError::Missing("QCD"))?;
+ 
++    // H15: every tile clones the components' parameters, and the tile count
++    // and component count are both declared, so the tile records can be
++    // terabytes (1 × 1 tiles over a subsampled reference grid, thousands of
++    // components with long step-size lists). Price them now, and refuse a
++    // header whose records alone, or whose own copy of the parameters,
++    // exceed the limit, before even that copy is made.
++    let component_record_bytes: u64 = (0..num_components as usize)
++        .map(|idx| {
++            let coding = cod_components[idx]
++                .as_ref()
++                .unwrap_or(&cod.component_parameters);
++            let quantization = qcd_components[idx].as_ref().unwrap_or(&qcd);
++            component_record_size(coding, quantization)
++        })
++        .fold(0, u64::saturating_add);
++    let tile_record_bytes = u64::from(size_data.num_tiles())
++        .saturating_mul((size_of::<Tile<'_>>() as u64).saturating_add(component_record_bytes));
++    let header_budget = MemoryBudget::new(settings.max_memory_bytes);
++    header_budget.charge(component_record_bytes)?;
++    header_budget.charge(tile_record_bytes)?;
++
+     let component_infos: Vec<ComponentInfo> = size_data
+         .component_sizes
+         .iter()
+@@ -175,6 +202,7 @@ pub(crate) fn read_header<'a>(
+             .collect(),
+         skipped_resolution_levels,
+         strict: settings.strict,
++        tile_record_bytes,
+     };
+ 
+     validate(&header)?;
+@@ -182,6 +210,17 @@ pub(crate) fn read_header<'a>(
+     Ok(header)
+ }
+ 
++/// The bytes one `ComponentInfo` with these parameters occupies, its two
++/// heap-allocated lists included.
++pub(crate) fn component_record_size(
++    coding: &CodingStyleComponent,
++    quantization: &QuantizationInfo,
++) -> u64 {
++    let lists = coding.parameters.precinct_exponents.len() * size_of::<(u8, u8)>()
++        + quantization.step_sizes.len() * size_of::<StepSize>();
++    (size_of::<ComponentInfo>() + lists) as u64
++}
++
+ fn validate(header: &Header<'_>) -> Result<()> {
+     for info in &header.component_infos {
+         let max_resolution_idx = info.coding_style.parameters.num_resolution_levels - 1;
+@@ -498,9 +537,17 @@ impl SizeData {
+         (self.reference_grid_height - self.tile_y_offset).div_ceil(self.tile_height)
+     }
+ 
+-    /// The total number of tiles.
++    /// The total number of tiles, if it fits a `u32`.
++    fn checked_num_tiles(&self) -> Option<u32> {
++        self.num_x_tiles().checked_mul(self.num_y_tiles())
++    }
++
++    /// The total number of tiles. `size_marker` refuses a header whose count
++    /// does not fit a `u32` (H15: it is a product of two declared values,
++    /// and subsampling lets each reach 255 × 60,000), so this never
++    /// saturates for a parsed header.
+     pub(crate) fn num_tiles(&self) -> u32 {
+-        self.num_x_tiles() * self.num_y_tiles()
++        self.checked_num_tiles().unwrap_or(u32::MAX)
+     }
+ 
+     /// Return the overall width of the image.
+@@ -573,6 +620,10 @@ fn size_marker(reader: &mut BitReader<'_>) -> Result<SizeData> {
+         bail!(ValidationError::ImageTooLarge);
+     }
+ 
++    if size_data.checked_num_tiles().is_none() {
++        bail!(ValidationError::ImageTooLarge);
++    }
++
+     Ok(size_data)
+ }
+ 
+diff --git a/hayro-jpeg2000/src/j2c/decode.rs b/hayro-jpeg2000/src/j2c/decode.rs
+index 211e657..1405d65 100644
+--- a/hayro-jpeg2000/src/j2c/decode.rs
++++ b/hayro-jpeg2000/src/j2c/decode.rs
+@@ -21,6 +21,7 @@ use super::progression::{
+ use super::tag_tree::TagNode;
+ use super::tile::{ComponentTile, ResolutionTile, Tile};
+ use super::{ComponentData, bitplane, build, idwt, mct, segment, tile};
++use crate::budget::MemoryBudget;
+ use crate::error::{DecodingError, Result, TileError, bail};
+ use crate::j2c::segment::MAX_BITPLANE_COUNT;
+ use crate::math::SimdBuffer;
+@@ -33,13 +34,17 @@ pub(crate) fn decode<'a>(
+     ctx: &mut DecoderContext<'a>,
+ ) -> Result<()> {
+     let mut reader = BitReader::new(data);
+-    let tiles = tile::parse(&mut reader, header)?;
++    // H15: the tile records were sized from the header when it was parsed
++    // (and refused there if they alone exceed the limit); this decode pays
++    // for them before any is built.
++    ctx.budget.charge(header.tile_record_bytes)?;
++    let tiles = tile::parse(&mut reader, header, &ctx.budget)?;
+ 
+     if tiles.is_empty() {
+         bail!(TileError::Invalid);
+     }
+ 
+-    ctx.reset(header, &tiles[0]);
++    ctx.reset(header, &tiles[0])?;
+ 
+     for tile in &tiles {
+         trace!(
+@@ -52,6 +57,16 @@ pub(crate) fn decode<'a>(
+         );
+ 
+         let iter_input = IteratorInput::new(tile);
++        // The three position-driven orders list every precinct of the tile
++        // before the first packet is read.
++        if matches!(
++            tile.progression_order,
++            ProgressionOrder::ResolutionPositionComponentLayer
++                | ProgressionOrder::PositionComponentResolutionLayer
++                | ProgressionOrder::ComponentPositionResolutionLayer
++        ) {
++            super::progression::charge_precinct_list(&iter_input, &ctx.budget)?;
++        }
+ 
+         let progression_iterator: Box<dyn Iterator<Item = ProgressionData>> =
+             match tile.progression_order {
+@@ -82,6 +97,7 @@ pub(crate) fn decode<'a>(
+             &mut ctx.tile_decode_context,
+             &mut ctx.channel_data,
+             &mut ctx.storage,
++            &ctx.budget,
+         )?;
+     }
+ 
+@@ -104,14 +120,35 @@ pub struct DecoderContext<'a> {
+     /// The raw, decoded samples for each channel.
+     pub(crate) channel_data: Vec<ComponentData>,
+     storage: DecompositionStorage<'a>,
++    /// The memory budget of the decode in progress (H15). Buffers this
++    /// context kept from an earlier decode are reused uncharged, as within
++    /// one decode.
++    pub(crate) budget: MemoryBudget,
+ }
+ 
+ impl DecoderContext<'_> {
+-    fn reset(&mut self, header: &Header<'_>, initial_tile: &Tile<'_>) {
++    /// Starts a decode with a fresh budget of `limit` bytes.
++    pub(crate) fn begin(&mut self, limit: Option<u64>) {
++        self.budget = MemoryBudget::new(limit);
++    }
++
++    fn reset(&mut self, header: &Header<'_>, initial_tile: &Tile<'_>) -> Result<()> {
+         self.tile_decode_context.reset();
+         self.storage.reset();
+ 
+         self.channel_data.clear();
++
++        // One plane per component, palette-indexed or not: charge them all
++        // before the first is allocated.
++        let plane_len = SimdBuffer::<{ crate::math::SIMD_WIDTH }>::padded_len(
++            header.size_data.image_width() as usize * header.size_data.image_height() as usize,
++        );
++        let num_components = initial_tile.component_infos.len() as u64;
++        self.budget
++            .charge_array::<f32>((plane_len as u64).saturating_mul(num_components))?;
++        self.budget
++            .reserve_exact(&mut self.channel_data, num_components)?;
++
+         // TODO: SIMD Buffers should be reused across runs!
+         for info in &initial_tile.component_infos {
+             self.channel_data.push(ComponentData {
+@@ -122,6 +159,8 @@ impl DecoderContext<'_> {
+                 bit_depth: info.size_info.precision,
+             });
+         }
++
++        Ok(())
+     }
+ }
+ 
+@@ -132,6 +171,7 @@ fn decode_tile<'a, 'b>(
+     tile_ctx: &mut TileDecodeContext,
+     channel_data: &mut [ComponentData],
+     storage: &mut DecompositionStorage<'a>,
++    budget: &MemoryBudget,
+ ) -> Result<()> {
+     storage.reset();
+ 
+@@ -139,12 +179,12 @@ fn decode_tile<'a, 'b>(
+ 
+     // First, we build the decompositions, including their sub-bands, precincts
+     // and code blocks.
+-    build::build(tile, storage)?;
++    build::build(tile, storage, budget)?;
+     // Next, we parse the layers/segments for each code block.
+     segment::parse(tile, progression_iterator, header, storage)?;
+     // We then decode the bitplanes of each code block, yielding the
+     // (possibly dequantized) coefficients of each code block.
+-    decode_component_tile_bit_planes(tile, tile_ctx, storage, header)?;
++    decode_component_tile_bit_planes(tile, tile_ctx, storage, header, budget)?;
+ 
+     // Unlike before, we interleave the apply_idwt and store stages
+     // for each component tile so we can reuse allocations better.
+@@ -156,7 +196,8 @@ fn decode_tile<'a, 'b>(
+             idx,
+             header,
+             component_info.wavelet_transform(),
+-        );
++            budget,
++        )?;
+         // Finally, we store the raw samples for the tile area in the correct
+         // location. Note that in case we have MCT, we are not applying it yet.
+         // It will be applied in the very end once all tiles have been processed.
+@@ -301,6 +342,7 @@ fn decode_component_tile_bit_planes<'a>(
+     tile_ctx: &mut TileDecodeContext,
+     storage: &mut DecompositionStorage<'a>,
+     header: &Header<'_>,
++    budget: &MemoryBudget,
+ ) -> Result<()> {
+     for (tile_decompositions_idx, component_info) in tile.component_infos.iter().enumerate() {
+         // Only decode the resolution levels we actually care about.
+@@ -318,6 +360,7 @@ fn decode_component_tile_bit_planes<'a>(
+                     tile_ctx,
+                     storage,
+                     header,
++                    budget,
+                 )?;
+             }
+         }
+@@ -333,6 +376,7 @@ fn decode_sub_band_bitplanes(
+     tile_ctx: &mut TileDecodeContext,
+     storage: &mut DecompositionStorage<'_>,
+     header: &Header<'_>,
++    budget: &MemoryBudget,
+ ) -> Result<()> {
+     let sub_band = &storage.sub_bands[sub_band_idx];
+ 
+@@ -392,6 +436,7 @@ fn decode_sub_band_bitplanes(
+                 tile_ctx,
+                 storage,
+                 header.strict,
++                budget,
+             )?;
+ 
+             // Turn the signs and magnitudes into singular coefficients and
+diff --git a/hayro-jpeg2000/src/j2c/idwt.rs b/hayro-jpeg2000/src/j2c/idwt.rs
+index 952fd52..0480b87 100644
+--- a/hayro-jpeg2000/src/j2c/idwt.rs
++++ b/hayro-jpeg2000/src/j2c/idwt.rs
+@@ -7,6 +7,8 @@ use super::build::{Decomposition, SubBand};
+ use super::codestream::WaveletTransform;
+ use super::decode::{DecompositionStorage, TileDecodeContext};
+ use super::rect::IntRect;
++use crate::budget::MemoryBudget;
++use crate::error::Result;
+ use crate::j2c::Header;
+ use crate::math::{self, Level, SIMD_WIDTH, Simd, dispatch, f32x8};
+ 
+@@ -44,7 +46,8 @@ pub(crate) fn apply(
+     component_idx: usize,
+     header: &Header<'_>,
+     transform: WaveletTransform,
+-) {
++    budget: &MemoryBudget,
++) -> Result<()> {
+     let tile_decompositions = &storage.tile_decompositions[component_idx];
+ 
+     let mut decompositions = &storage.decompositions[tile_decompositions.decompositions.clone()];
+@@ -78,25 +81,29 @@ pub(crate) fn apply(
+         (min, max)
+     };
+ 
++    // H15: both buffers are reused across components and tiles; each
++    // growth is charged before it happens.
+     if decompositions.is_empty() {
+         // Single decomposition, just copy the coefficients from the sub-band.
+         output.coefficients.clear();
++        budget.reserve_exact(
++            &mut output.coefficients,
++            ll_sub_band.coefficients.len() as u64,
++        )?;
+         output
+             .coefficients
+             .extend_from_slice(&storage.coefficients[ll_sub_band.coefficients.clone()]);
+ 
+         output.rect = ll_sub_band.rect;
+ 
+-        return;
++        return Ok(());
+     }
+ 
+     // The coefficient array will always be the one that holds the coefficients
+     // from the highest decomposition. Therefore, reserve as much.
+     let (s_min, s_max) = estimate_buffer_size(decompositions.last().unwrap());
+     if output.coefficients.len() < s_min {
+-        output
+-            .coefficients
+-            .reserve_exact(s_max - output.coefficients.len());
++        budget.reserve_exact(&mut output.coefficients, s_max as u64)?;
+     }
+ 
+     if decompositions.len() > 1 {
+@@ -105,7 +112,7 @@ pub(crate) fn apply(
+         let (s_min, s_max) = estimate_buffer_size(&decompositions[decompositions.len() - 2]);
+ 
+         if scratch_buf.len() < s_min {
+-            scratch_buf.reserve_exact(s_max - scratch_buf.len());
++            budget.reserve_exact(scratch_buf, s_max as u64)?;
+         }
+     }
+ 
+@@ -148,6 +155,8 @@ pub(crate) fn apply(
+     }
+ 
+     output.rect = temp_output.rect;
++
++    Ok(())
+ }
+ 
+ struct IDWTInput<'a> {
+diff --git a/hayro-jpeg2000/src/j2c/progression.rs b/hayro-jpeg2000/src/j2c/progression.rs
+index 11f9f91..140b46c 100644
+--- a/hayro-jpeg2000/src/j2c/progression.rs
++++ b/hayro-jpeg2000/src/j2c/progression.rs
+@@ -8,6 +8,8 @@ use alloc::vec;
+ use alloc::vec::Vec;
+ 
+ use super::tile::{ComponentTile, ResolutionTile, Tile};
++use crate::budget::MemoryBudget;
++use crate::error::Result;
+ use core::cmp::Ordering;
+ use core::iter;
+ 
+@@ -254,11 +256,45 @@ struct PrecinctStore {
+     precinct_idx: u64,
+ }
+ 
++/// Charges the precinct list that the position-driven progressions
++/// (`position_progression_common`) build before yielding anything: one
++/// `PrecinctStore` per precinct of every component and resolution in
++/// `input`, a count the precinct exponents declare (H15).
++pub(crate) fn charge_precinct_list(input: &IteratorInput<'_>, budget: &MemoryBudget) -> Result<()> {
++    budget.charge_array::<PrecinctStore>(precinct_count(input))
++}
++
++/// The number of precincts of every component and resolution in `input`.
++fn precinct_count(input: &IteratorInput<'_>) -> u64 {
++    let mut count: u64 = 0;
++
++    for component in input
++        .tile
++        .component_tiles()
++        .skip(input.min_comp() as usize)
++        .take(input.max_comp() as usize - input.min_comp() as usize)
++    {
++        for resolution_tile in component
++            .resolution_tiles()
++            .skip(input.min_resolution() as usize)
++            .take(input.total_max_resolution() as usize - input.min_resolution() as usize)
++        {
++            count = count.saturating_add(resolution_tile.num_precincts());
++        }
++    }
++
++    count
++}
++
+ fn position_progression_common<'a>(
+     input: IteratorInput<'a>,
+     sort: impl FnMut(&PrecinctStore, &PrecinctStore) -> Ordering,
+ ) -> Option<impl Iterator<Item = ProgressionData> + 'a> {
+     let mut elements = vec![];
++    // Exactly what `charge_precinct_list` charged (H15), where the
++    // allocator grants it; otherwise the list grows as it always did.
++    let _ =
++        elements.try_reserve_exact(usize::try_from(precinct_count(&input)).unwrap_or(usize::MAX));
+ 
+     for (component_idx, component) in input
+         .tile
+diff --git a/hayro-jpeg2000/src/j2c/tag_tree.rs b/hayro-jpeg2000/src/j2c/tag_tree.rs
+index 475a3dd..000561c 100644
+--- a/hayro-jpeg2000/src/j2c/tag_tree.rs
++++ b/hayro-jpeg2000/src/j2c/tag_tree.rs
+@@ -205,6 +205,25 @@ pub(crate) struct TagTree {
+ }
+ 
+ impl TagTree {
++    /// An upper bound on the nodes [`TagTree::new`] pushes for a
++    /// `width × height` tree: one per cell of each level's grid, the root
++    /// included (H15 charges them before they are built).
++    pub(crate) fn node_count(width: u32, height: u32) -> u64 {
++        if width == 0 || height == 0 {
++            return 1;
++        }
++
++        let (mut w, mut h) = (u64::from(width), u64::from(height));
++        let mut count = w * h;
++        while w > 1 || h > 1 {
++            w = w.div_ceil(2);
++            h = h.div_ceil(2);
++            count += w * h;
++        }
++
++        count
++    }
++
+     pub(crate) fn new(width: u32, height: u32, nodes: &mut Vec<TagNode>) -> Self {
+         // Calculate how many levels the tree has in total.
+         let level = u32::max(
+diff --git a/hayro-jpeg2000/src/j2c/tile.rs b/hayro-jpeg2000/src/j2c/tile.rs
+index f11d0ab..67f491b 100644
+--- a/hayro-jpeg2000/src/j2c/tile.rs
++++ b/hayro-jpeg2000/src/j2c/tile.rs
+@@ -6,6 +6,7 @@ use alloc::vec::Vec;
+ use super::build::{PrecinctData, SubBandType};
+ use super::codestream::{ComponentInfo, Header, ProgressionOrder, markers, skip_marker_segment};
+ use super::rect::IntRect;
++use crate::budget::MemoryBudget;
+ use crate::error::{MarkerError, Result, TileError, ValidationError, bail, err};
+ use crate::j2c::codestream;
+ use crate::reader::BitReader;
+@@ -128,9 +129,13 @@ impl<'a> Tile<'a> {
+ }
+ 
+ /// Create the tiles and parse their constituent tile parts.
++///
++/// The tile records themselves were charged from the header (H15); `budget`
++/// pays for the parameter lists a tile-part header replaces.
+ pub(crate) fn parse<'a>(
+     reader: &mut BitReader<'a>,
+     main_header: &'a Header<'a>,
++    budget: &MemoryBudget,
+ ) -> Result<Vec<Tile<'a>>> {
+     let mut tiles = (0..main_header.size_data.num_tiles() as usize)
+         .map(|idx| Tile::new(idx as u32, main_header))
+@@ -138,11 +143,11 @@ pub(crate) fn parse<'a>(
+ 
+     let mut tile_part_idx = 0;
+ 
+-    parse_tile_part(reader, main_header, &mut tiles, tile_part_idx)?;
++    parse_tile_part(reader, main_header, &mut tiles, tile_part_idx, budget)?;
+     tile_part_idx += 1;
+ 
+     while reader.peek_marker() == Some(markers::SOT) {
+-        parse_tile_part(reader, main_header, &mut tiles, tile_part_idx)?;
++        parse_tile_part(reader, main_header, &mut tiles, tile_part_idx, budget)?;
+         tile_part_idx += 1;
+     }
+ 
+@@ -158,6 +163,7 @@ fn parse_tile_part<'a>(
+     main_header: &'a Header<'a>,
+     tiles: &mut [Tile<'a>],
+     tile_part_idx: usize,
++    budget: &MemoryBudget,
+ ) -> Result<()> {
+     if reader.read_marker()? != markers::SOT {
+         bail!(MarkerError::Expected("SOT"));
+@@ -205,6 +211,11 @@ fn parse_tile_part<'a>(
+             markers::COD => {
+                 reader.read_marker()?;
+                 let cod = codestream::cod_marker(reader).ok_or(MarkerError::ParseFailure("COD"))?;
++                // A few marker bytes give every component a new list.
++                budget.charge_array::<(u8, u8)>(
++                    (cod.component_parameters.parameters.precinct_exponents.len() as u64)
++                        .saturating_mul(num_components as u64),
++                )?;
+ 
+                 tile.mct = cod.mct;
+                 tile.num_layers = cod.num_layers;
+@@ -225,6 +236,7 @@ fn parse_tile_part<'a>(
+                     .component_infos
+                     .get_mut(component_index as usize)
+                     .ok_or(ValidationError::InvalidComponentMetadata)?;
++                budget.charge_array::<(u8, u8)>(coc.parameters.precinct_exponents.len() as u64)?;
+ 
+                 old.coding_style.parameters = coc.parameters;
+                 old.coding_style.flags.raw |= coc.flags.raw;
+@@ -232,6 +244,10 @@ fn parse_tile_part<'a>(
+             markers::QCD => {
+                 reader.read_marker()?;
+                 let qcd = codestream::qcd_marker(reader).ok_or(MarkerError::ParseFailure("QCD"))?;
++                // As for COD: one new step-size list per component.
++                budget.charge_array::<codestream::StepSize>(
++                    (qcd.step_sizes.len() as u64).saturating_mul(num_components as u64),
++                )?;
+ 
+                 for component_info in &mut tile.component_infos {
+                     component_info.quantization_info = qcd.clone();
+@@ -241,6 +257,7 @@ fn parse_tile_part<'a>(
+                 reader.read_marker()?;
+                 let (component_index, qcc) = codestream::qcc_marker(reader, num_components as u16)
+                     .ok_or(MarkerError::ParseFailure("QCC"))?;
++                budget.charge_array::<codestream::StepSize>(qcc.step_sizes.len() as u64)?;
+ 
+                 tile.component_infos
+                     .get_mut(component_index as usize)
+@@ -825,6 +842,7 @@ mod tests {
+             ppm_packets: vec![],
+             skipped_resolution_levels: 0,
+             strict: false,
++            tile_record_bytes: 0,
+         };
+ 
+         let tile_0_0 = Tile::new(0, &header);
+diff --git a/hayro-jpeg2000/src/lib.rs b/hayro-jpeg2000/src/lib.rs
+index ac643ff..43c6202 100644
+--- a/hayro-jpeg2000/src/lib.rs
++++ b/hayro-jpeg2000/src/lib.rs
+@@ -78,6 +78,7 @@ use crate::jp2::colr::{CieLab, EnumeratedColorspace};
+ use crate::jp2::icc::ICCMetadata;
+ use crate::jp2::{DecodedImage, ImageBoxes};
+ 
++mod budget;
+ pub mod error;
+ #[macro_use]
+ pub(crate) mod log;
+@@ -123,6 +124,14 @@ pub struct DecodeSettings {
+     pub strict: bool,
+     /// A hint for the target resolution that the image should be decoded at.
+     pub target_resolution: Option<(u32, u32)>,
++    /// The most bytes one decode may allocate for buffers whose size the
++    /// codestream declares (tile records, channel planes, coefficients,
++    /// code-block and precinct records, the output), counted cumulatively
++    /// and charged before each allocation. A decode that would exceed it
++    /// fails with [`ValidationError::MemoryBudget`]; so does [`Image::new`]
++    /// when the header's tile records alone would. `None`, the default, means
++    /// no limit.
++    pub max_memory_bytes: Option<u64>,
+ }
+ 
+ impl Default for DecodeSettings {
+@@ -131,6 +140,7 @@ impl Default for DecodeSettings {
+             resolve_palette_indices: true,
+             strict: false,
+             target_resolution: None,
++            max_memory_bytes: None,
+         }
+     }
+ }
+@@ -197,9 +207,12 @@ impl<'a> Image<'a> {
+         let buffer_size = self.width() as usize
+             * self.height() as usize
+             * (self.color_space.num_channels() as usize + if self.has_alpha { 1 } else { 0 });
+-        let mut buf = vec![0; buffer_size];
+         let mut decoder_context = DecoderContext::default();
+-        self.decode_into(&mut buf, &mut decoder_context)?;
++        decoder_context.begin(self.settings.max_memory_bytes);
++        // The output buffer is the decode's first charge.
++        decoder_context.budget.charge(buffer_size as u64)?;
++        let mut buf = vec![0; buffer_size];
++        self.decode_budgeted(&mut buf, &mut decoder_context)?;
+ 
+         Ok(buf)
+     }
+@@ -212,11 +225,23 @@ impl<'a> Image<'a> {
+     /// especially recommended if you plan on converting multiple images
+     /// in the same session.
+     ///
+-    /// The buffer must have the correct size.
++    /// The buffer must have the correct size. It is the caller's, so it is
++    /// not charged to [`DecodeSettings::max_memory_bytes`]; everything the
++    /// decode allocates is, from a fresh budget.
+     pub fn decode_into(
+         &'a self,
+         buf: &mut [u8],
+         decoder_context: &mut DecoderContext<'a>,
++    ) -> Result<()> {
++        decoder_context.begin(self.settings.max_memory_bytes);
++        self.decode_budgeted(buf, decoder_context)
++    }
++
++    /// [`Image::decode_into`] under the budget the context already holds.
++    fn decode_budgeted(
++        &'a self,
++        buf: &mut [u8],
++        decoder_context: &mut DecoderContext<'a>,
+     ) -> Result<()> {
+         let settings = &self.settings;
+         j2c::decode(self.codestream, &self.header, decoder_context)?;
+@@ -229,16 +254,16 @@ impl<'a> Image<'a> {
+         if settings.resolve_palette_indices {
+             let components = core::mem::take(decoded_image.decoded_components);
+             *decoded_image.decoded_components =
+-                resolve_palette_indices(components, &decoded_image.boxes)?;
++                resolve_palette_indices(components, &decoded_image.boxes, &decoder_context.budget)?;
+         }
+ 
+         if let Some(cdef) = &decoded_image.boxes.channel_definition {
+             // Sort by the channel association. Note that this will only work if
+-            // each component is referenced only once.
+-            let mut components = decoded_image
+-                .decoded_components
+-                .iter()
+-                .cloned()
++            // each component is referenced only once. The planes are moved,
++            // not cloned: a copy of every plane would be an uncharged
++            // allocation as large as all of them (H15).
++            let mut components = core::mem::take(decoded_image.decoded_components)
++                .into_iter()
+                 .zip(
+                     cdef.channel_definitions
+                         .iter()
+@@ -567,6 +592,7 @@ fn get_color_space(boxes: &ImageBoxes, num_components: usize) -> Result<ColorSpa
+ fn resolve_palette_indices(
+     components: Vec<ComponentData>,
+     boxes: &ImageBoxes,
++    budget: &budget::MemoryBudget,
+ ) -> Result<Vec<ComponentData>> {
+     let Some(palette) = boxes.palette.as_ref() else {
+         // Nothing to resolve.
+@@ -582,8 +608,13 @@ fn resolve_palette_indices(
+             .get(component_idx)
+             .ok_or(ColorError::PaletteResolutionFailed)?;
+ 
++        // Every mapping entry makes a whole new plane, and the entries come
++        // from the `cmap` box: charge each before it is made.
+         match entry.mapping_type {
+-            ComponentMappingType::Direct => resolved.push(component.clone()),
++            ComponentMappingType::Direct => {
++                budget.charge_array::<f32>(component.container.len() as u64)?;
++                resolved.push(component.clone());
++            }
+             ComponentMappingType::Palette { column } => {
+                 let column_idx = column as usize;
+                 let column_info = palette
+@@ -591,8 +622,9 @@ fn resolve_palette_indices(
+                     .get(column_idx)
+                     .ok_or(ColorError::PaletteResolutionFailed)?;
+ 
+-                let mut mapped =
+-                    Vec::with_capacity(component.container.truncated().len() + SIMD_WIDTH);
++                let capacity = component.container.truncated().len() + SIMD_WIDTH;
++                budget.charge_array::<f32>(capacity as u64)?;
++                let mut mapped = Vec::with_capacity(capacity);
+ 
+                 for &sample in component.container.truncated() {
+                     let index = math::round_f32(sample) as i64;
+diff --git a/hayro-jpeg2000/src/math.rs b/hayro-jpeg2000/src/math.rs
+index e048976..0e7c03a 100644
+--- a/hayro-jpeg2000/src/math.rs
++++ b/hayro-jpeg2000/src/math.rs
+@@ -552,7 +552,7 @@ impl<const N: usize> SimdBuffer<N> {
+     }
+ 
+     /// Returns the length padded to a multiple of `N`
+-    fn padded_len(original_len: usize) -> usize {
++    pub(crate) fn padded_len(original_len: usize) -> usize {
+         let remainder = original_len % N;
+         let padding = N - remainder;
+         original_len + padding
+diff --git a/hayro-syntax/src/filter/jpx.rs b/hayro-syntax/src/filter/jpx.rs
+index 6419f5c..cdfff1b 100644
+--- a/hayro-syntax/src/filter/jpx.rs
++++ b/hayro-syntax/src/filter/jpx.rs
+@@ -1,7 +1,9 @@
+ use crate::bit_reader::BitWriter;
+ use crate::filter::FilterResult;
+ use crate::math::round_f32;
+-use crate::filter::check_image_pixels;
++use crate::filter::{
++    JPX_BUDGET_BYTES_PER_PIXEL, check_image_pixels, image_memory_budget, image_memory_limit_hit,
++};
+ use crate::object::stream::{DecodeFailure, ImageColorSpace, ImageData, ImageDecodeParams};
+ use alloc::borrow::Cow;
+ use alloc::vec;
+@@ -24,17 +26,21 @@ pub(crate) fn decode(
+     params: &ImageDecodeParams,
+     max_pixels: Option<u64>,
+ ) -> Result<FilterResult<'static>, DecodeFailure> {
++    // H15: both images built below carry the memory budget the pixel cap
++    // implies; `Image::new` refuses a header whose tile records alone exceed
++    // it, and the decode charges everything else it sizes from the header.
+     let settings = DecodeSettings {
+         resolve_palette_indices: false,
+         strict: false,
+         target_resolution: None,
++        max_memory_bytes: image_memory_budget(max_pixels, JPX_BUDGET_BYTES_PER_PIXEL),
+     };
+ 
+     // H13: `Image::new` parses the headers only. Checked at full resolution
+     // even when a smaller target is requested, because the decoder's per-tile
+     // records and coefficient buffers follow the full-resolution geometry
+     // whatever resolution it outputs.
+-    let full = hayro_jpeg2000::Image::new(data, &settings).map_err(|_| DecodeFailure::ImageDecode)?;
++    let full = hayro_jpeg2000::Image::new(data, &settings).map_err(codec_failure)?;
+     check_image_pixels(
+         u64::from(full.width()),
+         u64::from(full.height()),
+@@ -48,17 +54,28 @@ pub(crate) fn decode(
+                 target_resolution: target,
+                 ..settings
+             };
+-            hayro_jpeg2000::Image::new(data, &settings).map_err(|_| DecodeFailure::ImageDecode)?
++            hayro_jpeg2000::Image::new(data, &settings).map_err(codec_failure)?
+         }
+     };
+ 
+-    decode_image(image, params).ok_or(DecodeFailure::ImageDecode)
++    decode_image(image, params)
++}
++
++/// A refusal by the codec's memory budget is its own failure, counted once
++/// (H15, as H14 for JBIG2); every other codec error is a broken image.
++fn codec_failure(e: hayro_jpeg2000::DecodeError) -> DecodeFailure {
++    match e {
++        hayro_jpeg2000::DecodeError::Validation(hayro_jpeg2000::ValidationError::MemoryBudget) => {
++            image_memory_limit_hit()
++        }
++        _ => DecodeFailure::ImageDecode,
++    }
+ }
+ 
+ fn decode_image(
+     image: hayro_jpeg2000::Image<'_>,
+     params: &ImageDecodeParams,
+-) -> Option<FilterResult<'static>> {
++) -> Result<FilterResult<'static>, DecodeFailure> {
+ 
+     let width = image.width();
+     let height = image.height();
+@@ -75,11 +92,11 @@ fn decode_image(
+             1 => ImageColorSpace::Gray,
+             3 => ImageColorSpace::Rgb,
+             4 => ImageColorSpace::Cmyk,
+-            _ => return None,
++            _ => return Err(DecodeFailure::ImageDecode),
+         },
+     };
+     let has_alpha = image.has_alpha();
+-    let bitmap = image.decode().ok()?;
++    let bitmap = image.decode().map_err(codec_failure)?;
+ 
+     let (mut data, mut alpha) = if !has_alpha {
+         (bitmap, None)
+@@ -92,7 +109,7 @@ fn decode_image(
+         let mut alpha_channel = Vec::with_capacity(bitmap.len() / total_channels as usize);
+ 
+         for sample in bitmap.chunks_exact(total_channels as usize) {
+-            let (alpha, color) = sample.split_last()?;
++            let (alpha, color) = sample.split_last().ok_or(DecodeFailure::ImageDecode)?;
+             alpha_channel.push(*alpha);
+             color_channels.extend_from_slice(color);
+         }
+@@ -103,11 +120,12 @@ fn decode_image(
+     // The decoded image is always 8-bit, so if necessary we have to rescale
+     // ourselves.
+     if bpc != 8 {
+-        data = scale(&data, bpc, cs.num_components(), width, height)?;
++        data = scale(&data, bpc, cs.num_components(), width, height)
++            .ok_or(DecodeFailure::ImageDecode)?;
+         alpha = alpha.and_then(|alpha| scale(&alpha, bpc, cs.num_components(), width, height));
+     }
+ 
+-    Some(FilterResult {
++    Ok(FilterResult {
+         data: Cow::Owned(data),
+         image_data: Some(ImageData {
+             alpha,
+diff --git a/hayro-syntax/src/filter/mod.rs b/hayro-syntax/src/filter/mod.rs
+index 95ff2ca..b993692 100644
+--- a/hayro-syntax/src/filter/mod.rs
++++ b/hayro-syntax/src/filter/mod.rs
+@@ -48,10 +48,12 @@ pub struct DecodeLimits {
+     /// bounds what the decoders allocate, not only what they return. Streams
+     /// decoded without image parameters declare 0 × 0 and are never refused.
+     ///
+-    /// The cap also sets the memory budget of the JBIG2 decoder,
+-    /// [`JBIG2_BUDGET_BYTES_PER_PIXEL`] bytes per pixel of the cap, whose
+-    /// working set (symbol and region bitmaps, gray-scale planes) is not
+-    /// bounded by the image size; a decode that would exceed it fails with
++    /// The cap also sets the memory budgets of the JBIG2 and JPEG 2000
++    /// decoders, [`JBIG2_BUDGET_BYTES_PER_PIXEL`] and
++    /// [`JPX_BUDGET_BYTES_PER_PIXEL`] bytes per pixel of the cap, whose working
++    /// sets (symbol and region bitmaps, gray-scale planes; tile, precinct and
++    /// code-block records, channel planes) are not bounded by the image size;
++    /// a decode that would exceed its budget fails with
+     /// [`DecodeFailure::ImageMemoryLimit`].
+     ///
+     /// The default, `None`, means no limit and no budget.
+@@ -180,7 +182,9 @@ pub const JBIG2_BUDGET_BYTES_PER_PIXEL: u64 = 2;
+ /// The JPEG 2000 decoder's memory budget, in bytes per pixel of
+ /// [`DecodeLimits::max_image_pixels`]: about 9 bytes per pixel per component
+ /// in channel planes, coefficients and output, so 64 covers a single-tile
+-/// RGBA image at the cap with room to spare.
++/// RGBA image at the cap with room to spare; the hostile shapes (1 × 1 tiles
++/// over a subsampled reference grid, 1 × 1 code-blocks, thousands of
++/// components) cost hundreds of bytes per pixel or are unbounded.
+ pub const JPX_BUDGET_BYTES_PER_PIXEL: u64 = 64;
+ 
+ #[cfg(feature = "std")]

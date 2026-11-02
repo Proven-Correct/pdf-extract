@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "c19ed40d7317fa12c40600bfd17b951f2ff81c37c4801d9a40cfa9044e8de105",
+  "size": 1196,
+  "source": "corpus-c/kp22_cidfonttype0_macorder.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "ABC a\n",
+      "sha256": "847fcbbfce0ddbe3e7c4eed612286e74967bba1fbe7b557cc6753745bc0bb738",
+      "error": null
+    }
+  ]
+}

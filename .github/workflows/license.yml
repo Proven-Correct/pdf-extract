@@ -1,0 +1,52 @@
+# The licence checks, as one reusable workflow (licensing spec "License checks
+# rerun on release"; design D5 of the complete-license-pipeline change). Called
+# by ci.yml's `deny` job on every main push and by wheels.yml's `license` job
+# on the exact commit being released, so CI and release cannot run different
+# check lists. It has no trigger of its own.
+name: License
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  license:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses advisories bans sources
+      # L1 still bites for dependencies now that our own crates are GPL and
+      # exempt via `[licenses.private]` (spec 4.12b). Offline; needs cargo-deny,
+      # which the action does not put on PATH, so install it first.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - run: tools/license/check-deny-rejects-copyleft.sh
+      # The vendored C/C++ trees, which cargo-deny cannot see: only the
+      # expected copyright holders and no licence besides Apache-2.0 / BSD.
+      # The self-test proves the check catches planted violations.
+      - run: tools/license/check-c-licenses.sh
+      - run: tools/license/check-c-licenses.sh --self-test
+      # sort_used_by's duplicate collapse, which the drift check below sees
+      # only for crates that list a licence twice today. Bash and awk only.
+      - run: tools/license/test-gen-notices.sh
+      # THIRD_PARTY_NOTICES and rust-std-COPYRIGHT.html (both shipped in the
+      # wheel) must match what gen-notices.sh writes from Cargo.lock, vendor/,
+      # the hayro-cmap sources and the pinned toolchain's rust-src (Part 5).
+      # cargo-about is pinned: its output format is part of the file.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.2
+      # The script runs cargo in the repo, and rust_std.py runs the
+      # rust-toolchain.toml pin (with its rust-src component) through rustup.
+      - run: rustup toolchain install
+      - run: tools/license/gen-notices.sh
+      - run: git diff --exit-code THIRD_PARTY_NOTICES tools/license/rust-std-COPYRIGHT.html

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "9db081b3ddcb692a0267f3cead44fa0b984f1c4b2c0b5e91dfe5bba4336b04d0",
+  "size": 35627,
+  "source": "corpus-b/pdfbox/GlyphLayoutSMP.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Test of Letters from the Supplementary Multilingual Plane, Mathematical Alphanumeric Symbols\nFont used: NotoSansMath-Regular\n𝔄𝔅ℭ𝔇𝔈𝔉𝔊ℌℑ𝔍𝔎𝔏𝔐𝔑𝔒𝔓𝔔ℜ𝔖𝔗𝔘𝔙𝔚𝔛𝔜ℨ\n𝔞𝔟𝔠𝔡𝔢𝔣𝔤𝔥𝔦𝔧𝔨𝔩𝔪𝔫𝔬𝔭𝔮𝔯𝔰𝔱𝔲𝔳𝔴𝔵𝔶𝔷\n𝟘𝟙𝟚𝟛𝟜𝟝𝟞𝟟𝟠𝟡\n𝒜ℬ𝒞𝒟ℰℱ𝒢ℋℐ𝒥𝒦ℒℳ𝒩𝒪𝒫𝒬ℛ𝒮𝒯𝒰𝒱𝒲𝒳𝒴𝒵\n𝒶𝒷𝒸𝒹ℯ𝒻ℊ𝒽𝒾𝒿𝓀𝓁𝓂𝓃ℴ𝓅𝓆𝓇𝓈𝓉𝓊𝓋𝓌𝓍𝓎𝓏\n",
+      "sha256": "93e5c917a834b8ff6b331ac9318520ac54c676b5d84eebc745b6f5ccda85273d",
+      "error": null
+    }
+  ]
+}

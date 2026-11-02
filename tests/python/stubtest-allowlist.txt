@@ -1,0 +1,10 @@
+# Allowlist for `python -m mypy.stubtest pdf_extract._native` (run by CI).
+#
+# Limits and OcrEngine are constructed by PyO3's `#[new]`, so at runtime
+# their keyword arguments belong to `__new__`. The stub keeps the run specs'
+# normative `__init__` signatures (0001 §3.5, 0002 §3.6), which type checkers
+# treat identically.
+pdf_extract._native.Limits.__init__
+pdf_extract._native.Limits.__new__
+pdf_extract._native.OcrEngine.__init__
+pdf_extract._native.OcrEngine.__new__

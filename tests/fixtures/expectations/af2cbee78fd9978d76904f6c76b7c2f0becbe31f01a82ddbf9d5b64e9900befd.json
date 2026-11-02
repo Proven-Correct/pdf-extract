@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "af2cbee78fd9978d76904f6c76b7c2f0becbe31f01a82ddbf9d5b64e9900befd",
+  "size": 709,
+  "source": "corpus-c/kp09_gap.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "a\n b\n",
+      "sha256": "f4f84306f6f4eccf2a1daff1aa505ddf034dc048aa546786978aa0612f580c15",
+      "error": null
+    }
+  ]
+}

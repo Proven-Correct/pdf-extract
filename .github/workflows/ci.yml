@@ -1,0 +1,539 @@
+# CI for pdf-extract. Every job from the run spec (section 3.7) has existed
+# since unit 01 so the pipeline's shape never changed; jobs whose subject did
+# not exist yet were parked with `if: false` until the unit that turned them
+# on (the last, `parity`, in unit 13).
+#
+# Only correctness gates the pipeline. `bench` is report-only on purpose:
+# shared runners are too noisy for raw benchmark numbers to decide pass/fail.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Fail the build if Cargo.lock would need to change.
+  CARGO_FLAGS: --locked
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Trigger strategy: push only to main to catch breakages there. Pull requests do
+# not trigger CI automatically: fixes land as a series of small PRs merged one
+# after another, and a full run per PR would mostly be discarded. Run a PR branch
+# on demand with workflow_dispatch (`gh workflow run ci.yml --ref <branch>`).
+# cancel-in-progress keys on github.ref, so a burst of merges to main runs once
+# for the newest commit.
+
+jobs:
+  rust:
+    name: rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # The first cold build compiles the vendored Tesseract and Leptonica.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    steps:
+      # Full history: test-check-patches.sh re-exports the vendor patch series
+      # from the vendor/*-pristine-N tags, which a shallow clone lacks (the
+      # `vendor-patches` job needs no tags: it checks against crates.io).
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # The vendor patch tooling's own tests; git and bash only, so they run
+      # before any build.
+      - run: tools/vendor/test-check-patches.sh
+      - run: tools/build/test-stage-helper.sh
+      - run: tools/build/test-build-wheel.sh
+      - run: tools/build/test-release-version.sh
+      - run: tools/release/test-build-public-history.sh
+      # Two test builds with different feature sets (workspace, then
+      # pdf-extract-core with `render-support`) outgrow the runner's free disk.
+      - uses: ./.github/actions/free-disk
+      # Installs exactly what rust-toolchain.toml pins (1.98.0 + rustfmt + clippy).
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('vendor/tesseract/**', 'vendor/leptonica/**', 'crates/tesseract-sys/**') }}
+      - uses: ./.github/actions/tessdata
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets $CARGO_FLAGS -- -D warnings
+      # The render golden test (crates/render/tests/golden.rs) also writes
+      # each fixture's gray PNG and hash here; uploaded below, even when a
+      # hash mismatches, as the input of `render-cross-os` and as the file
+      # to commit when a re-bless is intended.
+      - run: cargo test --workspace --no-fail-fast $CARGO_FLAGS
+        env:
+          RENDER_GOLDEN_OUT: ${{ runner.temp }}/render-golden
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: render-golden-${{ matrix.os }}
+          path: ${{ runner.temp }}/render-golden
+          if-no-files-found: ignore
+      # pdf-extract-core's `render-support` hooks (run 0002 §3.3) are compiled
+      # only when a crate enables the feature; lint and test them explicitly.
+      # The plain `-p` run (no other package selected, so no feature
+      # unification) keeps the doctest proving the hooks are absent without
+      # the feature meaningful once the render and OCR crates enable it.
+      - run: cargo clippy -p pdf-extract-core --all-targets --features render-support $CARGO_FLAGS -- -D warnings
+      - run: cargo test -p pdf-extract-core --features render-support --no-fail-fast $CARGO_FLAGS
+      - run: cargo test -p pdf-extract-core --doc --no-fail-fast $CARGO_FLAGS
+      - run: cargo doc --workspace --no-deps $CARGO_FLAGS
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  # Render determinism across hosts (spec 0002 D-12): exact per OS is the
+  # golden test inside `rust`; here the two hosts' rasters must agree within
+  # tolerance (>= 99.9 % identical pixels, max |delta| <= 8 gray levels),
+  # because vello_cpu and pic-scale pick SIMD kernels at run time (NEON on
+  # macos-14, AVX2/SSE on ubuntu-24.04). Builds only pdf-extract-render's
+  # tests, so no Tesseract build and no tessdata.
+  render-cross-os:
+    needs: rust
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v7
+        with:
+          name: render-golden-ubuntu-24.04
+          path: ${{ runner.temp }}/golden-linux
+      - uses: actions/download-artifact@v7
+        with:
+          name: render-golden-macos-14
+          path: ${{ runner.temp }}/golden-macos
+      - run: >-
+          cargo test $CARGO_FLAGS -p pdf-extract-render --test golden --
+          --ignored cross_os_rasters_agree --nocapture
+        env:
+          RENDER_GOLDEN_A: ${{ runner.temp }}/golden-linux
+          RENDER_GOLDEN_B: ${{ runner.temp }}/golden-macos
+
+  # The licence checks (cargo-deny, the copyleft negative proof, the C/C++
+  # check and its self-test, the notices drift check) live in the reusable
+  # license.yml, which the release workflow calls too.
+  deny:
+    uses: ./.github/workflows/license.yml
+
+  # Every tracked shell script, linted. Its own job, not a step of `rust`:
+  # that job is a two-OS matrix and the lint result does not depend on the OS.
+  # shellcheck-py is a pinned PyPI wheel of the shellcheck binary, so no
+  # distribution package is needed (the same command works locally).
+  shellcheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: git ls-files -z '*.sh' | xargs -0 uvx --from shellcheck-py==0.11.0.1 shellcheck
+      # The sanitizer suppression files (run only by the dispatch-only
+      # hardening.yml) are linted on every push, so an unjustified entry or
+      # one covering our own crates is caught without a sanitizer run.
+      - run: tools/sanitizers/check-suppressions.sh
+      - run: tools/sanitizers/check-suppressions.sh --self-test
+
+  # The two tests of tools/oracle (a separate dev-only uv project). Neither
+  # installs that project: run_private_scans' test uses a stub `uv`, and
+  # test_gen stubs `pymupdf` in sys.modules, because library CI must never
+  # need PyMuPDF (ADR 0006). `--no-project` keeps uv from syncing the
+  # project's pinned dependencies, PyMuPDF among them.
+  oracle-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: tools/oracle/test-run-private-scans.sh
+      - run: uv run --no-project --python 3.12 python -m unittest test_gen
+        working-directory: tools/oracle
+
+  # vendor/ must equal a fresh crates.io import plus vendor/patches/hayro/,
+  # and vendor/{tesseract,leptonica} their checksummed, pruned archives plus
+  # vendor/patches/{tesseract,leptonica}/. import.sh runs `cargo vendor` from
+  # the repo, so the pinned toolchain is installed first; the two checks need
+  # network access to crates.io and github.com.
+  vendor-patches:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - run: tools/vendor/check-patches.sh
+      - run: tools/vendor/check-c-sources.sh
+      # fuzz/ is its own workspace (nightly, design D6), so the root
+      # [patch.crates-io] does not reach it; its copy must route the same
+      # crates to the same vendored trees, or fuzzing would exercise the
+      # unpatched crates.io releases. Offline, seconds.
+      - run: tools/fuzz/check-patch-sync.sh --self-test
+      - run: tools/fuzz/check-patch-sync.sh
+
+  # Model checking of the close protocol and the OCR pool with loom (ADR-0040
+  # addendum, concurrency spec): both crates' `sync` shims switch to loom
+  # under `--cfg loom`, and each test explores every interleaving within the
+  # preemption bound. A failing interleaving fails the job; loom prints it.
+  # Release builds because loom re-runs each case thousands of times. The OCR
+  # crate links the distribution Tesseract (as `ocr-system` does) only to
+  # skip the vendored C++ build: the pool tests use a scripted factory.
+  loom:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      RUSTFLAGS: --cfg loom
+      LOOM_MAX_PREEMPTIONS: 3
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y libtesseract-dev libleptonica-dev
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p pdf-extract-core --test loom_close --release $CARGO_FLAGS
+      - run: >-
+          cargo test -p pdf-extract-ocr --test loom_pool --release $CARGO_FLAGS
+          --no-default-features --features system-tesseract
+
+  # The `system-tesseract` feature against a distribution library (spec
+  # 0002 §3.7): Ubuntu 24.04's Tesseract 5.3.4 / Leptonica 1.82, model from
+  # tesseract-ocr-eng (found by the tests at /usr/share/tesseract-ocr/5).
+  # The silence and linkage tests are vendored-build claims (§2.4) and are
+  # not run here, for either crate. `tessdata_candidates` is left out too: it
+  # tests a pure helper (no Tesseract calls), so against system Tesseract it
+  # would only prove linking; it runs in the `rust` job.
+  ocr-system:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y libtesseract-dev libleptonica-dev tesseract-ocr-eng
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: >-
+          cargo test -p pdf-extract-tesseract-sys --no-fail-fast $CARGO_FLAGS
+          --no-default-features --features system-tesseract
+          --lib --test instance --test concurrency --test features --test shim_symbols
+      # The engine's tests against the same library (spec 3.7). The fork
+      # test is left out with silence: Ubuntu builds Tesseract with OpenMP,
+      # whose thread pool is not usable in a forked child (§2.4). The
+      # process-isolation fork test runs: its parent never loads Tesseract,
+      # and every helper is a freshly executed process.
+      - run: >-
+          cargo test -p pdf-extract-ocr --no-fail-fast $CARGO_FLAGS
+          --no-default-features --features system-tesseract
+          --lib --test construction --test recognition --test pool --test classification --test backend
+          --test default_engine --test default_engine_failure
+          --test process --test process_parity --test process_fork --test process_discovery
+
+  # The Python binding (unit 11): build the extension in release mode, lint
+  # and type-check the package, check the stub against the built module, and
+  # run the pytest suite with a coverage gate on the pdf_extract package
+  # (spec 4.11, D-23). pytest also runs `cargo run --example pytest_fixtures`
+  # to generate its fixtures with the Rust test kit. `uv run --no-sync`
+  # everywhere: `uv sync` already installed exactly what is needed, and
+  # maturin's editable install must not be second-guessed by a re-sync.
+  python:
+    name: python (${{ matrix.os }}, ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, python: "3.13" }
+          - { os: ubuntu-24.04, python: "3.14" }
+          - { os: macos-14, python: "3.13" }
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('vendor/tesseract/**', 'vendor/leptonica/**', 'crates/tesseract-sys/**') }}
+      - uses: ./.github/actions/tessdata
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: uv python install ${{ matrix.python }}
+      - run: uv sync --locked --python ${{ matrix.python }}
+      # The OCR helper beside the extension (spec 0002 §3.7, D-21), for the
+      # isolation="process" tests.
+      - run: tools/build/stage-helper.sh
+      - run: uv run --no-sync maturin develop --release
+      # tools/fuzz holds the fuzzing ledger and seed scripts, tested by
+      # tests/python/test_fuzz_ledger.py; tools/license and tools/build hold
+      # the wheel SBOM generator and the wheel checks (test_sbom.py,
+      # test_verify_wheel.py). The rest of tools/ is excluded in
+      # pyproject.toml (tools/oracle is its own uv project).
+      - run: uv run --no-sync ruff check python tests/python tools/fuzz tools/license tools/build
+      - run: uv run --no-sync ruff format --check python tests/python tools/fuzz tools/license tools/build
+      - run: uv run --no-sync mypy
+      - run: >-
+          uv run --no-sync python -m mypy.stubtest pdf_extract._native
+          --allowlist tests/python/stubtest-allowlist.txt
+      - run: uv run --no-sync pytest --cov=pdf_extract --cov-fail-under=95
+
+  # Free-threaded CPython with the GIL forced off. Separate job because it
+  # needs a free-threaded interpreter and asserts the GIL stays off after
+  # importing the extension (gil_used = false). Lint is not repeated here.
+  # Free-threaded support starts at 3.14t (PyO3 0.29).
+  python-freethreaded:
+    name: python-freethreaded (${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.14t"]
+    env:
+      PYTHON_GIL: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('vendor/tesseract/**', 'vendor/leptonica/**', 'crates/tesseract-sys/**') }}
+      - uses: ./.github/actions/tessdata
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: uv python install ${{ matrix.python }}
+      - run: uv sync --locked --python ${{ matrix.python }}
+      # The OCR helper beside the extension (spec 0002 §3.7, D-21), for the
+      # isolation="process" tests.
+      - run: tools/build/stage-helper.sh
+      - run: uv run --no-sync maturin develop --release
+      - run: uv run --no-sync python -c "import sys, pdf_extract; assert sys._is_gil_enabled() is False"
+      - run: uv run --no-sync pytest --cov=pdf_extract --cov-fail-under=95
+
+  # One release wheel per push (ship-wheels-sbom-process-default, design D8):
+  # manylinux_2_28 x86_64, abi3, built by the same script as the release
+  # workflow (tools/build/build-wheel.sh, inside the digest-pinned manylinux
+  # image), so a change that drops the OCR helper, the SBOMs or the licence
+  # files fails here, not at release. verify_wheel.py checks the archive
+  # (helper present, 0755 and within manylinux_2_28; licence files; SBOMs
+  # valid and in agreement with a fresh cargo tree and vendor/PROVENANCE.md);
+  # smoke.py runs it from a fresh venv outside the checkout; then the whole
+  # pytest suite runs against the installed wheel (no coverage gate: the
+  # `python` job owns it), which also exercises the abi3 build's limited API.
+  # The other five matrix entries are built only by wheels.yml (tag or
+  # dispatch), under the cost cap.
+  wheel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      # rustup, the cargo registry and the container's build output, all
+      # under target/ on the host (build-wheel.sh --docker mounts them).
+      - uses: actions/cache@v4
+        with:
+          path: |
+            target/docker-x86_64
+            target/manylinux-x86_64
+          # build-wheel.sh pins the image digest: a new image (compiler, glibc
+          # headers) must not reuse objects cargo cannot tell were built by
+          # the old one, so no restore-keys fallback either.
+          key: wheel-x86_64-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'tools/build/build-wheel.sh', 'vendor/tesseract/**', 'vendor/leptonica/**', 'crates/tesseract-sys/**') }}
+      - run: tools/build/build-wheel.sh --docker x86_64 abi3
+      # The verifier runs cargo tree for the wheel's target on the host.
+      - run: rustup toolchain install
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: uv python install 3.13
+      - run: uv sync --locked --python 3.13
+      - run: >-
+          uv run --no-sync python tools/build/verify_wheel.py
+          --platform linux-x86_64 --abi abi3 target/wheels/pdf_extract-*-cp313-abi3-manylinux_2_28_x86_64.whl
+      - uses: ./.github/actions/tessdata
+      - name: smoke test from a fresh venv outside the checkout
+        shell: bash
+        run: |
+          uv venv --python 3.13 "$RUNNER_TEMP/smoke"
+          VIRTUAL_ENV="$RUNNER_TEMP/smoke" uv pip install --no-index target/wheels/pdf_extract-*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/smoke/bin/python" -I "$GITHUB_WORKSPACE/tools/build/smoke.py"
+      # The dev environment with the wheel installed in place of a
+      # `maturin develop` build: the suite imports the installed package.
+      - run: uv pip install --no-index target/wheels/pdf_extract-*.whl
+      - run: uv run --no-sync pytest -q
+
+  # Line coverage of the whole test suite (cargo-llvm-cov). Gates on
+  # pdf-extract-core and pdf-extract-render >= 95% lines (spec 4.8, D-23;
+  # spec 0002 D-13). The report for the gate is restricted to their own
+  # sources: vendored hayro is upstream code tested by its own suite (D-23),
+  # the test kit is a dev-only helper with no threshold, crates/python is
+  # exercised by pytest, not by cargo tests (its Rust coverage is reported
+  # by `python-coverage`), and tesseract-sys is reported only; all still
+  # appear in the uploaded lcov.info.
+  coverage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      # Instrumented builds of the whole workspace are larger than plain ones.
+      - uses: ./.github/actions/free-disk
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('vendor/tesseract/**', 'vendor/leptonica/**', 'crates/tesseract-sys/**') }}
+      - uses: ./.github/actions/tessdata
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      # With core's `render-support` hooks, so the gate measures them too.
+      - run: cargo llvm-cov --workspace --features pdf-extract-core/render-support --no-fail-fast $CARGO_FLAGS --no-report
+      - run: cargo llvm-cov report --lcov --output-path lcov.info
+      - name: pdf-extract-core, pdf-extract-render and pdf-extract-ocr line coverage >= 95%
+        run: >-
+          cargo llvm-cov report --summary-only
+          --ignore-filename-regex '(^|/)(vendor|crates/(testkit|python|tesseract-sys))/'
+          --fail-under-lines 95
+      - name: pdf-extract-testkit line coverage (report only)
+        run: >-
+          cargo llvm-cov report --summary-only
+          --ignore-filename-regex '(^|/)(vendor|crates/(core|render|ocr|tesseract-sys))/'
+      # The FFI crate's Rust side is reported, not gated (spec D-13): the C++
+      # shim is not instrumented and is covered by its tests functionally.
+      - name: pdf-extract-tesseract-sys line coverage (report only)
+        run: >-
+          cargo llvm-cov report --summary-only
+          --ignore-filename-regex '(^|/)(vendor|crates/(core|render|ocr|testkit|python))/'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lcov
+          path: lcov.info
+
+  # Rust line coverage of crates/python, measured by running the pytest suite
+  # against an instrumented build of the extension (spec 4.11: report-only
+  # for the binding). REPORT-ONLY: the Python-side gate is the `python` job's
+  # --cov-fail-under; this job only prints the binding's Rust numbers.
+  python-coverage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      # Instrumented extension build plus profraw output.
+      - uses: ./.github/actions/free-disk
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('vendor/tesseract/**', 'vendor/leptonica/**', 'crates/tesseract-sys/**') }}
+      - uses: ./.github/actions/tessdata
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: uv python install 3.13
+      - run: uv sync --locked --python 3.13
+      - name: crates/python line coverage (report only)
+        shell: bash
+        run: |
+          # shellcheck source=/dev/null
+          source <(cargo llvm-cov show-env --sh)
+          cargo llvm-cov clean --workspace
+          # stage-helper.sh builds the OCR helper --release by default, now
+          # under the instrumented environment. That does not affect the
+          # printed numbers: the helper lives in crates/ocr, which the report
+          # regex below excludes, so release only makes the OCR tests faster.
+          tools/build/stage-helper.sh
+          uv run --no-sync maturin develop
+          uv run --no-sync pytest -q
+          cargo llvm-cov report --summary-only \
+            --ignore-filename-regex '(^|/)(vendor|crates/(core|render|ocr|testkit|tesseract-sys))/'
+
+  # Gates C and B (spec 4.13, 4.14): our extraction against the checked-in
+  # oracle expectations of corpus C (per fixture) and corpus B (corpus-wide
+  # open, routing and similarity metrics). Never installs PyMuPDF (L2): the
+  # expectations are generated locally by tools/oracle/gen.py and committed.
+  # The test also writes target/parity-report.json and
+  # target/parity-report-b.json, uploaded for tools/oracle/score.py. The
+  # private corpus-A gate (an ignored test) never runs here.
+  parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('vendor/tesseract/**', 'vendor/leptonica/**', 'crates/tesseract-sys/**') }}
+      - uses: ./.github/actions/tessdata
+      - run: cargo test --locked -p pdf-extract-core --test parity
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: parity-report
+          path: |
+            target/parity-report.json
+            target/parity-report-b.json
+
+  # The OCR quality gate (run 0002 O34, spec 3.8): corpus D's 40 committed
+  # scans plus the 12 noise variants the test builds into target/corpus-d/
+  # and checks against their manifest.toml pins, recognised at 72 and 300 dpi
+  # with the pinned tessdata_fast model and scored against the ground truth
+  # and the committed oracle expectations. The CER gates fail the job;
+  # WER, latency and RSS in target/ocr-report.json are report-only. Release,
+  # because the run does 116 recognitions (52 pages at two resolutions plus
+  # the clean pages again in process isolation).
+  corpus-d:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('vendor/tesseract/**', 'vendor/leptonica/**', 'crates/tesseract-sys/**') }}
+      - uses: ./.github/actions/tessdata
+      - run: cargo test --release --locked -p pdf-extract-ocr --test quality -- --include-ignored --nocapture
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ocr-report
+          path: target/ocr-report.json
+
+  # P1 benchmark (crates/core/benches/open.rs). REPORT-ONLY: the comparison
+  # against crates/core/benches/baseline.json only annotates; it never fails
+  # the pipeline, because shared-runner noise can double a bench on identical
+  # code. To re-record the baseline after a persistent shift, replace
+  # baseline.json with this job's bench.json artefact.
+  bench:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('vendor/tesseract/**', 'vendor/leptonica/**', 'crates/tesseract-sys/**') }}
+      - uses: ./.github/actions/tessdata
+      # Explicit bash runs with -o pipefail, so a crashing bench is not
+      # hidden behind tee's exit status.
+      - shell: bash
+        run: >-
+          cargo bench $CARGO_FLAGS -p pdf-extract-core --bench open --
+          --output-format bencher | tee bench.txt
+        env:
+          PDF_EXTRACT_BENCH_RSS_OUT: ${{ github.workspace }}/bench-rss.json
+      - run: >-
+          python3 tools/bench/report.py --criterion target/criterion
+          --rss bench-rss.json --baseline crates/core/benches/baseline.json
+          --out bench.json
+      # Render benchmark (crates/render/benches/render.rs), run after
+      # report.py so the P1 report reads only P1's criterion data. No
+      # baseline yet: uploaded for trend-tracking only.
+      - shell: bash
+        run: >-
+          cargo bench $CARGO_FLAGS -p pdf-extract-render --bench render --
+          --output-format bencher | tee bench-render.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bench
+          path: |
+            bench.json
+            bench.txt
+            bench-rss.json
+            bench-render.txt

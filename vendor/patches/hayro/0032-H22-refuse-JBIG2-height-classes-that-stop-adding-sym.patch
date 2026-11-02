@@ -1,0 +1,128 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Mon, 19 Oct 2026 23:00:21 +0200
+Subject: [PATCH 32/35] H22: refuse JBIG2 height classes that stop adding
+ symbols after the data
+
+The height-class loop of a symbol dictionary (6.5.5) ran until it had
+decoded the declared number of new symbols, and only a symbol moves it
+forward. Once the arithmetic decoder has used up its data it is a finite
+state machine reading nothing, and some streams then cycle through height
+classes that hold no symbol (IADH, then IADW = OOB) forever: a dictionary
+declaring three symbols over the two bytes 06 c4 spun at full CPU,
+charging nothing to the memory budget, the sibling of the export-flag spin
+of internal #94.
+
+As a heuristic, more than 64 height classes in a row that decode no symbol
+and end with the arithmetic data used up are now refused with
+SymbolError::HeightClassStalled. No encoder writes an empty height class,
+but a short stream's classes all come from the padding and can include a
+few empty ones (a0 b6 decodes three before its one symbol), so the H17
+shape of two in a row would refuse streams that decode today. The Huffman
+reader fails at the end of its data, so that path cannot spin.
+
+The jbig2 copy of the arithmetic decoder now notes that is_exhausted is a
+deliberate divergence from the hayro-jpeg2000 copy, whose coding-pass and
+bit-plane loops are counted from the packet headers.
+
+Refs internal #116
+---
+ hayro-jbig2/src/arithmetic_decoder.rs |  7 ++++++
+ hayro-jbig2/src/decode/symbol.rs      | 31 +++++++++++++++++++++++++++
+ hayro-jbig2/src/error.rs              |  3 +++
+ 3 files changed, 41 insertions(+)
+
+diff --git a/hayro-jbig2/src/arithmetic_decoder.rs b/hayro-jbig2/src/arithmetic_decoder.rs
+index 7a16580..580f2cc 100644
+--- a/hayro-jbig2/src/arithmetic_decoder.rs
++++ b/hayro-jbig2/src/arithmetic_decoder.rs
+@@ -1,5 +1,12 @@
+ // Note: This is a copy of the arithmetic decoder from `hayro-jpeg2000`,
+ // keep the two in sync.
++//
++// One deliberate divergence: `is_exhausted` exists only here. JBIG2 has
++// loops that end only on what the data decodes to (the height classes and
++// export flags of a symbol dictionary, #94 and #116), which can cycle once
++// the data runs out. JPEG 2000's loops over coding passes and bit planes are
++// counted from the packet headers, so its copy cannot spin that way and has
++// no caller for the method.
+ 
+ //! The arithmetic decoder, described in Annex C.
+ //!
+diff --git a/hayro-jbig2/src/decode/symbol.rs b/hayro-jbig2/src/decode/symbol.rs
+index 1d213ab..0cdc1c0 100644
+--- a/hayro-jbig2/src/decode/symbol.rs
++++ b/hayro-jbig2/src/decode/symbol.rs
+@@ -25,6 +25,10 @@ use crate::reader::Reader;
+ 
+ const MAX_SYMBOLS: u32 = u16::MAX as u32;
+ 
++/// The most height classes in a row that may decode no symbol after the
++/// arithmetic data is used up before the dictionary is refused (#116).
++const MAX_STALLED_HEIGHT_CLASSES: u32 = 64;
++
+ /// Decode a symbol dictionary segment (7.4.2, 6.5).
+ pub(crate) fn decode(
+     header: &SymbolDictionaryHeader<'_>,
+@@ -80,6 +84,10 @@ pub(crate) fn decode(
+         }
+     };
+ 
++    // Height classes in a row that decoded no symbol and ended with the
++    // arithmetic decoder out of data; see the check after the class.
++    let mut stalled_height_classes: u32 = 0;
++
+     while ctx.symbols_decoded_count < num_new_symbols {
+         let height_class_delta =
+             read_height_class_delta(&mut ctx)?.ok_or(SymbolError::UnexpectedOob)?;
+@@ -149,6 +157,29 @@ pub(crate) fn decode(
+             // and extract the individual symbols from that bitmap.
+             decode_height_class_collective_bitmap(&mut ctx)?;
+         }
++
++        // Only a symbol moves this loop forward, and once the arithmetic
++        // decoder has run out of data it is a finite state machine reading
++        // nothing, which can cycle through height classes that hold no
++        // symbol (IADH, then IADW = OOB) forever (#116), as the export flags
++        // could (#94). This is a heuristic: refuse once the data is used up
++        // and more than 64 consecutive height classes decode no symbol. No
++        // encoder writes an empty height class, but a short stream's classes
++        // all come from the padding, and some decode a few empty ones before
++        // a symbol (three, for one two-byte stream), so refusing at the first,
++        // or at two in a row as the export guard does, would break streams
++        // that decode today; 64 is far above that and still ends a spin at
++        // once. The Huffman reader fails at the end of its data, so that path
++        // cannot spin.
++        let empty = ctx.symbols_decoded_count == ctx.height_class_first_symbol;
++        if empty && !ctx.header.flags.use_huffman && ctx.a_ctx.decoder.is_exhausted() {
++            stalled_height_classes += 1;
++            if stalled_height_classes > MAX_STALLED_HEIGHT_CLASSES {
++                bail!(SymbolError::HeightClassStalled);
++            }
++        } else {
++            stalled_height_classes = 0;
++        }
+     }
+ 
+     let exported = export_symbols(&mut ctx)?;
+diff --git a/hayro-jbig2/src/error.rs b/hayro-jbig2/src/error.rs
+index a8ddf30..ff09f03 100644
+--- a/hayro-jbig2/src/error.rs
++++ b/hayro-jbig2/src/error.rs
+@@ -120,6 +120,8 @@ pub enum SymbolError {
+     TooManyInstances,
+     /// The export flags stopped advancing after the data ran out.
+     ExportStalled,
++    /// The height classes stopped adding symbols after the data ran out.
++    HeightClassStalled,
+ }
+ 
+ /// Arithmetic overflow errors.
+@@ -249,6 +251,7 @@ impl fmt::Display for SymbolError {
+             Self::InvalidStripDelta => write!(f, "strip delta overflow"),
+             Self::TooManyInstances => write!(f, "too many symbol instances"),
+             Self::ExportStalled => write!(f, "export flags stopped advancing"),
++            Self::HeightClassStalled => write!(f, "height classes stopped adding symbols"),
+         }
+     }
+ }

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "d091baa06ce72a64263089d485431e0638ab2594db435aa58b3ab3570a97aef3",
+  "size": 7640,
+  "source": "corpus-b/hayro/mask_in_type3_glyph.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "😀\n",
+      "sha256": "d744e0ee836148320d73e0d69631b60cc9eb4ec732cf9d78afd0d70661fcff31",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "c2466acc90c2cd0cf5e8e252520a6cca45f6ca89d99ee7e2caa2d4f512762684",
+  "size": 1236,
+  "source": "corpus-c/kp12_vertical_then_horizontal.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "A\nB\nC\nHorizontal\n",
+      "sha256": "23c588595bc9e5cf154bcc5ff489e504c0b9f3e37ddb5d2f1ee5690e7569c498",
+      "error": null
+    }
+  ]
+}

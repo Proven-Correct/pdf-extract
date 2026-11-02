@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "72ca5aa2b26a1dc98547ac0333adbf88cb9aa498d99de750855869ac134e4acc",
+  "size": 1389,
+  "source": "corpus-c/kp24_t3_uni3000_before.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "A　B\n",
+      "sha256": "edd46a163f90de0afb9ea9eeb2a10ed0099e9820e1d9f31a983f0a50bd4ff92c",
+      "error": null
+    }
+  ]
+}

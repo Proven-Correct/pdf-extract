@@ -1,0 +1,83 @@
+# The cargo-fuzz crate (design D6): five libFuzzer targets over the
+# hostile-input entry points, plus the small-stack corpus replay binary.
+#
+# Its own workspace, deliberately not a member of the root one: libfuzzer-sys
+# and the `-Z` flags cargo-fuzz passes need nightly (pinned in
+# rust-toolchain.toml here), and nothing in this directory may reach the
+# stable CI, `cargo-deny` or the shipped Cargo.lock. It has its own committed
+# Cargo.lock.
+[package]
+name = "pdf-extract-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+# The library under test, with core's `fuzzing` feature for the shared
+# limits and drivers (`pdf_extract_core::fuzz_api`).
+pdf-extract-core = { path = "../crates/core", features = ["fuzzing"] }
+pdf-extract-render = { path = "../crates/render" }
+# The synthetic_cmaps seed writer parses each seed as the `cmap` target does,
+# `usecmap` resolved by `load_embedded`. Same exact pin as core; default
+# features (`embed-cmaps`), which hayro-interpret turns on anyway.
+hayro-cmap = "=0.1.0"
+
+# Exactly the root workspace's [patch.crates-io] hayro entries, with paths
+# relative to this directory, so the targets run the patched fork the library
+# ships (spec "Fuzzing reaches the shipped code"). tools/fuzz/check-patch-sync.sh
+# (CI `vendor-patches` job) fails when the two tables diverge.
+[patch.crates-io]
+hayro-syntax = { path = "../vendor/hayro-syntax" }
+hayro-interpret = { path = "../vendor/hayro-interpret" }
+hayro-postscript = { path = "../vendor/hayro-postscript" }
+hayro-jbig2 = { path = "../vendor/hayro-jbig2" }
+hayro-jpeg2000 = { path = "../vendor/hayro-jpeg2000" }
+
+# `panic = "unwind"` as in the root: libFuzzer's panic hook turns a panic into
+# an abort-and-report either way, and the replay binary below must be able
+# to catch a panic on its small-stack thread and name the input.
+[profile.release]
+panic = "unwind"
+debug = 1
+
+[[bin]]
+name = "open"
+path = "fuzz_targets/open.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "text"
+path = "fuzz_targets/text.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "render"
+path = "fuzz_targets/render.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cmap"
+path = "fuzz_targets/cmap.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "unicode"
+path = "fuzz_targets/unicode.rs"
+test = false
+doc = false
+bench = false

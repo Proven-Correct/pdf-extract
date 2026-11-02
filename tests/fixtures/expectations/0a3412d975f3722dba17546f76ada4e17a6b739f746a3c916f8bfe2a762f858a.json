@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "0a3412d975f3722dba17546f76ada4e17a6b739f746a3c916f8bfe2a762f858a",
+  "size": 1011,
+  "source": "corpus-b/hayro/encrypted_rc4_rev2.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Hello World!\n",
+      "sha256": "03ba204e50d126e4674c005e04d82e84c21366780af1f43bd54a37816b6ab340",
+      "error": null
+    }
+  ]
+}

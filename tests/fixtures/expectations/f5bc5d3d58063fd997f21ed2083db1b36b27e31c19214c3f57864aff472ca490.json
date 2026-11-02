@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "f5bc5d3d58063fd997f21ed2083db1b36b27e31c19214c3f57864aff472ca490",
+  "size": 19631,
+  "source": "corpus-c/deep_tree_200.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "DeepLeaf\n",
+      "sha256": "86f9e8e4d9ee7e7c8e74a76a79279247cea388841eaaca6520c95bd5b76ca683",
+      "error": null
+    }
+  ]
+}

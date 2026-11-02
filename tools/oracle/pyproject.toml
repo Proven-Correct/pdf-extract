@@ -1,0 +1,48 @@
+# Oracle tooling for pdf-extract. Role: a standalone uv project that runs
+# PyMuPDF as a black box to make the fixtures the Rust test kit cannot build
+# (encrypted files), to measure reference widths, and to check that generated
+# fixtures open in the reference implementation.
+#
+# Dev-only and isolated on purpose: nothing in the library, its Rust tests or
+# CI depends on this project, and CI never installs PyMuPDF. PyMuPDF/MuPDF is
+# used strictly through its public API (call it, observe the output); its
+# source is never read, copied or translated.
+[project]
+name = "pdf-extract-oracle"
+version = "0.0.0"
+description = "Black-box PyMuPDF oracle tooling for pdf-extract fixtures (dev-only)"
+requires-python = ">=3.12"
+# Pillow and numpy degrade corpus D's scans (noise, skew, blur) and encode
+# its JPEG page (run 0002 §3.8, Q5). Pinned exactly like PyMuPDF: the
+# `--compare-pixels` proof regenerates the corpus and compares pixels, which
+# only holds while the resampling and encoding code is the same.
+dependencies = [
+    "numpy==2.5.3",
+    "pillow==12.3.0",
+    "pymupdf==1.28.2",
+]
+
+[dependency-groups]
+dev = ["mypy>=1.13", "ruff>=0.8"]
+
+# Not a package: the scripts are run with `uv run python <script>`.
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+# PyMuPDF's API is untyped, so every call into it would trip strict mode's
+# untyped-call check; our own functions stay fully annotated.
+disallow_untyped_calls = false
+# PyMuPDF ships no complete type information; calls into it are untyped.
+[[tool.mypy.overrides]]
+module = ["pymupdf", "pymupdf.*"]
+ignore_missing_imports = true

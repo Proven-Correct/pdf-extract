@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "774c1f72a5141ee343edd3aa596a6912d2ef68bd3a4c666cd32fcc169f63ede3",
+  "size": 1014,
+  "source": "corpus-c/kp08_stamp_matrix.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Body\nScaled\n",
+      "sha256": "adbcb21ff936dcc28acfd61f00eff3cb4cabad677953ae515ac1a22c322f2a87",
+      "error": null
+    }
+  ]
+}

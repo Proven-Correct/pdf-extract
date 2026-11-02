@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "deda928a41db2b140afea49f40c12833f3ea5e190bf0b598db2f11ac9b1bafed",
+  "size": 697082,
+  "source": "corpus-d/clean_heading_footnote_blur.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "Of the Causes Which Impel the Separation\nthrow off such Government, and to provide new Guards\nfor theirfuture security.Such has\nbeen the patontsutferance of these Colonies; and such is now the necessity which\nconstrains them to alter their former Systems of Government. The history of the present King\n(of Groat Briain is a history of repeated injuries and usurpation, all having indirect object\nthe establishment of an absolute Tyranny over these States. To prove this, lat Facts be\n‘bmitted\noa candkd wold. He has relused his Assent to Laws, the most wholesome and\n‘necessary\nfor he public good. He has forbidden his Governors to pass Laws of immediate\n‘and pressing importance, unless suspended in their operation tl his Assent should be\n‘obtained; and when so suspended, he has utterly neglected o attend to them, He has\n‘elused to pass other Laws for theaccommodationa large cstcts\nof people, unless those\nPeople would relinquish the rightofRepresentationin the Legislature, a right inestimable to.\nthem and formidable\nto tyrants only. He has called together legislative bodies at places\n‘unususl, uncomfortable, and distant rom the depository of their public Records, forthe sole\n‘purpose of fatiguing them into compliance wit his measures. He has dissolved\nRepresentative Houses repeatedly, for opposing with manly fmness his invasions on the\n‘rights of the people. He has retused for a long time, after such dissolutions, to cause others\ntobe elected: whereby the Legislative powers, incapable of Annihilation, have returned to\nthe People at lage for ther exercise; the State remaining in the mean time exposed to all\nthe dangersof invasion from without, and convulsions within. He has endeavoured to\nprevent the population ofthese States: fr that purpose obstructing the Laws for\nNaturalization of Foreigners; refusing to pass others to encourage their migrations hither,\n{and raising the conditions of new Appropriations of Lands. He has obstructed the\n‘Administration of Justice, by retusing his Assont to Laws for estabishing Judiciary powers.\nHe has made Judges dependent on his Will alone, for the tenure of their offices, and the\n‘amount and payment of their salaries. He has erected a mulitude of New Offices, and sent\nhithor swarms of Officers to harass our people, and eat out their substance. He has kept\namong us, in times of peace, Standing Armies without the Consent of our legislatures. He_\nhas affected to render the Miltary independent of and superior othe Cail power. He has\nroan ectao acta ogni er anon,uncsg\nat a\n\"Sxcipmentedogausor\nwren be Cassar hen wer econ een tom pope Sse he\npostcards mach avecomma rater aman amar eso\nPewra3\n",
+        "sha256": "969bc41dea582535dfb990db1f7ba52dac506dcf6296bb9e9c352cb7db8ef312"
+      }
+    ]
+  }
+}

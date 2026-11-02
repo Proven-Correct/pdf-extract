@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "bfe3f999156845cf3e8c8009750e1f0f9dd43e6a03058e82fcb071170041a446",
+  "size": 758,
+  "source": "corpus-c/kp19_tr7_clip.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "CLIP\ninside\n",
+      "sha256": "33744ab5edfb3ed7970454fcd4ed5b6ca3a49903591fdc26f4e219eac69e8917",
+      "error": null
+    }
+  ]
+}

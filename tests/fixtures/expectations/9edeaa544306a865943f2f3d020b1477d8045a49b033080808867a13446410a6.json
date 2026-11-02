@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "9edeaa544306a865943f2f3d020b1477d8045a49b033080808867a13446410a6",
+  "size": 916,
+  "source": "corpus-c/kp07_cropbox_clips.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "InsideCrop\nStraddle95\nStraddle105\n",
+      "sha256": "7fb0f778e2cfa1a9d68aa5c3b8a38ba29bc50438867963dc5d08e54214eccf10",
+      "error": null
+    }
+  ]
+}

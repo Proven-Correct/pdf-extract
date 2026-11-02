@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "986f718a82f7b4e87a8ce381b6add96062ff52306aeec83e5d0694c1c550ceed",
+  "size": 79481,
+  "source": "corpus-b/hayro/font_type3_stroked_glyphs.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "red outlined text\nblue outlined text\ngradient text\n😄😁😆\n",
+      "sha256": "9381f8c77994f341541f4e70e2661443d55931b06347f74005e7240f086fe269",
+      "error": null
+    }
+  ]
+}

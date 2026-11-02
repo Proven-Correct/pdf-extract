@@ -1,0 +1,319 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Thu, 1 Oct 2026 15:14:17 -0400
+Subject: [PATCH 03/22] H1: build hayro-syntax pages lazily; add
+ Page::from_dict
+
+Pdf::new no longer walks the page tree. The pages are built on the first
+call to Pdf::pages() and cached for the life of the Pdf, so opening a
+large document costs only the xref (about 33 bytes per object retained
+for a 100,000-page tree, against about 680 before) and the recursive
+walk no longer runs at open.
+
+New API for callers that walk the tree themselves:
+- Pdf::pages_root(): the catalog's /Pages reference.
+- Pdf::pages_built(): whether pages() has been called.
+- Pdf::xref_was_repaired(): whether the xref table was rebuilt.
+- page::InheritedAttributes and Page::from_dict(): build the same Page
+  the eager walk yields, from the leaf dictionary and what it inherits.
+
+Page::new becomes infallible; the brute-force /Contents check moves to
+its only caller. Because the tree is no longer read at open, a /Pages
+reference that does not resolve now opens with no pages instead of
+failing with LoadPdfError::Invalid; a catalog without /Pages still fails.
+---
+ hayro-syntax/src/page.rs | 113 ++++++++++++++++++++++++++++++---------
+ hayro-syntax/src/pdf.rs  |  53 +++++++++++++++---
+ hayro-syntax/src/xref.rs |   2 +-
+ 3 files changed, 136 insertions(+), 32 deletions(-)
+
+diff --git a/hayro-syntax/src/page.rs b/hayro-syntax/src/page.rs
+index b9887fc..2f9158e 100644
+--- a/hayro-syntax/src/page.rs
++++ b/hayro-syntax/src/page.rs
+@@ -36,6 +36,27 @@ impl PagesContext {
+     }
+ }
+ 
++/// The attributes a page inherits from its ancestors in the page tree, as
++/// input to [`Page::from_dict`].
++///
++/// `media_box`, `crop_box` and `rotate` are the values of the nearest ancestor
++/// that defines each key (`None` if no ancestor does). `resources` holds the
++/// `Resources` dictionary of every ancestor that has one, ordered from the
++/// root of the page tree to the page's direct parent; resource names are
++/// looked up from the page outwards, so a nearer ancestor's entry shadows an
++/// outer one, as in the eager walk.
++#[derive(Debug, Clone, Default)]
++pub struct InheritedAttributes<'a> {
++    /// The inherited `MediaBox`.
++    pub media_box: Option<Rect>,
++    /// The inherited `CropBox`.
++    pub crop_box: Option<Rect>,
++    /// The inherited `Rotate` value, in degrees.
++    pub rotate: Option<i32>,
++    /// The ancestors' `Resources` dictionaries, from the root to the parent.
++    pub resources: Vec<Dict<'a>>,
++}
++
+ /// A structure holding the pages of a PDF document.
+ pub struct Pages<'a> {
+     pages: Vec<Page<'a>>,
+@@ -69,15 +90,16 @@ impl<'a> Pages<'a> {
+         let mut pages = vec![];
+ 
+         for object in xref.objects() {
++            // In general, pages without content are allowed, but in case we are brute-forcing
++            // we ignore them.
+             if let Some(dict) = object.into_dict()
+-                && let Some(page) = Page::new(
++                && dict.contains_key(CONTENTS)
++            {
++                pages.push(Page::new(
+                     &dict,
+                     &PagesContext::new(),
+                     Resources::new(Dict::empty(), None, ctx),
+-                    true,
+-                )
+-            {
+-                pages.push(page);
++                ));
+             }
+         }
+ 
+@@ -88,6 +110,14 @@ impl<'a> Pages<'a> {
+         Some(Self { pages, xref })
+     }
+ 
++    /// A document without readable pages.
++    pub(crate) fn empty(xref: &'a XRef) -> Self {
++        Self {
++            pages: vec![],
++            xref,
++        }
++    }
++
+     /// Return the xref table (of the document the pages belong to).   
+     pub fn xref(&self) -> &'a XRef {
+         self.xref
+@@ -135,9 +165,7 @@ fn resolve_pages<'a>(
+             // Let's be lenient and assume it's a `Page` in case it's `None` or something else
+             // (see corpus test case 0083781).
+             _ => {
+-                if let Some(page) = Page::new(&dict, &ctx, resources.clone(), false) {
+-                    entries.push(page);
+-                }
++                entries.push(Page::new(&dict, &ctx, resources.clone()));
+             }
+         }
+     }
+@@ -170,18 +198,7 @@ pub struct Page<'a> {
+ }
+ 
+ impl<'a> Page<'a> {
+-    fn new(
+-        dict: &Dict<'a>,
+-        ctx: &PagesContext,
+-        resources: Resources<'a>,
+-        brute_force: bool,
+-    ) -> Option<Self> {
+-        // In general, pages without content are allowed, but in case we are brute-forcing
+-        // we ignore them.
+-        if brute_force && !dict.contains_key(CONTENTS) {
+-            return None;
+-        }
+-
++    fn new(dict: &Dict<'a>, ctx: &PagesContext, resources: Resources<'a>) -> Self {
+         let media_box = dict.get::<Rect>(MEDIA_BOX).or(ctx.media_box).unwrap_or(A4);
+ 
+         let crop_box = dict
+@@ -208,7 +225,7 @@ impl<'a> Page<'a> {
+             resources,
+         );
+ 
+-        Some(Self {
++        Self {
+             inner: dict.clone(),
+             media_box,
+             crop_box,
+@@ -216,7 +233,46 @@ impl<'a> Page<'a> {
+             page_streams: OnceLock::new(),
+             resources,
+             ctx,
+-        })
++        }
++    }
++
++    /// Create a page from its dictionary and the attributes it inherits from
++    /// its ancestors in the page tree.
++    ///
++    /// This is the building block for callers that walk the page tree
++    /// themselves (for example, to index a large document without building
++    /// every page up front, or to bound the walk's depth) and then construct
++    /// only the pages they need. The result is the same page that
++    /// [`Pdf::pages`](crate::Pdf::pages) yields for `dict`, provided
++    /// `inherited` holds what the eager walk would have collected on the way
++    /// down: the nearest ancestor's `MediaBox`, `CropBox` and `Rotate`, and the
++    /// `Resources` dictionaries of all ancestors.
++    ///
++    /// Entries in `dict` itself take precedence over `inherited`, exactly as in
++    /// the eager walk. `dict` is not checked to be a `/Type /Page` dictionary;
++    /// like the eager walk, any leaf of the page tree is accepted.
++    pub fn from_dict(dict: &Dict<'a>, inherited: &InheritedAttributes<'a>) -> Self {
++        // A fresh context for the document, as the eager walk uses, rather
++        // than `dict`'s own one: that one may carry the dictionary's object
++        // number and the reference chain it was resolved through, which
++        // belong to the dictionary, not to everything later read via the page.
++        let ctx = ReaderContext::new(dict.ctx().xref(), false);
++        let pages_ctx = PagesContext {
++            media_box: inherited.media_box,
++            crop_box: inherited.crop_box,
++            rotate: inherited.rotate,
++        };
++        // Rebuild the same parent chain `resolve_pages` builds: an empty root,
++        // then one link per ancestor, outermost first. `Page::new` appends the
++        // page's own `/Resources` as the innermost link.
++        let resources = inherited
++            .resources
++            .iter()
++            .fold(Resources::new(Dict::empty(), None, &ctx), |parent, dict| {
++                Resources::from_parent(dict.clone(), parent)
++            });
++
++        Self::new(dict, &pages_ctx, resources)
+     }
+ 
+     fn operations_impl(&self) -> Option<UntypedIter<'_>> {
+@@ -518,7 +574,13 @@ pub(crate) mod cached {
+     }
+ 
+     impl CachedPages {
+-        pub(crate) fn new(xref: Arc<XRef>) -> Option<Self> {
++        /// Walk the page tree and build every page.
++        ///
++        /// Falls back to a brute-force search for page objects when the tree
++        /// cannot be read, and to an empty page list when that finds nothing:
++        /// this runs lazily on the first call to `Pdf::pages`, after the
++        /// document has been opened, so there is no error left to report.
++        pub(crate) fn new(xref: Arc<XRef>) -> Self {
+             // SAFETY:
+             // - The XRef's location is stable in memory:
+             //   - We wrapped it in a `Arc` (or `Rc` in `no_std`), which implements `StableDeref`.
+@@ -532,9 +594,10 @@ pub(crate) mod cached {
+             let pages = xref_reference
+                 .get_with(xref.trailer_data().pages_ref, &ctx)
+                 .and_then(|p| Pages::new(&p, &ctx, xref_reference))
+-                .or_else(|| Pages::new_brute_force(&ctx, xref_reference))?;
++                .or_else(|| Pages::new_brute_force(&ctx, xref_reference))
++                .unwrap_or_else(|| Pages::empty(xref_reference));
+ 
+-            Some(Self { pages, _xref: xref })
++            Self { pages, _xref: xref }
+         }
+ 
+         pub(crate) fn get(&self) -> &Pages<'_> {
+diff --git a/hayro-syntax/src/pdf.rs b/hayro-syntax/src/pdf.rs
+index f26252f..fc40229 100644
+--- a/hayro-syntax/src/pdf.rs
++++ b/hayro-syntax/src/pdf.rs
+@@ -3,10 +3,11 @@
+ use crate::PdfData;
+ use crate::filter::{DecodeBudget, DecodeLimits, DecodeStats};
+ use crate::object::Object;
++use crate::object::ObjectIdentifier;
+ use crate::page::Pages;
+ use crate::page::cached::CachedPages;
+ use crate::reader::Reader;
+-use crate::sync::Arc;
++use crate::sync::{Arc, OnceLock};
+ use crate::xref::{XRef, XRefError, fallback, root_xref};
+ 
+ pub use crate::crypto::DecryptionError;
+@@ -16,7 +17,12 @@ use crate::metadata::Metadata;
+ pub struct Pdf {
+     xref: Arc<XRef>,
+     header_version: PdfVersion,
+-    pages: CachedPages,
++    // Built on the first call to `pages()`, not when the document is opened:
++    // walking the tree resolves every page dictionary and holds a `Page` for
++    // each, which dominates the cost of opening a large document and is
++    // wasted on callers that only need a few pages (or build them with
++    // `Page::from_dict`). Once built, the pages live as long as the `Pdf`.
++    pages: OnceLock<CachedPages>,
+     data: PdfData,
+ }
+ 
+@@ -72,12 +78,14 @@ impl Pdf {
+         };
+         let xref = Arc::new(xref);
+ 
+-        let pages = CachedPages::new(xref.clone()).ok_or(LoadPdfError::Invalid)?;
+-
++        // The page tree is not read here (see `pages`), so a document whose
++        // tree is unreadable opens and has no pages. The catalog and its
++        // `/Pages` reference are still required: resolving the trailer above
++        // fails without them.
+         Ok(Self {
+             xref,
+             header_version: version,
+-            pages,
++            pages: OnceLock::new(),
+             data,
+         })
+     }
+@@ -106,8 +114,41 @@ impl Pdf {
+     }
+ 
+     /// Return the pages of the PDF file.
++    ///
++    /// The page tree is walked on the first call and the result is cached, so
++    /// the first call costs time and memory proportional to the number of
++    /// pages. If neither the page tree nor a search for page objects yields a
++    /// page, the result is empty.
+     pub fn pages(&self) -> &Pages<'_> {
+-        self.pages.get()
++        self.pages
++            .get_or_init(|| CachedPages::new(self.xref.clone()))
++            .get()
++    }
++
++    /// Return whether the pages have been built, i.e. whether
++    /// [`Pdf::pages`] has been called.
++    pub fn pages_built(&self) -> bool {
++        self.pages.get().is_some()
++    }
++
++    /// Return the object identifier of the root of the page tree (the
++    /// catalog's `/Pages` entry).
++    ///
++    /// Together with [`XRef::get`] and [`Page::from_dict`](crate::page::Page::from_dict),
++    /// this lets a caller walk the page tree on its own terms instead of
++    /// calling [`Pdf::pages`].
++    pub fn pages_root(&self) -> ObjectIdentifier {
++        self.xref.trailer_data().pages_ref
++    }
++
++    /// Return whether the xref table was broken and had to be rebuilt by
++    /// scanning the file.
++    ///
++    /// A broken table is usually detected while opening, but can also be
++    /// detected later, the first time an object is not found where the table
++    /// says it is; the result reflects the state at the time of the call.
++    pub fn xref_was_repaired(&self) -> bool {
++        self.xref.is_repaired()
+     }
+ 
+     /// Return the xref of the PDF file.
+diff --git a/hayro-syntax/src/xref.rs b/hayro-syntax/src/xref.rs
+index 02eef6d..6178b7a 100644
+--- a/hayro-syntax/src/xref.rs
++++ b/hayro-syntax/src/xref.rs
+@@ -395,7 +395,7 @@ impl XRef {
+         Ok(xref)
+     }
+ 
+-    fn is_repaired(&self) -> bool {
++    pub(crate) fn is_repaired(&self) -> bool {
+         match &self.0 {
+             Inner::Dummy => false,
+             Inner::Some(r) => {

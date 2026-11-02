@@ -1,0 +1,9 @@
+# The fuzz crate's toolchain (design D6): cargo-fuzz's libFuzzer and
+# sanitizer flags need nightly. A dated nightly at least two weeks old, so
+# a fuzz session is reproducible; bumping it is a deliberate commit, like the
+# stable pin in the root rust-toolchain.toml. rust-src lets `-Zbuild-std`
+# instrument std; llvm-tools provides `cargo fuzz coverage`'s profdata tools.
+[toolchain]
+channel = "nightly-2026-10-01"
+components = ["rust-src", "llvm-tools"]
+profile = "minimal"

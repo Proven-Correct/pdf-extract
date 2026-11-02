@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "efb49d3a41ea5861a0cdc10756c8ae6d5986980b81989dd08de72f273ec51f4b",
+  "size": 909,
+  "source": "corpus-c/kp20_form_order.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Before\nInForm\nAfter\n",
+      "sha256": "1c692eedf06a49fd1f022df3647556540275406fb557f6c35ca364e7b398e90e",
+      "error": null
+    }
+  ]
+}

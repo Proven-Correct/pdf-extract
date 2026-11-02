@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "401586241a33742d6c562ac18859d4fb3f7d078c828c2eca9db3d3a8dff5fcb1",
+  "size": 941,
+  "source": "corpus-b/pdfbox/PDFBOX-5002.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Title in a big font\nsome text with\na smaller font\non multiple lines\n",
+      "sha256": "b65b7a85ded6749fb54ad29a54017999c44b35dc7f17a26dd6b017f6d285cea5",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "07fbf4d1600b8cb2ea0428385f5a0bfbc627fa85b7c32d2b6e0b79003e9699b4",
+  "size": 667,
+  "source": "corpus-c/tc_1.5.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Hello\n",
+      "sha256": "66a045b452102c59d840ec097d59d9467e13a3f34f6494e539ffd32c1bb35f18",
+      "error": null
+    }
+  ]
+}

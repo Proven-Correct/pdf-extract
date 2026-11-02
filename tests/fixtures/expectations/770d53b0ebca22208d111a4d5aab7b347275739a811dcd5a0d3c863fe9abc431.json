@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "770d53b0ebca22208d111a4d5aab7b347275739a811dcd5a0d3c863fe9abc431",
+  "size": 1183,
+  "source": "corpus-c/enc_aes_128_user.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": true,
+    "is_encrypted": true
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": null,
+      "sha256": null,
+      "error": "ValueError: document closed or encrypted"
+    }
+  ]
+}

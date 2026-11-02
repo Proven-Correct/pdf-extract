@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "sha256": "57a3efd42ca8511cf041560f9704d941f6b803f3bc681e6fb0a0a9ba51ea2ef9",
+  "size": 2017,
+  "source": "corpus-b/pdfbox/PDFBOX-6049-Source.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 8,
+  "pages": [
+    {
+      "index": 0,
+      "text": "rotation 0\n",
+      "sha256": "0bf0edb3514e657b54407376a09d342c7104ff6daf6626c70089a3ef79027a4d",
+      "error": null
+    },
+    {
+      "index": 1,
+      "text": "rotation 90\n",
+      "sha256": "eb58b39ca7fc50928dc512aa8778d7230da296bfae747d6dfca7da92fb5c69fe",
+      "error": null
+    },
+    {
+      "index": 2,
+      "text": "rotation 180\n",
+      "sha256": "3a0427af929d7995631c010b8bae552657e774f553028bfd0e01d054bb1e6e53",
+      "error": null
+    },
+    {
+      "index": 3,
+      "text": "rotation 270\n",
+      "sha256": "664ea459bea7e44dcf409594ab8a17e852db959c6de378d469a716020d5efcae",
+      "error": null
+    },
+    {
+      "index": 4,
+      "text": "rotation 0\n",
+      "sha256": "0bf0edb3514e657b54407376a09d342c7104ff6daf6626c70089a3ef79027a4d",
+      "error": null
+    },
+    {
+      "index": 5,
+      "text": "rotation 90\n",
+      "sha256": "eb58b39ca7fc50928dc512aa8778d7230da296bfae747d6dfca7da92fb5c69fe",
+      "error": null
+    },
+    {
+      "index": 6,
+      "text": "rotation 180\n",
+      "sha256": "3a0427af929d7995631c010b8bae552657e774f553028bfd0e01d054bb1e6e53",
+      "error": null
+    },
+    {
+      "index": 7,
+      "text": "rotation 270\n",
+      "sha256": "664ea459bea7e44dcf409594ab8a17e852db959c6de378d469a716020d5efcae",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "dc4b3339a3bed79e973a40abb2565d35aedfc2d2d50ab778a3232335893d57d2",
+  "size": 745,
+  "source": "corpus-c/kp04_fakebold_0.3x0.3.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Bold\nBold\n",
+      "sha256": "998cd61993c4b9125539df3ba63b787fa85091d7e652eb8eebe47c7a3f0d4eb1",
+      "error": null
+    }
+  ]
+}

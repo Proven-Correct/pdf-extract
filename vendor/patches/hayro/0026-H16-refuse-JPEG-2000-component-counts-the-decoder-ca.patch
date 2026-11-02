@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Mon, 12 Oct 2026 12:09:56 -0700
+Subject: [PATCH 26/35] H16: refuse JPEG 2000 component counts the decoder
+ cannot hold
+
+Two crafted shapes panicked inside hayro-jpeg2000 at any memory budget.
+
+With palette indices unresolved (as hayro-syntax decodes), a JP2 file
+with a pclr box is decoded as one gray index channel, and the
+component-count check is skipped for palette images, so a codestream of
+two or more components was interleaved past the end of the one-channel
+output buffer. Such a file is now refused with TooManyChannels.
+
+The progression iterator narrows the component count to a u8, so 256
+components became 0 (a failed assertion) and 257 became 1 (components
+silently dropped). Raw codestreams were already refused by the channel
+check; JP2 files with a palette were not. Any count above 255 is now
+refused with TooManyChannels in resolve_alpha_and_color_space, the one
+function every Image is built through, before any decoding.
+
+hayro-syntax reports both refusals as ImageDecode, so the image is
+skipped with an image-decode warning.
+
+Refs internal #63
+---
+ hayro-jpeg2000/src/lib.rs | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/hayro-jpeg2000/src/lib.rs b/hayro-jpeg2000/src/lib.rs
+index 43c6202..8800792 100644
+--- a/hayro-jpeg2000/src/lib.rs
++++ b/hayro-jpeg2000/src/lib.rs
+@@ -293,6 +293,14 @@ pub(crate) fn resolve_alpha_and_color_space(
+ ) -> Result<(ColorSpace, bool)> {
+     let mut num_components = header.component_infos.len();
+ 
++    // The decoder keeps component counts in a `u8` (the progression
++    // iterator narrows to one), so more than 255 would truncate. Every
++    // `Image` is built through here, so refusing it here covers raw
++    // codestreams and JP2 files alike, before any decoding.
++    if num_components > u8::MAX as usize {
++        bail!(ValidationError::TooManyChannels);
++    }
++
+     // Override number of components with what is actually in the palette box
+     // in case we resolve them.
+     if settings.resolve_palette_indices
+@@ -318,6 +326,13 @@ pub(crate) fn resolve_alpha_and_color_space(
+ 
+     let actual_num_components = header.component_infos.len();
+ 
++    // Unresolved, the output holds one index channel per pixel, so a
++    // palette image with more components would be interleaved past its end
++    // (the channel check below skips palette images).
++    if !settings.resolve_palette_indices && boxes.palette.is_some() && actual_num_components != 1 {
++        bail!(ValidationError::TooManyChannels);
++    }
++
+     // Validate the number of channels.
+     if boxes.palette.is_none()
+         && actual_num_components

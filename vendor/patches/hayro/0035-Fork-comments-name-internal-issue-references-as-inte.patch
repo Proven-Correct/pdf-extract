@@ -1,0 +1,102 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Sun, 1 Nov 2026 23:39:21 -0800
+Subject: [PATCH 35/35] Fork comments: name internal issue references as
+ internal
+
+The fork's own comments cite issues of the internal tracker by bare
+number. Ahead of the public snapshot they read "internal #N", as the
+rest of the tree does (ADR 0097). Comments only; no code changes.
+---
+ hayro-jbig2/src/arithmetic_decoder.rs | 2 +-
+ hayro-jbig2/src/decode/symbol.rs      | 8 ++++----
+ hayro-jbig2/src/decode/text.rs        | 2 +-
+ hayro-syntax/src/filter/jbig2.rs      | 2 +-
+ hayro-syntax/src/object/array.rs      | 2 +-
+ 5 files changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/hayro-jbig2/src/arithmetic_decoder.rs b/hayro-jbig2/src/arithmetic_decoder.rs
+index 580f2cc..90f1b02 100644
+--- a/hayro-jbig2/src/arithmetic_decoder.rs
++++ b/hayro-jbig2/src/arithmetic_decoder.rs
+@@ -3,7 +3,7 @@
+ //
+ // One deliberate divergence: `is_exhausted` exists only here. JBIG2 has
+ // loops that end only on what the data decodes to (the height classes and
+-// export flags of a symbol dictionary, #94 and #116), which can cycle once
++// export flags of a symbol dictionary, internal #94 and #116), which can cycle once
+ // the data runs out. JPEG 2000's loops over coding passes and bit planes are
+ // counted from the packet headers, so its copy cannot spin that way and has
+ // no caller for the method.
+diff --git a/hayro-jbig2/src/decode/symbol.rs b/hayro-jbig2/src/decode/symbol.rs
+index 0cdc1c0..cf8e352 100644
+--- a/hayro-jbig2/src/decode/symbol.rs
++++ b/hayro-jbig2/src/decode/symbol.rs
+@@ -26,7 +26,7 @@ use crate::reader::Reader;
+ const MAX_SYMBOLS: u32 = u16::MAX as u32;
+ 
+ /// The most height classes in a row that may decode no symbol after the
+-/// arithmetic data is used up before the dictionary is refused (#116).
++/// arithmetic data is used up before the dictionary is refused (internal #116).
+ const MAX_STALLED_HEIGHT_CLASSES: u32 = 64;
+ 
+ /// Decode a symbol dictionary segment (7.4.2, 6.5).
+@@ -161,8 +161,8 @@ pub(crate) fn decode(
+         // Only a symbol moves this loop forward, and once the arithmetic
+         // decoder has run out of data it is a finite state machine reading
+         // nothing, which can cycle through height classes that hold no
+-        // symbol (IADH, then IADW = OOB) forever (#116), as the export flags
+-        // could (#94). This is a heuristic: refuse once the data is used up
++        // symbol (IADH, then IADW = OOB) forever (internal #116), as the export flags
++        // could (internal #94). This is a heuristic: refuse once the data is used up
+         // and more than 64 consecutive height classes decode no symbol. No
+         // encoder writes an empty height class, but a short stream's classes
+         // all come from the padding, and some decode a few empty ones before
+@@ -745,7 +745,7 @@ fn export_symbols(ctx: &mut SymbolDecodeContext<'_>) -> Result<Vec<Bitmap>> {
+ 
+         // Only a run of at least one symbol moves `index`, and once the
+         // arithmetic decoder has run out of data its state can cycle through
+-        // runs of 0 forever (#94). Two 0-length runs in a row are refused
++        // runs of 0 forever (internal #94). Two 0-length runs in a row are refused
+         // once the data is gone: every such cycle decodes them, and no
+         // encoder writes them (a 0-length run is needed only first, when the
+         // first symbol is exported). Refusing any 0-length run after the data
+diff --git a/hayro-jbig2/src/decode/text.rs b/hayro-jbig2/src/decode/text.rs
+index 25fabd9..ab4641c 100644
+--- a/hayro-jbig2/src/decode/text.rs
++++ b/hayro-jbig2/src/decode/text.rs
+@@ -207,7 +207,7 @@ pub(crate) fn decode_with(
+ 
+             // The instance count is capped above, but each instance costs its
+             // symbol's area to draw, and the symbols can be large, so the
+-            // pixels drawn are charged to the decode's work allowance (#116).
++            // pixels drawn are charged to the decode's work allowance (internal #116).
+             // The area is charged unclipped: an encoder places its symbols
+             // inside the region, so only a hostile file pays for pixels that
+             // fall outside it. The fixed part stands for decoding the
+diff --git a/hayro-syntax/src/filter/jbig2.rs b/hayro-syntax/src/filter/jbig2.rs
+index 13e6d6c..0a80da3 100644
+--- a/hayro-syntax/src/filter/jbig2.rs
++++ b/hayro-syntax/src/filter/jbig2.rs
+@@ -125,7 +125,7 @@ pub(crate) fn decode(
+ /// error is a broken image.
+ ///
+ /// H23: the cap also sets the work allowance for placing symbol instances
+-/// (#116), whose refusal goes the same way: both are the decoder outgrowing
++/// (internal #116), whose refusal goes the same way: both are the decoder outgrowing
+ /// what the cap allows, and raising the cap admits both.
+ fn decode_within_budget<D: hayro_jbig2::Decoder>(
+     image: &hayro_jbig2::Image<'_>,
+diff --git a/hayro-syntax/src/object/array.rs b/hayro-syntax/src/object/array.rs
+index 6f81af4..9352684 100644
+--- a/hayro-syntax/src/object/array.rs
++++ b/hayro-syntax/src/object/array.rs
+@@ -135,7 +135,7 @@ impl<'a> Iterator for ArrayIter<'a> {
+ 
+         if !self.reader.at_end() {
+             // Validation (`skip`) and this re-read are separate parsers, and a
+-            // disagreement used to panic here (a lone `+`, #120). End the
++            // disagreement used to panic here (a lone `+`, internal #120). End the
+             // iteration on a failed read instead: malformed input must not
+             // panic, and a short array is how hayro treats other bad entries.
+             return self

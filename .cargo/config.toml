@@ -1,0 +1,11 @@
+# Cargo configuration shared by every cargo invocation in the workspace.
+#
+# PYO3_BUILD_EXTENSION_MODULE makes PyO3 build crates/python as a CPython
+# extension module: libpython is not linked (on macOS the linker gets
+# `-undefined dynamic_lookup`), because the interpreter that imports the
+# module provides those symbols. maturin sets the same variable for its own
+# builds; setting it here as well is what lets plain `cargo build/clippy/test
+# --workspace` (the `rust` and `coverage` CI jobs) build the cdylib on hosts
+# that have a Python interpreter but no libpython development library.
+[env]
+PYO3_BUILD_EXTENSION_MODULE = "1"

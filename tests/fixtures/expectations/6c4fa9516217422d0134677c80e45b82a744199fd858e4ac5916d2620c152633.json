@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "6c4fa9516217422d0134677c80e45b82a744199fd858e4ac5916d2620c152633",
+  "size": 844,
+  "source": "corpus-c/rotate_90.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Line one.\nline two.\nBlock two.\n",
+      "sha256": "ae7f7dbc4a9cdb9d2c1cc88dccdcf203d400a4335f52d576b955491329e0bfb0",
+      "error": null
+    }
+  ]
+}

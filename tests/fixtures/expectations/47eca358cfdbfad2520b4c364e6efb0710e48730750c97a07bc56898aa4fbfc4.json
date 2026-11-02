@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "47eca358cfdbfad2520b4c364e6efb0710e48730750c97a07bc56898aa4fbfc4",
+  "size": 682,
+  "source": "corpus-c/kp13_tr6.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Mode6\nMode6\n",
+      "sha256": "0193b0a0cb89fdb66b821219c6ca989c6ef9e6aac00943b8297bdf5d9ef7a7d6",
+      "error": null
+    }
+  ]
+}

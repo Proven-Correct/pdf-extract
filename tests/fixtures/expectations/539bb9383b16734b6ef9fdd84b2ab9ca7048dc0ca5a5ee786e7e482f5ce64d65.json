@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "539bb9383b16734b6ef9fdd84b2ab9ca7048dc0ca5a5ee786e7e482f5ce64d65",
+  "size": 43916,
+  "source": "corpus-b/pdfbox/ControlCharacters.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "NUL\nDLE\u0016D LE\nCRLF \nCRLF\nSOH\u0001S OH\nDC1\u0017D C1\nSTX\u0002S TX\nDC2˘DC2\nLFCR \n \nLFCR\nETX\u0003E TX\nDC3ˇDC3\nEOT\u0004E OT\nDC4 DC4\nENQ\u0005E NQ\nNAK!NAK\nACK\u0006A CK\nSYN\"SYN\nBEL\u0007B EL\nETB#ETB\nBS BS\nCAN$CAN\nTAB\nsome longer text\nTAB\nEM%EM\nLF \nLF\nSUB&SUB\nVT\u0011V T\nESC'ESC\nFF\u0012F F\nFS(FS\nCR \nCR\nGS)GS\nSO\u0014S O\nRS0RS\nSI\u0015S I\nUS1US\nSPACE SPACE\nlinebreak \nlinebreak\nparagraphbreak \nparagraphbreak\nlinebreak-man \nlinebreak-man\nparagraph-man \nparagraph-man\n",
+      "sha256": "805b30a11d761479403242c846a6139a22658d9926b0a34b351ba27fe7f0de52",
+      "error": null
+    }
+  ]
+}

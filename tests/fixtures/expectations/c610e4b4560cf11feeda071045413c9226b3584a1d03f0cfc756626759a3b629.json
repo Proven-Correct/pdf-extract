@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "c610e4b4560cf11feeda071045413c9226b3584a1d03f0cfc756626759a3b629",
+  "size": 785,
+  "source": "corpus-c/kp19_diamond_clip.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Corner\nMid\n",
+      "sha256": "0625490538bb15c99b346df454b746ee977e5288b44739e3ad637e7c05f48d2f",
+      "error": null
+    }
+  ]
+}

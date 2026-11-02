@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "sha256": "a0fb09bae86c0e93b80309f4f86b1a9262bd5210eca3c0bdad0ef52094624fa8",
+  "size": 71020,
+  "source": "corpus-b/pdfbox/unencrypted.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 2,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut \nlabore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores \net ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem \nipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et \ndolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea \nrebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem \nipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et \ndolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea \nrebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. \nDuis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore \neu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum \nzzril delenit augue duis dolore te feugait nulla facilisi. Lorem ipsum dolor sit amet, consectetuer \nadipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat \nvolutpat. \nUt wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex \nea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie \nconsequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui \nblandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi. \nNam liber tempor cum soluta nobis eleifend option congue nihil imperdiet doming id quod mazim \nplacerat facer possim assum. Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam \nnonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim \nveniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo \nconsequat. \nDuis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore \neu feugiat nulla facilisis. \nAt vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata \nsanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed \ndiam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At \nvero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata \nsanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, At \naccusam aliquyam diam diam dolore dolores duo eirmod eos erat, et nonumy sed tempor et et invidunt \njusto labore Stet clita ea et gubergren, kasd magna no rebum. sanctus sea sed takimata ut vero \nvoluptua. est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed \ndiam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat. \nConsetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna \naliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita \nkasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, \nconsetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna \naliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita \nkasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, \nconsetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna \naliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita \nkasd gubergren, no sea takimata sanctus. \n",
+      "sha256": "073f3e16ded59d6172194b64525f39c2fe0662b93fee23391c5b4af881c89cbd",
+      "error": null
+    },
+    {
+      "index": 1,
+      "text": "Lorem ipsum dolor sit amet, consetetur \nsadipscing elitr, sed diam nonumy \neirmod tempor invidunt ut labore et \ndolore magna aliquyam erat, sed diam \nvoluptua. At vero eos et accusam et \njusto duo dolores et ea rebum. Stet \nclita kasd gubergren, no sea takimata \nsanctus est Lorem ipsum dolor sit \namet. Lorem ipsum dolor sit amet, \nconsetetur sadipscing elitr, sed diam \nnonumy eirmod tempor invidunt ut \nlabore et dolore magna aliquyam erat, \nsed diam voluptua. At vero eos et \naccusam et justo duo dolores et ea \nrebum. Stet clita kasd gubergren, no \nsea takimata sanctus est Lorem ipsum \ndolor sit amet. Lorem ipsum dolor sit \namet, consetetur sadipscing elitr, sed \ndiam nonumy eirmod tempor invidunt ut \nlabore et dolore magna aliquyam erat, \nsed diam voluptua. At vero eos et \naccusam et justo duo dolores et ea \nrebum. Stet clita kasd gubergren, no \nsea takimata sanctus est Lorem ipsum \ndolor sit amet. \nDuis autem vel eum iriure dolor in \nhendrerit in vulputate velit esse \nmolestie consequat, vel illum dolore \neu feugiat nulla facilisis at vero \neros et accumsan et iusto odio \ndignissim qui blandit praesent \nluptatum zzril delenit augue duis \ndolore te feugait nulla facilisi. \nLorem ipsum dolor sit amet, \nconsectetuer adipiscing elit, sed diam \nnonummy nibh euismod tincidunt ut \nlaoreet dolore magna aliquam erat \nvolutpat. \nUt wisi enim ad minim veniam, quis \nnostrud exerci tation ullamcorper \nsuscipit lobortis nisl ut aliquip ex \nea commodo consequat. Duis autem vel \neum iriure dolor in hendrerit in \nvulputate velit esse molestie \nconsequat, vel illum dolore eu feugiat \nnulla facilisis at vero eros et \naccumsan et iusto odio dignissim qui \nblandit praesent luptatum zzril \ndelenit augue duis dolore te feugait \nnulla facilisi. \nNam liber tempor cum soluta nobis \neleifend option congue nihil imperdiet \ndoming id quod mazim placerat facer \npossim assum. Lorem ipsum dolor sit \namet, consectetuer adipiscing elit, \nsed diam nonummy nibh euismod \ntincidunt ut laoreet dolore magna \naliquam erat volutpat. \n",
+      "sha256": "147d026ae0c4e6a3e358fd3d2cc36e329ad7373403db8d76ffff397611104e51",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "e18a16f77427d3e7dab08e808e0679213dedbec8c17342d15c9bc721fe435ca2",
+  "size": 1592,
+  "source": "corpus-b/hayro/stroke_hairline_large_ctm.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Ab\nCd\n",
+      "sha256": "ebd16ce5623cc3c78be7c0569648fec9e313df9402764e67d06d51ae0401039d",
+      "error": null
+    }
+  ]
+}

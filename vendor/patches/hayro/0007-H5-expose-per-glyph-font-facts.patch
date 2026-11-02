@@ -1,0 +1,791 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Thu, 1 Oct 2026 16:14:51 -0400
+Subject: [PATCH 07/22] H5: expose per-glyph font facts
+
+A device that extracts text needs more than `as_unicode()`: the raw
+character code and CID (to decide what to emit for an unmapped glyph),
+the encoding's glyph name, whether the font is embedded or has a
+`ToUnicode` map, the writing mode, the advance, and the font's vertical
+extent (to build a glyph box for clipping tests). All of these were
+private.
+
+`Glyph`, `OutlineGlyph` and `Type3Glyph` gain `char_code()`, `cid()`,
+`font_kind()` (new `FontKind` enum), `is_vertical()`, `glyph_name()`,
+`has_to_unicode()`, `is_embedded()`, `character_collection()`,
+`advance()` and `ascent_descent()`.
+
+`advance()` is in thousandths of text space as the interpreter applies
+it: `/Widths`, `/W`/`/DW` (vertical: `/W2`/`/DW2`), standard-font
+metrics, and for Type3 fonts the width mapped through `/FontMatrix`.
+`ascent_descent()` is in text space units and read once when the font
+is loaded: the font descriptor's `/Ascent` and `/Descent`; for Type3
+fonts the `/FontBBox` mapped through `/FontMatrix`; for non-embedded
+standard fonts without descriptor metrics the Adobe Core 14 AFM
+`Ascender`/`Descender`. A pair whose ascent is not above its descent
+(producers write `0 0` when they do not know) is reported as `None`.
+A substituted UCS2 `CMap` does not count as a `ToUnicode` map, and
+Type3 glyphs count as embedded.
+---
+ hayro-interpret/src/font/cid.rs           |  30 ++-
+ hayro-interpret/src/font/mod.rs           | 275 ++++++++++++++++++++++
+ hayro-interpret/src/font/outline.rs       |  12 +-
+ hayro-interpret/src/font/standard_font.rs |  25 +-
+ hayro-interpret/src/font/true_type.rs     |  44 +++-
+ hayro-interpret/src/font/type1.rs         |  62 ++++-
+ hayro-interpret/src/font/type3.rs         |  28 ++-
+ 7 files changed, 455 insertions(+), 21 deletions(-)
+
+diff --git a/hayro-interpret/src/font/cid.rs b/hayro-interpret/src/font/cid.rs
+index dd724e3..c223de5 100644
+--- a/hayro-interpret/src/font/cid.rs
++++ b/hayro-interpret/src/font/cid.rs
+@@ -2,7 +2,8 @@ use crate::font::blob::{CffFontBlob, OpenTypeFontBlob, Type1FontBlob};
+ use crate::font::generated::glyph_names;
+ use crate::font::standard_font::select_standard_font;
+ use crate::font::{
+-    FallbackFontQuery, FontFlags, FontQuery, read_to_unicode, stretch_glyph, strip_subset_prefix,
++    FallbackFontQuery, FontFlags, FontQuery, read_ascent_descent, read_to_unicode, stretch_glyph,
++    strip_subset_prefix,
+ };
+ use crate::{CMapResolverFn, CacheKey, FontResolverFn};
+ use hayro_cmap::{BfString, CMap, CharacterCollection, CidFamily, WritingMode};
+@@ -41,6 +42,10 @@ pub(crate) struct Type0Font {
+     /// Whether the `to_unicode` map is a UCS2 `CMap` (CID-indexed) rather than
+     /// a `ToUnicode` `CMap` (code-indexed).
+     to_unicode_is_cid_indexed: bool,
++    /// The character collection, from the encoding `CMap` or `/CIDSystemInfo`.
++    character_collection: Option<CharacterCollection>,
++    /// Ascent and descent in text space units, from the descendant font's descriptor.
++    ascent_descent: Option<(f32, f32)>,
+ }
+ 
+ impl Type0Font {
+@@ -137,6 +142,7 @@ impl Type0Font {
+         let font_flags = font_descriptor
+             .get::<u32>(FLAGS)
+             .and_then(FontFlags::from_bits);
++        let ascent_descent = read_ascent_descent(&font_descriptor);
+ 
+         Some(Self {
+             cache_key,
+@@ -153,6 +159,8 @@ impl Type0Font {
+             font_flags,
+             fallback,
+             to_unicode_is_cid_indexed,
++            character_collection,
++            ascent_descent,
+         })
+     }
+ 
+@@ -248,7 +256,7 @@ impl Type0Font {
+         }
+     }
+ 
+-    fn code_to_cid(&self, code: u32) -> Option<u32> {
++    pub(crate) fn code_to_cid(&self, code: u32) -> Option<u32> {
+         for byte_len in 1..=4_u8 {
+             if let Some(cid) = self.encoding.lookup_cid_code(code, byte_len) {
+                 return Some(cid);
+@@ -364,6 +372,24 @@ impl Type0Font {
+         self.horizontal
+     }
+ 
++    /// Whether the font dictionary supplied a `ToUnicode` map (a UCS2 `CMap`
++    /// substituted for a missing one does not count).
++    pub(crate) fn has_to_unicode(&self) -> bool {
++        self.to_unicode.is_some() && !self.to_unicode_is_cid_indexed
++    }
++
++    pub(crate) fn is_embedded(&self) -> bool {
++        !self.fallback
++    }
++
++    pub(crate) fn character_collection(&self) -> Option<&CharacterCollection> {
++        self.character_collection.as_ref()
++    }
++
++    pub(crate) fn ascent_descent(&self) -> Option<(f32, f32)> {
++        self.ascent_descent
++    }
++
+     pub(crate) fn read_code(&self, bytes: &[u8], offset: usize) -> (u32, usize) {
+         let mut code = 0_u32;
+         let remaining = bytes.len() - offset;
+diff --git a/hayro-interpret/src/font/mod.rs b/hayro-interpret/src/font/mod.rs
+index 6bed64e..8f36ee2 100644
+--- a/hayro-interpret/src/font/mod.rs
++++ b/hayro-interpret/src/font/mod.rs
+@@ -105,6 +105,130 @@ impl Glyph<'_> {
+             Glyph::Type3(g) => g.as_unicode(),
+         }
+     }
++
++    /// Returns the character code that selected this glyph, as read from the
++    /// shown string (one byte for simple fonts, one to four for Type0 fonts).
++    pub fn char_code(&self) -> u32 {
++        match self {
++            Glyph::Outline(g) => g.char_code(),
++            Glyph::Type3(g) => g.char_code(),
++        }
++    }
++
++    /// Returns the CID the character code maps to through the font's `CMap`.
++    ///
++    /// Only Type0 fonts have CIDs; `None` for every other kind, and for a code
++    /// the `CMap` does not map.
++    pub fn cid(&self) -> Option<u32> {
++        match self {
++            Glyph::Outline(g) => g.cid(),
++            Glyph::Type3(g) => g.cid(),
++        }
++    }
++
++    /// Returns the kind of font the glyph belongs to.
++    pub fn font_kind(&self) -> FontKind {
++        match self {
++            Glyph::Outline(g) => g.font_kind(),
++            Glyph::Type3(g) => g.font_kind(),
++        }
++    }
++
++    /// Returns whether the font uses vertical writing mode (a Type0 font
++    /// with a vertical `CMap`, such as `Identity-V`).
++    pub fn is_vertical(&self) -> bool {
++        match self {
++            Glyph::Outline(g) => g.is_vertical(),
++            Glyph::Type3(g) => g.is_vertical(),
++        }
++    }
++
++    /// Returns the glyph name the character code maps to in a simple font:
++    /// the `/Differences` entry, else the base encoding's name, else the
++    /// name in the font's built-in encoding.
++    ///
++    /// `None` for Type0 fonts and for codes that no encoding names.
++    pub fn glyph_name(&self) -> Option<&str> {
++        match self {
++            Glyph::Outline(g) => g.glyph_name(),
++            Glyph::Type3(g) => g.glyph_name(),
++        }
++    }
++
++    /// Returns whether the font has a usable `ToUnicode` `CMap`.
++    ///
++    /// A `CMap` that hayro substitutes itself (such as the UCS2 `CMap` of a
++    /// CID font's character collection) does not count.
++    pub fn has_to_unicode(&self) -> bool {
++        match self {
++            Glyph::Outline(g) => g.has_to_unicode(),
++            Glyph::Type3(g) => g.has_to_unicode(),
++        }
++    }
++
++    /// Returns whether the glyph comes from a font program embedded in the
++    /// PDF, as opposed to a substitute font (standard or fallback) supplied
++    /// by the font resolver. Type3 glyphs are always embedded.
++    pub fn is_embedded(&self) -> bool {
++        match self {
++            Glyph::Outline(g) => g.is_embedded(),
++            Glyph::Type3(g) => g.is_embedded(),
++        }
++    }
++
++    /// Returns the character collection (registry, ordering and supplement)
++    /// of a Type0 font, from its `CMap` or else its `/CIDSystemInfo`.
++    ///
++    /// `None` for other font kinds.
++    pub fn character_collection(&self) -> Option<&CharacterCollection> {
++        match self {
++            Glyph::Outline(g) => g.character_collection(),
++            Glyph::Type3(g) => g.character_collection(),
++        }
++    }
++
++    /// Returns the glyph's advance in text space units multiplied by 1000
++    /// (the units of `/Widths`), before font size, character spacing, word
++    /// spacing and horizontal scaling are applied.
++    ///
++    /// The advance is horizontal (`y == 0`) except for Type0 fonts in vertical
++    /// writing mode, where it is vertical (`x == 0`, normally negative). For
++    /// Type3 fonts the width is mapped through the `/FontMatrix`.
++    pub fn advance(&self) -> Vec2 {
++        match self {
++            Glyph::Outline(g) => g.advance(),
++            Glyph::Type3(g) => g.advance(),
++        }
++    }
++
++    /// Returns the font's ascent and descent in text space units (that is, as
++    /// a fraction of the font size), descent normally negative.
++    ///
++    /// The values come from the font descriptor's `/Ascent` and `/Descent`;
++    /// for Type3 fonts from the `/FontBBox` mapped through the `/FontMatrix`;
++    /// for standard fonts without these entries from the font's Adobe AFM
++    /// metrics. `None` when none of these is available or the values are not
++    /// a valid range (ascent not above descent).
++    pub fn ascent_descent(&self) -> Option<(f32, f32)> {
++        match self {
++            Glyph::Outline(g) => g.ascent_descent(),
++            Glyph::Type3(g) => g.ascent_descent(),
++        }
++    }
++}
++
++/// The kind of PDF font a glyph is drawn with.
++#[derive(Copy, Clone, Debug, PartialEq, Eq)]
++pub enum FontKind {
++    /// A `/Type1` or `/MMType1` font, including the standard fonts and the
++    /// substitute used when text is shown without a valid font.
++    Type1,
++    /// A `/TrueType` font (or `/OpenType` used as a simple font).
++    TrueType,
++    /// A `/Type0` (composite, CID-keyed) font.
++    Type0,
++    /// A `/Type3` font, whose glyphs are content streams.
++    Type3,
+ }
+ 
+ /// An identifier that uniquely identifies a glyph, for caching purposes.
+@@ -180,6 +304,86 @@ impl OutlineGlyph {
+     pub fn font_cache_key(&self) -> u128 {
+         self.font.cache_key()
+     }
++
++    /// See [`Glyph::char_code`].
++    pub fn char_code(&self) -> u32 {
++        self.char_code
++    }
++
++    /// See [`Glyph::cid`].
++    pub fn cid(&self) -> Option<u32> {
++        match &self.font {
++            OutlineFont::Type0(t) => t.code_to_cid(self.char_code),
++            OutlineFont::Type1(_) | OutlineFont::TrueType(_) => None,
++        }
++    }
++
++    /// See [`Glyph::font_kind`].
++    pub fn font_kind(&self) -> FontKind {
++        match &self.font {
++            OutlineFont::Type1(_) => FontKind::Type1,
++            OutlineFont::TrueType(_) => FontKind::TrueType,
++            OutlineFont::Type0(_) => FontKind::Type0,
++        }
++    }
++
++    /// See [`Glyph::is_vertical`].
++    pub fn is_vertical(&self) -> bool {
++        match &self.font {
++            OutlineFont::Type0(t) => !t.is_horizontal(),
++            OutlineFont::Type1(_) | OutlineFont::TrueType(_) => false,
++        }
++    }
++
++    /// See [`Glyph::glyph_name`].
++    pub fn glyph_name(&self) -> Option<&str> {
++        // Simple fonts read one-byte codes, so the cast is lossless there.
++        match &self.font {
++            OutlineFont::Type1(t) => t.glyph_name(self.char_code as u8),
++            OutlineFont::TrueType(t) => t.glyph_name(self.char_code as u8),
++            OutlineFont::Type0(_) => None,
++        }
++    }
++
++    /// See [`Glyph::has_to_unicode`].
++    pub fn has_to_unicode(&self) -> bool {
++        match &self.font {
++            OutlineFont::Type1(t) => t.has_to_unicode(),
++            OutlineFont::TrueType(t) => t.has_to_unicode(),
++            OutlineFont::Type0(t) => t.has_to_unicode(),
++        }
++    }
++
++    /// See [`Glyph::is_embedded`].
++    pub fn is_embedded(&self) -> bool {
++        match &self.font {
++            OutlineFont::Type1(t) => t.is_embedded(),
++            OutlineFont::TrueType(t) => t.is_embedded(),
++            OutlineFont::Type0(t) => t.is_embedded(),
++        }
++    }
++
++    /// See [`Glyph::character_collection`].
++    pub fn character_collection(&self) -> Option<&CharacterCollection> {
++        match &self.font {
++            OutlineFont::Type0(t) => t.character_collection(),
++            OutlineFont::Type1(_) | OutlineFont::TrueType(_) => None,
++        }
++    }
++
++    /// See [`Glyph::advance`].
++    pub fn advance(&self) -> Vec2 {
++        self.font.code_advance(self.char_code)
++    }
++
++    /// See [`Glyph::ascent_descent`].
++    pub fn ascent_descent(&self) -> Option<(f32, f32)> {
++        match &self.font {
++            OutlineFont::Type1(t) => t.ascent_descent(),
++            OutlineFont::TrueType(t) => t.ascent_descent(),
++            OutlineFont::Type0(t) => t.ascent_descent(),
++        }
++    }
+ }
+ 
+ /// A type3 glyph.
+@@ -216,6 +420,58 @@ impl<'a> Type3Glyph<'a> {
+     pub fn as_unicode(&self) -> Option<BfString> {
+         self.font.char_code_to_unicode(self.char_code)
+     }
++
++    /// See [`Glyph::char_code`].
++    pub fn char_code(&self) -> u32 {
++        self.char_code
++    }
++
++    /// See [`Glyph::cid`]. Always `None`.
++    pub fn cid(&self) -> Option<u32> {
++        None
++    }
++
++    /// See [`Glyph::font_kind`]. Always [`FontKind::Type3`].
++    pub fn font_kind(&self) -> FontKind {
++        FontKind::Type3
++    }
++
++    /// See [`Glyph::is_vertical`]. Always `false`.
++    pub fn is_vertical(&self) -> bool {
++        false
++    }
++
++    /// See [`Glyph::glyph_name`].
++    pub fn glyph_name(&self) -> Option<&str> {
++        // Type3 fonts read one-byte codes, so the cast is lossless.
++        self.font.glyph_name(self.char_code as u8)
++    }
++
++    /// See [`Glyph::has_to_unicode`].
++    pub fn has_to_unicode(&self) -> bool {
++        self.font.has_to_unicode()
++    }
++
++    /// See [`Glyph::is_embedded`]. Always `true`: the glyph procedures are
++    /// part of the PDF.
++    pub fn is_embedded(&self) -> bool {
++        true
++    }
++
++    /// See [`Glyph::character_collection`]. Always `None`.
++    pub fn character_collection(&self) -> Option<&CharacterCollection> {
++        None
++    }
++
++    /// See [`Glyph::advance`].
++    pub fn advance(&self) -> Vec2 {
++        Vec2::new(self.font.glyph_width(self.char_code as u8) as f64, 0.0)
++    }
++
++    /// See [`Glyph::ascent_descent`].
++    pub fn ascent_descent(&self) -> Option<(f32, f32)> {
++        self.font.ascent_descent()
++    }
+ }
+ 
+ impl CacheKey for Type3Glyph<'_> {
+@@ -663,6 +919,25 @@ pub(crate) fn read_to_unicode(dict: &Dict<'_>, cmap_resolver: &CMapResolverFn) -
+         })
+ }
+ 
++/// Read `/Ascent` and `/Descent` from a font descriptor, in text space units.
++///
++/// Descriptor metrics are in thousandths of text space for every font kind
++/// that reads them here (Type3 fonts use their `/FontBBox` instead).
++pub(crate) fn read_ascent_descent(descriptor: &Dict<'_>) -> Option<(f32, f32)> {
++    let ascent = descriptor.get::<f32>(ASCENT)?;
++    let descent = descriptor.get::<f32>(DESCENT)?;
++
++    valid_ascent_descent(ascent / UNITS_PER_EM, descent / UNITS_PER_EM)
++}
++
++/// Accept an ascent/descent pair only if it describes a non-empty vertical
++/// range. Producers write `/Ascent 0 /Descent 0` (or worse) when they do not
++/// know the metrics; reporting `None` lets the caller fall back to something
++/// better than a zero-height glyph box.
++pub(crate) fn valid_ascent_descent(ascent: f32, descent: f32) -> Option<(f32, f32)> {
++    (ascent.is_finite() && descent.is_finite() && ascent > descent).then_some((ascent, descent))
++}
++
+ // When mapping to glyphs, some fonts might only have a glyph for the "normalized"
+ // name.
+ pub(crate) fn normalized_glyph_name(mut name: &str) -> &str {
+diff --git a/hayro-interpret/src/font/outline.rs b/hayro-interpret/src/font/outline.rs
+index 558d886..0d7161a 100644
+--- a/hayro-interpret/src/font/outline.rs
++++ b/hayro-interpret/src/font/outline.rs
+@@ -3,7 +3,7 @@ use crate::font::cid::Type0Font;
+ use crate::font::true_type::TrueTypeFont;
+ use crate::font::type1::Type1Font;
+ use hayro_cmap::BfString;
+-use kurbo::BezPath;
++use kurbo::{BezPath, Vec2};
+ use skrifa::GlyphId;
+ use skrifa::outline::OutlinePen;
+ use std::rc::Rc;
+@@ -108,6 +108,16 @@ impl OutlineFont {
+         }
+     }
+ 
++    /// Get the advance for a character code in text space units times 1000,
++    /// as the interpreter applies it (zero where no width is known).
++    pub(crate) fn code_advance(&self, char_code: u32) -> Vec2 {
++        match self {
++            Self::Type1(t) => Vec2::new(t.glyph_width(char_code as u8).unwrap_or(0.0) as f64, 0.0),
++            Self::TrueType(t) => Vec2::new(t.glyph_width(char_code as u8) as f64, 0.0),
++            Self::Type0(t) => t.code_advance(char_code),
++        }
++    }
++
+     /// Get the advance width for a glyph by character code.
+     pub(crate) fn glyph_advance_width(&self, char_code: u32) -> Option<f32> {
+         match self {
+diff --git a/hayro-interpret/src/font/standard_font.rs b/hayro-interpret/src/font/standard_font.rs
+index c198e54..feb8984 100644
+--- a/hayro-interpret/src/font/standard_font.rs
++++ b/hayro-interpret/src/font/standard_font.rs
+@@ -85,6 +85,24 @@ impl StandardFont {
+         }
+     }
+ 
++    /// The `Ascender` and `Descender` of the font's Adobe Core 14 AFM file, in
++    /// text space units. The Symbol and `ZapfDingbats` AFM files have neither.
++    pub(crate) fn ascent_descent(&self) -> Option<(f32, f32)> {
++        match self {
++            Self::Helvetica
++            | Self::HelveticaBold
++            | Self::HelveticaOblique
++            | Self::HelveticaBoldOblique => Some((0.718, -0.207)),
++            Self::Courier | Self::CourierBold | Self::CourierOblique | Self::CourierBoldOblique => {
++                Some((0.629, -0.157))
++            }
++            Self::TimesRoman | Self::TimesBold | Self::TimesItalic | Self::TimesBoldItalic => {
++                Some((0.683, -0.217))
++            }
++            Self::ZapfDingBats | Self::Symbol => None,
++        }
++    }
++
+     pub(crate) fn as_str(&self) -> &'static str {
+         match self {
+             Self::Helvetica => "Helvetica",
+@@ -397,7 +415,12 @@ impl StandardKind {
+         })
+     }
+ 
+-    fn code_to_ps_name(&self, code: u8) -> Option<&str> {
++    /// The standard font whose program and metrics are used.
++    pub(crate) fn base_font(&self) -> StandardFont {
++        self.base_font
++    }
++
++    pub(crate) fn code_to_ps_name(&self, code: u8) -> Option<&str> {
+         let bf = self.base_font;
+ 
+         self.encodings
+diff --git a/hayro-interpret/src/font/true_type.rs b/hayro-interpret/src/font/true_type.rs
+index c95bc22..db90a3a 100644
+--- a/hayro-interpret/src/font/true_type.rs
++++ b/hayro-interpret/src/font/true_type.rs
+@@ -2,8 +2,8 @@ use crate::font::blob::{CffFontBlob, OpenTypeFontBlob};
+ use crate::font::generated::{glyph_names, mac_os_roman, mac_roman, standard};
+ use crate::font::standard_font::StandardKind;
+ use crate::font::{
+-    Encoding, FallbackFontQuery, FontFlags, glyph_name_to_unicode, read_to_unicode,
+-    strip_subset_prefix, unicode_from_name,
++    Encoding, FallbackFontQuery, FontFlags, glyph_name_to_unicode, read_ascent_descent,
++    read_to_unicode, strip_subset_prefix, unicode_from_name,
+ };
+ use crate::util::OptionLog;
+ use crate::{CMapResolverFn, CacheKey, FontResolverFn};
+@@ -29,6 +29,9 @@ pub(crate) struct TrueTypeFont {
+     cache_key: u128,
+     kind: Kind,
+     to_unicode: Option<CMap>,
++    /// Ascent and descent in text space units: the descriptor's, else the AFM
++    /// metrics of the standard font substituted for a non-embedded font.
++    ascent_descent: Option<(f32, f32)>,
+ }
+ 
+ #[derive(Debug)]
+@@ -45,12 +48,18 @@ impl TrueTypeFont {
+     ) -> Option<Self> {
+         let cache_key = dict.cache_key();
+         let to_unicode = read_to_unicode(dict, cmap_resolver);
++        let descriptor_metrics = dict
++            .get::<Dict<'_>>(FONT_DESC)
++            .and_then(|d| read_ascent_descent(&d));
++        let standard_metrics =
++            |s: &StandardKind| descriptor_metrics.or_else(|| s.base_font().ascent_descent());
+ 
+         if let Some(embedded) = EmbeddedKind::new(dict) {
+             return Some(Self {
+                 cache_key,
+                 kind: Kind::Embedded(embedded),
+                 to_unicode,
++                ascent_descent: descriptor_metrics,
+             });
+         }
+ 
+@@ -66,14 +75,13 @@ impl TrueTypeFont {
+                 standard_font.as_str()
+             );
+ 
++            let standard =
++                StandardKind::new_with_standard(dict, standard_font, true, font_resolver)?;
++
+             Some(Self {
+                 cache_key,
+-                kind: Kind::Standard(StandardKind::new_with_standard(
+-                    dict,
+-                    standard_font,
+-                    true,
+-                    font_resolver,
+-                )?),
++                ascent_descent: standard_metrics(&standard),
++                kind: Kind::Standard(standard),
+                 to_unicode: to_unicode.clone(),
+             })
+         };
+@@ -81,6 +89,7 @@ impl TrueTypeFont {
+         if let Some(standard) = StandardKind::new(dict, font_resolver) {
+             Some(Self {
+                 cache_key,
++                ascent_descent: standard_metrics(&standard),
+                 kind: Kind::Standard(standard),
+                 to_unicode,
+             })
+@@ -182,6 +191,25 @@ impl TrueTypeFont {
+         }
+     }
+ 
++    pub(crate) fn glyph_name(&self, code: u8) -> Option<&str> {
++        match &self.kind {
++            Kind::Embedded(e) => e.code_to_name(code),
++            Kind::Standard(s) => s.code_to_ps_name(code),
++        }
++    }
++
++    pub(crate) fn has_to_unicode(&self) -> bool {
++        self.to_unicode.is_some()
++    }
++
++    pub(crate) fn is_embedded(&self) -> bool {
++        matches!(self.kind, Kind::Embedded(_))
++    }
++
++    pub(crate) fn ascent_descent(&self) -> Option<(f32, f32)> {
++        self.ascent_descent
++    }
++
+     pub(crate) fn char_code_to_unicode(&self, code: u32) -> Option<BfString> {
+         if let Some(to_unicode) = &self.to_unicode
+             && let Some(c) = to_unicode.lookup_bf_string(code)
+diff --git a/hayro-interpret/src/font/type1.rs b/hayro-interpret/src/font/type1.rs
+index 32b5e3d..a78911a 100644
+--- a/hayro-interpret/src/font/type1.rs
++++ b/hayro-interpret/src/font/type1.rs
+@@ -2,7 +2,8 @@ use crate::font::blob::{CffFontBlob, Type1FontBlob};
+ use crate::font::standard_font::{StandardFont, StandardKind, select_standard_font};
+ use crate::font::true_type::{Width, read_encoding, read_widths};
+ use crate::font::{
+-    Encoding, FallbackFontQuery, glyph_name_to_unicode, normalized_glyph_name, read_to_unicode,
++    Encoding, FallbackFontQuery, glyph_name_to_unicode, normalized_glyph_name, read_ascent_descent,
++    read_to_unicode,
+ };
+ use crate::{CMapResolverFn, CacheKey, FontResolverFn};
+ use hayro_cmap::{BfString, CMap};
+@@ -14,8 +15,9 @@ use skrifa::GlyphId;
+ use std::collections::HashMap;
+ use std::sync::Arc;
+ 
++/// Cache key, font program, `ToUnicode` map, and ascent/descent in text space units.
+ #[derive(Debug)]
+-pub(crate) struct Type1Font(u128, Kind, Option<CMap>);
++pub(crate) struct Type1Font(u128, Kind, Option<CMap>, Option<(f32, f32)>);
+ 
+ impl Type1Font {
+     pub(crate) fn new(
+@@ -27,6 +29,15 @@ impl Type1Font {
+ 
+         let to_unicode = read_to_unicode(dict, cmap_resolver);
+ 
++        // The descriptor's metrics win; a standard font without them uses its AFM metrics.
++        let descriptor_metrics = dict
++            .get::<Dict<'_>>(FONT_DESC)
++            .and_then(|d| read_ascent_descent(&d));
++        let assemble = |kind: Kind, to_unicode: Option<CMap>| {
++            let metrics = descriptor_metrics.or_else(|| kind.standard_ascent_descent());
++            Self(cache_key, kind, to_unicode, metrics)
++        };
++
+         let fallback = || {
+             // TODO: Actually use fallback fonts
+             let fallback_query = FallbackFontQuery::new(dict);
+@@ -40,8 +51,7 @@ impl Type1Font {
+                 standard_font.as_str()
+             );
+ 
+-            Some(Self(
+-                cache_key,
++            Some(assemble(
+                 Kind::Standard(StandardKind::new_with_standard(
+                     dict,
+                     standard_font,
+@@ -54,18 +64,18 @@ impl Type1Font {
+ 
+         let inner = if is_cff(dict) {
+             if let Some(cff) = CffKind::new(dict) {
+-                Self(cache_key, Kind::Cff(cff), to_unicode)
++                assemble(Kind::Cff(cff), to_unicode)
+             } else {
+                 return fallback();
+             }
+         } else if is_type1(dict) {
+             if let Some(f) = Type1Kind::new(dict) {
+-                Self(cache_key, Kind::Type1(f), to_unicode)
++                assemble(Kind::Type1(f), to_unicode)
+             } else {
+                 return fallback();
+             }
+         } else if let Some(standard) = StandardKind::new(dict, resolver) {
+-            Self(cache_key, Kind::Standard(standard), to_unicode)
++            assemble(Kind::Standard(standard), to_unicode)
+         } else {
+             return fallback();
+         };
+@@ -77,7 +87,12 @@ impl Type1Font {
+         let dict = Dict::default();
+         let standard = StandardKind::new_with_standard(&dict, font, true, resolver)?;
+ 
+-        Some(Self(0, Kind::Standard(standard), None))
++        Some(Self(
++            0,
++            Kind::Standard(standard),
++            None,
++            font.ascent_descent(),
++        ))
+     }
+ 
+     pub(crate) fn map_code(&self, code: u8) -> GlyphId {
+@@ -104,6 +119,26 @@ impl Type1Font {
+         }
+     }
+ 
++    pub(crate) fn glyph_name(&self, code: u8) -> Option<&str> {
++        match &self.1 {
++            Kind::Standard(s) => s.code_to_ps_name(code),
++            Kind::Cff(c) => c.code_to_ps_name(code),
++            Kind::Type1(t) => t.code_to_ps_name(code),
++        }
++    }
++
++    pub(crate) fn has_to_unicode(&self) -> bool {
++        self.2.is_some()
++    }
++
++    pub(crate) fn is_embedded(&self) -> bool {
++        !matches!(self.1, Kind::Standard(_))
++    }
++
++    pub(crate) fn ascent_descent(&self) -> Option<(f32, f32)> {
++        self.3
++    }
++
+     pub(crate) fn char_code_to_unicode(&self, char_code: u32) -> Option<BfString> {
+         if let Some(to_unicode) = &self.2
+             && let Some(c) = to_unicode.lookup_bf_string(char_code)
+@@ -138,6 +173,17 @@ enum Kind {
+     Type1(Type1Kind),
+ }
+ 
++impl Kind {
++    /// The AFM metrics of the standard font in use, for non-embedded fonts only: an
++    /// embedded program's metrics need not match the standard font it imitates.
++    fn standard_ascent_descent(&self) -> Option<(f32, f32)> {
++        match self {
++            Self::Standard(s) => s.base_font().ascent_descent(),
++            Self::Cff(_) | Self::Type1(_) => None,
++        }
++    }
++}
++
+ fn is_cff(dict: &Dict<'_>) -> bool {
+     dict.get::<Dict<'_>>(FONT_DESC)
+         .map(|dict| dict.contains_key(FONT_FILE3))
+diff --git a/hayro-interpret/src/font/type3.rs b/hayro-interpret/src/font/type3.rs
+index 53eaf95..6eac9e4 100644
+--- a/hayro-interpret/src/font/type3.rs
++++ b/hayro-interpret/src/font/type3.rs
+@@ -3,7 +3,9 @@ use crate::context::Context;
+ use crate::device::Device;
+ use crate::font::glyph_simulator::GlyphSimulator;
+ use crate::font::true_type::{Width, read_encoding, read_widths};
+-use crate::font::{Encoding, Glyph, Type3Glyph, UNITS_PER_EM, read_to_unicode};
++use crate::font::{
++    Encoding, Glyph, Type3Glyph, UNITS_PER_EM, read_to_unicode, valid_ascent_descent,
++};
+ use crate::interpret::state::TextState;
+ use crate::soft_mask::SoftMask;
+ use crate::util::RectExt;
+@@ -33,6 +35,8 @@ pub(crate) struct Type3<'a> {
+     font_bbox: Rect,
+     matrix: Affine,
+     to_unicode: Option<CMap>,
++    /// `/FontBBox` mapped through `/FontMatrix`: top and bottom in text space units.
++    ascent_descent: Option<(f32, f32)>,
+ }
+ 
+ impl<'a> Type3<'a> {
+@@ -64,6 +68,12 @@ impl<'a> Type3<'a> {
+ 
+         let to_unicode = read_to_unicode(dict, cmap_resolver);
+ 
++        // A Type3 font has no ascent or descent of its own; the glyph bounding box in text
++        // space is the closest equivalent. An all-zero `/FontBBox` (which the specification
++        // allows) gives an empty range and hence `None`.
++        let text_bbox = matrix.transform_rect_bbox(font_bbox);
++        let ascent_descent = valid_ascent_descent(text_bbox.y1 as f32, text_bbox.y0 as f32);
++
+         Some(Self {
+             glyph_simulator: GlyphSimulator::new(),
+             encoding,
+@@ -75,6 +85,7 @@ impl<'a> Type3<'a> {
+             matrix,
+             dict: dict.clone(),
+             to_unicode,
++            ascent_descent,
+         })
+     }
+ 
+@@ -95,6 +106,21 @@ impl<'a> Type3<'a> {
+         (w * self.matrix.as_coeffs()[0] as f32) * UNITS_PER_EM
+     }
+ 
++    pub(crate) fn glyph_name(&self, code: u8) -> Option<&str> {
++        self.encodings
++            .get(&code)
++            .map(String::as_str)
++            .or_else(|| self.encoding.map_code(code))
++    }
++
++    pub(crate) fn has_to_unicode(&self) -> bool {
++        self.to_unicode.is_some()
++    }
++
++    pub(crate) fn ascent_descent(&self) -> Option<(f32, f32)> {
++        self.ascent_descent
++    }
++
+     pub(crate) fn char_code_to_unicode(&self, char_code: u32) -> Option<BfString> {
+         // Type3 fonts can only provide Unicode via ToUnicode CMap.
+         self.to_unicode

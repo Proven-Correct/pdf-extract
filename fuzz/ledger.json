@@ -1,0 +1,37 @@
+{
+  "open": {
+    "clean_seconds": 0,
+    "sessions": 0,
+    "last_reset": null,
+    "last_session": null,
+    "commit": null
+  },
+  "text": {
+    "clean_seconds": 0,
+    "sessions": 0,
+    "last_reset": null,
+    "last_session": null,
+    "commit": null
+  },
+  "render": {
+    "clean_seconds": 0,
+    "sessions": 0,
+    "last_reset": null,
+    "last_session": null,
+    "commit": null
+  },
+  "cmap": {
+    "clean_seconds": 0,
+    "sessions": 0,
+    "last_reset": null,
+    "last_session": null,
+    "commit": null
+  },
+  "unicode": {
+    "clean_seconds": 0,
+    "sessions": 0,
+    "last_reset": null,
+    "last_session": null,
+    "commit": null
+  }
+}

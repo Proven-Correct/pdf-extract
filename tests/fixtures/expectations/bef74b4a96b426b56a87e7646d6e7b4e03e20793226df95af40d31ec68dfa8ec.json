@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "bef74b4a96b426b56a87e7646d6e7b4e03e20793226df95af40d31ec68dfa8ec",
+  "size": 9364,
+  "source": "corpus-b/pdfbox/sampleForSpec.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Line 1 \nLine 2 \n \nLine 4 \nUnderline 5 \nBoldLine 6 \n \nItalicLine 8 \n \n \n \n",
+      "sha256": "305b2aa9fabdc3a3fc1d7cd121a1bc3effc564d2d389fbf6530b5be073787513",
+      "error": null
+    }
+  ]
+}

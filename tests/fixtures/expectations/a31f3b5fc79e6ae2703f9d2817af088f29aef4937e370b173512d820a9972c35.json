@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "a31f3b5fc79e6ae2703f9d2817af088f29aef4937e370b173512d820a9972c35",
+  "size": 1042,
+  "source": "corpus-b/pdfbox/document.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Cell with colspan 3\nCell with rowspan 2\nrow 1; cell 1\nrow 1; cell 2\nrow 2; cell 1\nrow 2; cell 2\n",
+      "sha256": "10e7da14aa2090ed077670aeffc209ad02ed225b23f47ccb0e72d1f44c6c5bd0",
+      "error": null
+    }
+  ]
+}

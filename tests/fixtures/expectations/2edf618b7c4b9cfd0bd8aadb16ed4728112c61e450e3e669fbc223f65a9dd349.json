@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "2edf618b7c4b9cfd0bd8aadb16ed4728112c61e450e3e669fbc223f65a9dd349",
+  "size": 994,
+  "source": "corpus-c/kp08_freetext_ap.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Body\nAnnotText\n",
+      "sha256": "30c1ece9b3f988093b29d2ad5a4cd2381543adac85ea9a9d60baad1efaf30950",
+      "error": null
+    }
+  ]
+}

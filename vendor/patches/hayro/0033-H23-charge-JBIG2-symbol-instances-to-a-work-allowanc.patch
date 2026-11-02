@@ -1,0 +1,304 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Mon, 19 Oct 2026 23:01:00 +0200
+Subject: [PATCH 33/35] H23: charge JBIG2 symbol instances to a work allowance
+ from max_image_pixels
+
+A text region places up to 10,000 symbol instances, and so does every
+aggregate symbol of a dictionary. The memory budget bounds the symbols a
+decode allocates but not how often it draws them, so a few kilobytes could
+draw a large symbol 10,000 times per region, region after region: finite,
+but with no bound on CPU, and out of page_time_budget's reach since that is
+checked only between operators.
+
+Each placed instance is now charged its symbol's width x height (unclipped)
+plus 64 for decoding the placement against a per-decode work allowance,
+DecoderContext::work_budget, carried in the MemoryBudget handle that
+already reaches every place that draws an instance. hayro-syntax sets it to
+JBIG2_WORK_PIXELS_PER_PIXEL (16) x max_image_pixels, as many pixels as the
+memory budget can allocate as one-bit bitmaps, so a decode may draw each
+pixel it could hold once. A text page draws each glyph about once, so this
+leaves a fourfold margin at the cap and far more for ordinary scans; at the
+default cap the costliest shape (one-pixel-wide symbols, about 0.45 ns per
+charged pixel) then stops within a few seconds. Exceeding it fails with
+OverflowError::WorkBudget, which hayro-syntax maps like the memory budget
+to DecodeFailure::ImageMemoryLimit, so the image is skipped with an
+image: memory limit warning. A default context has no allowance.
+
+Fixes internal #116
+---
+ hayro-interpret/src/interpret/mod.rs |  3 ++-
+ hayro-jbig2/src/budget.rs            | 34 +++++++++++++++++++++++++---
+ hayro-jbig2/src/decode/text.rs       | 16 +++++++++++++
+ hayro-jbig2/src/error.rs             |  6 +++++
+ hayro-jbig2/src/lib.rs               | 16 +++++++++++--
+ hayro-syntax/src/filter/jbig2.rs     | 15 ++++++++----
+ hayro-syntax/src/filter/mod.rs       | 21 ++++++++++++++++-
+ hayro-syntax/src/object/stream.rs    |  4 +++-
+ 8 files changed, 102 insertions(+), 13 deletions(-)
+
+diff --git a/hayro-interpret/src/interpret/mod.rs b/hayro-interpret/src/interpret/mod.rs
+index c39ce6c..a263e41 100644
+--- a/hayro-interpret/src/interpret/mod.rs
++++ b/hayro-interpret/src/interpret/mod.rs
+@@ -150,7 +150,8 @@ pub enum InterpreterWarning {
+     ImagePixelLimit,
+     /// An image's codec would have exceeded the memory budget that
+     /// [`DecodeLimits::max_image_pixels`](hayro_syntax::DecodeLimits::max_image_pixels)
+-    /// sets, and the image was skipped. Raised instead of
++    /// sets (or, for JBIG2, the work allowance for placing symbol instances
++    /// that it also sets), and the image was skipped. Raised instead of
+     /// [`Self::ImageDecodeFailure`] and [`Self::ImagePixelLimit`], never as well.
+     ImageMemoryLimit,
+ }
+diff --git a/hayro-jbig2/src/budget.rs b/hayro-jbig2/src/budget.rs
+index 25c71c1..dd86da6 100644
+--- a/hayro-jbig2/src/budget.rs
++++ b/hayro-jbig2/src/budget.rs
+@@ -18,25 +18,53 @@
+ //! allocated over the decode, which is an upper bound on the peak. Allocations
+ //! linear in the input (segment headers, referred-to lists, custom Huffman
+ //! tables) and the fixed-size context tables are not charged.
++//!
++//! The same value carries a second, separate allowance: the pixels the
++//! decode may spend placing symbol instances, from
++//! [`DecoderContext::work_budget`](crate::DecoderContext::work_budget). The
++//! memory budget bounds what is allocated, not how often it is drawn: a text
++//! region places up to 10,000 instances and every aggregate symbol of a
++//! dictionary places its own, each costing its symbol's area, so a few
++//! hundred bytes could draw a symbol of millions of pixels over and over. It
++//! lives here because this value already reaches every place that draws an
++//! instance; it fails with
++//! [`OverflowError::WorkBudget`](crate::OverflowError::WorkBudget).
+ 
+ use core::cell::Cell;
+ 
+ use crate::error::{OverflowError, Result, bail};
+ 
+-/// The bytes left for one decode; `None` means unlimited.
++/// The bytes, and the instance-placing pixels, left for one decode; `None`
++/// means unlimited.
+ #[derive(Debug)]
+ pub(crate) struct MemoryBudget {
+     remaining: Cell<Option<u64>>,
++    work_remaining: Cell<Option<u64>>,
+ }
+ 
+ impl MemoryBudget {
+-    /// A budget of `limit` bytes, or an unlimited one for `None`.
+-    pub(crate) fn new(limit: Option<u64>) -> Self {
++    /// A budget of `limit` bytes and `work_limit` pixels of instance
++    /// placement, each unlimited for `None`.
++    pub(crate) fn new(limit: Option<u64>, work_limit: Option<u64>) -> Self {
+         Self {
+             remaining: Cell::new(limit),
++            work_remaining: Cell::new(work_limit),
+         }
+     }
+ 
++    /// Charges `pixels` of instance placement against the work allowance,
++    /// failing without charging anything when that would exceed it.
++    pub(crate) fn charge_work(&self, pixels: u64) -> Result<()> {
++        if let Some(remaining) = self.work_remaining.get() {
++            match remaining.checked_sub(pixels) {
++                Some(left) => self.work_remaining.set(Some(left)),
++                None => bail!(OverflowError::WorkBudget),
++            }
++        }
++
++        Ok(())
++    }
++
+     /// Charges `bytes` against the budget, failing without charging anything
+     /// when that would exceed it.
+     pub(crate) fn charge(&self, bytes: u64) -> Result<()> {
+diff --git a/hayro-jbig2/src/decode/text.rs b/hayro-jbig2/src/decode/text.rs
+index f48e94b..25fabd9 100644
+--- a/hayro-jbig2/src/decode/text.rs
++++ b/hayro-jbig2/src/decode/text.rs
+@@ -19,6 +19,11 @@ use crate::integer_decoder::IntegerDecoder;
+ use crate::reader::Reader;
+ use crate::symbol_id_decoder::SymbolIdDecoder;
+ 
++/// The fixed charge, in pixels, for each symbol instance placed, on top of
++/// its symbol's area: what decoding its placement costs, measured as the
++/// pixels drawing a symbol costs in the same time.
++const INSTANCE_WORK_PIXELS: u64 = 64;
++
+ /// Decode a text region segment (6.4).
+ pub(crate) fn decode(
+     header: &TextRegionHeader<'_>,
+@@ -200,6 +205,17 @@ pub(crate) fn decode_with(
+                 }
+             };
+ 
++            // The instance count is capped above, but each instance costs its
++            // symbol's area to draw, and the symbols can be large, so the
++            // pixels drawn are charged to the decode's work allowance (#116).
++            // The area is charged unclipped: an encoder places its symbols
++            // inside the region, so only a hostile file pays for pixels that
++            // fall outside it. The fixed part stands for decoding the
++            // placement, so instances of an empty symbol are not free.
++            budget.charge_work(
++                u64::from(symbol_bitmap_ref.width) * u64::from(symbol_bitmap_ref.height)
++                    + INSTANCE_WORK_PIXELS,
++            )?;
+             region.combine(symbol_bitmap_ref, x, y, header.flags.combination_operator);
+ 
+             if !header.flags.transposed
+diff --git a/hayro-jbig2/src/error.rs b/hayro-jbig2/src/error.rs
+index ff09f03..6ba4dc3 100644
+--- a/hayro-jbig2/src/error.rs
++++ b/hayro-jbig2/src/error.rs
+@@ -143,6 +143,11 @@ pub enum OverflowError {
+     /// [`DecoderContext::memory_budget`](crate::DecoderContext::memory_budget)
+     /// bytes in total. Raised before the allocation that would exceed it.
+     MemoryBudget,
++    /// Placing symbol instances would exceed
++    /// [`DecoderContext::work_budget`](crate::DecoderContext::work_budget)
++    /// pixels in total. Raised before the instance that would exceed it is
++    /// drawn.
++    WorkBudget,
+ }
+ 
+ impl fmt::Display for DecodeError {
+@@ -171,6 +176,7 @@ impl fmt::Display for OverflowError {
+             Self::GridDimension => write!(f, "overflow in grid dimension computation"),
+             Self::SymbolCount => write!(f, "a symbol dictionary has too many symbols"),
+             Self::MemoryBudget => write!(f, "the decode would exceed its memory budget"),
++            Self::WorkBudget => write!(f, "the decode would exceed its work budget"),
+         }
+     }
+ }
+diff --git a/hayro-jbig2/src/lib.rs b/hayro-jbig2/src/lib.rs
+index 8e08011..76c7ffd 100644
+--- a/hayro-jbig2/src/lib.rs
++++ b/hayro-jbig2/src/lib.rs
+@@ -35,6 +35,17 @@ pub struct DecoderContext {
+     /// with [`OverflowError::MemoryBudget`] before the allocation. The
+     /// default, `None`, means no limit.
+     pub memory_budget: Option<u64>,
++    /// The most pixels one [`Image::decode_with`] call may spend placing
++    /// symbol instances, in text regions and in the aggregate symbols of
++    /// symbol dictionaries: each instance costs its symbol's
++    /// `width × height` plus a fixed charge for decoding its placement, all
++    /// counted from zero at the start of each call. A decode that would
++    /// exceed it fails with [`OverflowError::WorkBudget`] before the
++    /// instance is drawn. The memory budget bounds what a decode allocates
++    /// but not how often it draws what it allocated, so without this one a
++    /// few hundred bytes can draw a large symbol tens of thousands of times.
++    /// The default, `None`, means no limit.
++    pub work_budget: Option<u64>,
+ }
+ 
+ #[derive(Default)]
+@@ -203,9 +214,10 @@ impl<'a> Image<'a> {
+     /// This is useful in case you want to convert multiple JBIG2 images,
+     /// as it allows `hayro-jbig2` to reuse allocations during decoding.
+     /// The decode is held to the context's
+-    /// [`memory_budget`](DecoderContext::memory_budget).
++    /// [`memory_budget`](DecoderContext::memory_budget) and
++    /// [`work_budget`](DecoderContext::work_budget).
+     pub fn decode_with<D: Decoder>(&self, decoder: &mut D, ctx: &mut DecoderContext) -> Result<()> {
+-        let budget = MemoryBudget::new(ctx.memory_budget);
++        let budget = MemoryBudget::new(ctx.memory_budget, ctx.work_budget);
+         decode_segments(&self.segments, self.height_from_stripes, ctx, &budget)?;
+         emit_bitmap(&ctx.page_bitmap, decoder);
+ 
+diff --git a/hayro-syntax/src/filter/jbig2.rs b/hayro-syntax/src/filter/jbig2.rs
+index ce85448..13e6d6c 100644
+--- a/hayro-syntax/src/filter/jbig2.rs
++++ b/hayro-syntax/src/filter/jbig2.rs
+@@ -3,8 +3,8 @@ use crate::object::Dict;
+ use crate::object::Stream;
+ use crate::object::dict::keys::JBIG2_GLOBALS;
+ use crate::filter::{
+-    JBIG2_BUDGET_BYTES_PER_PIXEL, check_image_pixels, guard_codec, image_memory_budget,
+-    image_memory_limit_hit,
++    JBIG2_BUDGET_BYTES_PER_PIXEL, JBIG2_WORK_PIXELS_PER_PIXEL, check_image_pixels, guard_codec,
++    image_memory_budget, image_memory_limit_hit,
+ };
+ use crate::object::stream::{
+     DecodeFailure, FilterResult, ImageColorSpace, ImageData, ImageDecodeParams,
+@@ -123,6 +123,10 @@ pub(crate) fn decode(
+ /// planes) is not bounded by the page size; the budget bounds its total. A
+ /// refusal by the budget is its own failure, counted once; every other codec
+ /// error is a broken image.
++///
++/// H23: the cap also sets the work allowance for placing symbol instances
++/// (#116), whose refusal goes the same way: both are the decoder outgrowing
++/// what the cap allows, and raising the cap admits both.
+ fn decode_within_budget<D: hayro_jbig2::Decoder>(
+     image: &hayro_jbig2::Image<'_>,
+     decoder: &mut D,
+@@ -130,12 +134,13 @@ fn decode_within_budget<D: hayro_jbig2::Decoder>(
+ ) -> Result<(), DecodeFailure> {
+     let mut ctx = hayro_jbig2::DecoderContext::default();
+     ctx.memory_budget = image_memory_budget(max_pixels, JBIG2_BUDGET_BYTES_PER_PIXEL);
++    ctx.work_budget = image_memory_budget(max_pixels, JBIG2_WORK_PIXELS_PER_PIXEL);
+ 
+     guard_codec(|| {
+         image.decode_with(decoder, &mut ctx).map_err(|e| match e {
+-            hayro_jbig2::DecodeError::Overflow(hayro_jbig2::OverflowError::MemoryBudget) => {
+-                image_memory_limit_hit()
+-            }
++            hayro_jbig2::DecodeError::Overflow(
++                hayro_jbig2::OverflowError::MemoryBudget | hayro_jbig2::OverflowError::WorkBudget,
++            ) => image_memory_limit_hit(),
+             _ => DecodeFailure::ImageDecode,
+         })
+     })
+diff --git a/hayro-syntax/src/filter/mod.rs b/hayro-syntax/src/filter/mod.rs
+index 772dbea..38b030d 100644
+--- a/hayro-syntax/src/filter/mod.rs
++++ b/hayro-syntax/src/filter/mod.rs
+@@ -54,7 +54,10 @@ pub struct DecodeLimits {
+     /// sets (symbol and region bitmaps, gray-scale planes; tile, precinct and
+     /// code-block records, channel planes) are not bounded by the image size;
+     /// a decode that would exceed its budget fails with
+-    /// [`DecodeFailure::ImageMemoryLimit`].
++    /// [`DecodeFailure::ImageMemoryLimit`]. It sets the JBIG2 decoder's work
++    /// allowance for placing symbol instances too,
++    /// [`JBIG2_WORK_PIXELS_PER_PIXEL`] pixels per pixel of the cap, refused
++    /// the same way.
+     ///
+     /// The default, `None`, means no limit and no budget.
+     pub max_image_pixels: Option<u64>,
+@@ -179,6 +182,22 @@ pub(crate) fn note_image_pixel_limit_hit() {
+ /// bytes) cost hundreds of bytes per pixel or are unbounded.
+ pub const JBIG2_BUDGET_BYTES_PER_PIXEL: u64 = 2;
+ 
++/// The JBIG2 decoder's work allowance for placing symbol instances, in
++/// pixels per pixel of [`DecodeLimits::max_image_pixels`]: each instance a
++/// text region or an aggregate symbol places costs its symbol's area plus 64.
++/// A text page draws each glyph once, so its instances cover the page about
++/// once, and at most a few times counting the per-instance charge for small
++/// glyphs and overlapping glyph boxes; 16 is as many pixels as the memory
++/// budget can allocate as bitmaps (2 bytes, 16 one-bit pixels, per pixel of
++/// the cap), so a decode may draw each pixel it could hold once, a fourfold
++/// margin at the cap and far more for ordinary scans. The hostile shape (a
++/// large symbol placed 10,000 times per region, region after region) is
++/// unbounded without it; with it, the placing a decode can do at the default
++/// cap takes a few seconds (measured at about 0.45 ns per charged pixel for
++/// the costliest shape, one-pixel-wide symbols). A refusal is reported like
++/// the memory budget's.
++pub const JBIG2_WORK_PIXELS_PER_PIXEL: u64 = 16;
++
+ /// The JPEG 2000 decoder's memory budget, in bytes per pixel of
+ /// [`DecodeLimits::max_image_pixels`]: about 9 bytes per pixel per component
+ /// in channel planes, coefficients and output, so 64 covers a single-tile
+diff --git a/hayro-syntax/src/object/stream.rs b/hayro-syntax/src/object/stream.rs
+index 2d77d9f..6aca197 100644
+--- a/hayro-syntax/src/object/stream.rs
++++ b/hayro-syntax/src/object/stream.rs
+@@ -330,7 +330,9 @@ pub enum DecodeFailure {
+     ImagePixelLimit,
+     /// An image codec would have allocated more than its memory budget,
+     /// which [`DecodeLimits::max_image_pixels`](crate::DecodeLimits::max_image_pixels)
+-    /// sets; it was refused before the allocation that would exceed it.
++    /// sets; it was refused before the allocation that would exceed it. The
++    /// JBIG2 decoder's work allowance for placing symbol instances, set by
++    /// the same cap, is refused this way too.
+     ImageMemoryLimit,
+ }
+ 

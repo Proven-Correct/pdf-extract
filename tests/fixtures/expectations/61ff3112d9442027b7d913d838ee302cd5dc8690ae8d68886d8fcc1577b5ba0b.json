@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "61ff3112d9442027b7d913d838ee302cd5dc8690ae8d68886d8fcc1577b5ba0b",
+  "size": 1305,
+  "source": "corpus-c/ocg_form_shared_resources.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "PAGEVIS\nFORMVIS\n",
+      "sha256": "d3cd68c7bdd107f28a1acb756b464bcf06ab99aeec39023d8390ee7f08ea1659",
+      "error": null
+    }
+  ]
+}

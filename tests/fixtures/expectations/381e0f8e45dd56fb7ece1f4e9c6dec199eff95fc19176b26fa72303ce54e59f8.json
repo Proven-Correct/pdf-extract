@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "381e0f8e45dd56fb7ece1f4e9c6dec199eff95fc19176b26fa72303ce54e59f8",
+  "size": 17025,
+  "source": "corpus-b/hayro/pattern_tiling_with_text.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "e t\n",
+      "sha256": "f76534c2c20a71aba03086174ed3e78cc643745e16d6cb85762b445963285b24",
+      "error": null
+    }
+  ]
+}

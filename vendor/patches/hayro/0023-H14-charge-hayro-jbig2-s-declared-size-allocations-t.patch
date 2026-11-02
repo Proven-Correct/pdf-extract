@@ -1,0 +1,1442 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Mon, 5 Oct 2026 12:50:15 -0700
+Subject: [PATCH 23/35] H14: charge hayro-jbig2's declared-size allocations to
+ a per-decode budget
+
+JBIG2 sizes most of its buffers from values the file declares, not from
+the data: a bitmap of up to 65535 x 65535 pixels from a few header bytes,
+a gray-scale plane of four bytes per grid cell, one copy of a symbol per
+export, a symbol-ID context table of 2^SBSYMCODELEN entries. Each is
+bounded on its own; nothing bounds their sum, so a stream of a few
+hundred bytes can ask for hundreds of gigabytes (a symbol exported
+65,535 times through a dictionary that names another 65,535 times).
+
+DecoderContext gains memory_budget (default None, unlimited).
+Image::decode_with installs a MemoryBudget for the call, passed by
+reference to every site that allocates in proportion to a declared
+value; each charges its bytes before allocating them, and a charge that
+would exceed the budget fails the decode with the new
+OverflowError::MemoryBudget. Charges are cumulative over the call and
+never refunded. Image::decode stays unbudgeted.
+
+Counted: every Bitmap (page, generic, refinement, text and halftone
+regions, symbols, height-class collectives, aggregations, pattern
+collectives and patterns, stored intermediate regions); Bitmap's
+derived Clone is replaced by clone_within, and symbol export decodes
+its flags first and checks the copies' total before making the first;
+the gray-scale value plane and its two bit planes (checked together);
+the HSKIP bitmap; the shifted-pattern table; the symbol-ID context
+table; uniform and symbol-ID Huffman tables; the symbol, width, pattern
+and export lists; the symbol and table lists built from referred-to
+segments, whose length is computed and charged before they are built.
+Not counted: fixed-size context tables and allocations linear in the
+input.
+---
+ hayro-jbig2/src/bitmap.rs                    |  41 ++++-
+ hayro-jbig2/src/budget.rs                    |  68 +++++++++
+ hayro-jbig2/src/decode/generic.rs            |   3 +
+ hayro-jbig2/src/decode/generic_refinement.rs |   3 +
+ hayro-jbig2/src/decode/halftone.rs           |  12 +-
+ hayro-jbig2/src/decode/mod.rs                |   2 +-
+ hayro-jbig2/src/decode/pattern.rs            |  10 +-
+ hayro-jbig2/src/decode/symbol.rs             | 100 +++++++++----
+ hayro-jbig2/src/decode/text.rs               |  41 +++--
+ hayro-jbig2/src/error.rs                     |   5 +
+ hayro-jbig2/src/gray_scale.rs                | 107 +++++++++-----
+ hayro-jbig2/src/huffman_table.rs             |  19 ++-
+ hayro-jbig2/src/lib.rs                       | 148 ++++++++++++-------
+ hayro-jbig2/src/symbol_id_decoder.rs         |  12 +-
+ 14 files changed, 425 insertions(+), 146 deletions(-)
+ create mode 100644 vendor/hayro-jbig2/src/budget.rs
+
+diff --git a/hayro-jbig2/src/bitmap.rs b/hayro-jbig2/src/bitmap.rs
+index 654fab5..c40a6ba 100644
+--- a/hayro-jbig2/src/bitmap.rs
++++ b/hayro-jbig2/src/bitmap.rs
+@@ -5,6 +5,7 @@
+ //!
+ //! "GBREG - The decoded region bitmap." (Table 3)
+ 
++use crate::budget::MemoryBudget;
+ use crate::decode::CombinationOperator;
+ use crate::error::{OverflowError, Result, bail};
+ use alloc::vec;
+@@ -26,7 +27,10 @@ pub(crate) const WORD_SHIFT: u32 = WORD_BITS - 1;
+ /// "Pixels decoded by the MMR decoder having the value 'black' shall be treated
+ /// as having the value 1. Pixels decoded by the MMR decoder having the value
+ /// 'white' shall be treated as having the value 0." (6.2.6)
+-#[derive(Debug, Clone, Default)]
++///
++/// Not `Clone`: a copy is an allocation the decode's [`MemoryBudget`] must
++/// see, so it goes through [`Bitmap::clone_within`].
++#[derive(Debug, Default)]
+ pub(crate) struct Bitmap {
+     /// Width in pixels.
+     pub(crate) width: u32,
+@@ -46,25 +50,34 @@ pub(crate) struct Bitmap {
+ }
+ 
+ impl Bitmap {
++    /// The bytes of pixel data a `width × height` bitmap allocates.
++    pub(crate) fn data_bytes(width: u32, height: u32) -> u64 {
++        u64::from(width.div_ceil(WORD_BITS)) * u64::from(height) * u64::from(WORD_BITS / 8)
++    }
++
+     /// Create a new bitmap filled with white pixels (false).
+     ///
+     /// The bitmap is positioned at (0, 0).
+-    pub(crate) fn new(width: u32, height: u32) -> Result<Self> {
+-        Self::new_with(width, height, 0, 0, false)
++    pub(crate) fn new(width: u32, height: u32, budget: &MemoryBudget) -> Result<Self> {
++        Self::new_with(width, height, 0, 0, false, budget)
+     }
+ 
+-    /// Create a new bitmap with full configuration.
++    /// Create a new bitmap with full configuration, charging its pixel data
++    /// to `budget` first.
+     pub(crate) fn new_with(
+         width: u32,
+         height: u32,
+         x_location: u32,
+         y_location: u32,
+         default_pixel: bool,
++        budget: &MemoryBudget,
+     ) -> Result<Self> {
+         if width > MAX_DIMENSION || height > MAX_DIMENSION {
+             bail!(OverflowError::BitmapDimension);
+         }
+ 
++        budget.charge(Self::data_bytes(width, height))?;
++
+         let stride = width.div_ceil(WORD_BITS);
+         let default_word: Word = if default_pixel { !0 } else { 0 };
+         let data = vec![default_word; stride as usize * height as usize];
+@@ -78,16 +91,22 @@ impl Bitmap {
+         })
+     }
+ 
++    /// Resize and clear this bitmap for reuse, charging the new size to
++    /// `budget` (in full, even when the old buffer is large enough: the
++    /// budget is per decode and does not know what an earlier decode left).
+     pub(crate) fn reinitialize(
+         &mut self,
+         width: u32,
+         height: u32,
+         default_pixel: bool,
++        budget: &MemoryBudget,
+     ) -> Result<()> {
+         if width > MAX_DIMENSION || height > MAX_DIMENSION {
+             return Err(OverflowError::BitmapDimension.into());
+         }
+ 
++        budget.charge(Self::data_bytes(width, height))?;
++
+         let stride = width.div_ceil(WORD_BITS);
+         let default_word: Word = if default_pixel { !0 } else { 0 };
+         self.width = width;
+@@ -102,6 +121,20 @@ impl Bitmap {
+         Ok(())
+     }
+ 
++    /// A copy of this bitmap, charged to `budget` before it is made.
++    pub(crate) fn clone_within(&self, budget: &MemoryBudget) -> Result<Self> {
++        budget.charge_array::<Word>(self.data.len() as u64)?;
++
++        Ok(Self {
++            width: self.width,
++            height: self.height,
++            stride: self.stride,
++            data: self.data.clone(),
++            x_location: self.x_location,
++            y_location: self.y_location,
++        })
++    }
++
+     /// Get a pixel value at (x, y).
+     #[inline]
+     pub(crate) fn get_pixel(&self, x: u32, y: u32) -> u8 {
+diff --git a/hayro-jbig2/src/budget.rs b/hayro-jbig2/src/budget.rs
+new file mode 100644
+index 0000000..25c71c1
+--- /dev/null
++++ b/hayro-jbig2/src/budget.rs
+@@ -0,0 +1,68 @@
++//! A cumulative memory budget for one decode.
++//!
++//! JBIG2 sizes most of its buffers from values the file declares, not from
++//! the length of the data: a bitmap of up to 65535 × 65535 pixels from a few
++//! header bytes, a gray-scale plane of four bytes per grid cell, one clone of
++//! a symbol per export, a symbol-ID context table of `2^SBSYMCODELEN`
++//! entries. Each is bounded on its own, but nothing bounds their sum, so a
++//! stream of a few hundred bytes can ask for hundreds of gigabytes.
++//!
++//! A [`MemoryBudget`] is created by [`Image::decode_with`](crate::Image::decode_with)
++//! from [`DecoderContext::memory_budget`](crate::DecoderContext::memory_budget)
++//! and passed by reference to every site that allocates in proportion to a
++//! declared value. Each site charges the bytes it is about to allocate
++//! *before* allocating them; a charge that would take the running total over
++//! the budget fails the decode with
++//! [`OverflowError::MemoryBudget`](crate::OverflowError::MemoryBudget). Charges
++//! are never refunded when a buffer is dropped, so the budget bounds the total
++//! allocated over the decode, which is an upper bound on the peak. Allocations
++//! linear in the input (segment headers, referred-to lists, custom Huffman
++//! tables) and the fixed-size context tables are not charged.
++
++use core::cell::Cell;
++
++use crate::error::{OverflowError, Result, bail};
++
++/// The bytes left for one decode; `None` means unlimited.
++#[derive(Debug)]
++pub(crate) struct MemoryBudget {
++    remaining: Cell<Option<u64>>,
++}
++
++impl MemoryBudget {
++    /// A budget of `limit` bytes, or an unlimited one for `None`.
++    pub(crate) fn new(limit: Option<u64>) -> Self {
++        Self {
++            remaining: Cell::new(limit),
++        }
++    }
++
++    /// Charges `bytes` against the budget, failing without charging anything
++    /// when that would exceed it.
++    pub(crate) fn charge(&self, bytes: u64) -> Result<()> {
++        if let Some(remaining) = self.remaining.get() {
++            match remaining.checked_sub(bytes) {
++                Some(left) => self.remaining.set(Some(left)),
++                None => bail!(OverflowError::MemoryBudget),
++            }
++        }
++
++        Ok(())
++    }
++
++    /// Charges `count` values of type `T`, as a `Vec<T>` of that length or
++    /// capacity would allocate.
++    pub(crate) fn charge_array<T>(&self, count: u64) -> Result<()> {
++        self.charge(count.saturating_mul(size_of::<T>() as u64))
++    }
++
++    /// Fails as [`charge`](Self::charge) would for `bytes`, but charges
++    /// nothing. Used to refuse a batch of allocations before making the first
++    /// one, when each is then charged as it is made.
++    pub(crate) fn check(&self, bytes: u64) -> Result<()> {
++        match self.remaining.get() {
++            Some(remaining) if bytes > remaining => bail!(OverflowError::MemoryBudget),
++            _ => Ok(()),
++        }
++    }
++}
+diff --git a/hayro-jbig2/src/decode/generic.rs b/hayro-jbig2/src/decode/generic.rs
+index a788163..d37a2b4 100644
+--- a/hayro-jbig2/src/decode/generic.rs
++++ b/hayro-jbig2/src/decode/generic.rs
+@@ -6,6 +6,7 @@ use super::{
+ use crate::ScratchBuffers;
+ use crate::arithmetic_decoder::{ArithmeticDecoder, ArithmeticDecoderContext};
+ use crate::bitmap::{Bitmap, WORD_BITS, WORD_SHIFT, Word};
++use crate::budget::MemoryBudget;
+ use crate::error::{ParseError, RegionError, Result, TemplateError, bail};
+ use crate::reader::Reader;
+ 
+@@ -13,6 +14,7 @@ use crate::reader::Reader;
+ pub(crate) fn decode(
+     header: &GenericRegionHeader<'_>,
+     ctx: &mut ScratchBuffers,
++    budget: &MemoryBudget,
+ ) -> Result<RegionBitmap> {
+     let mut bitmap = Bitmap::new_with(
+         header.region_info.width,
+@@ -20,6 +22,7 @@ pub(crate) fn decode(
+         header.region_info.x_location,
+         header.region_info.y_location,
+         false,
++        budget,
+     )?;
+ 
+     decode_into(header, &mut bitmap, ctx)?;
+diff --git a/hayro-jbig2/src/decode/generic_refinement.rs b/hayro-jbig2/src/decode/generic_refinement.rs
+index a566b8d..cfc4b18 100644
+--- a/hayro-jbig2/src/decode/generic_refinement.rs
++++ b/hayro-jbig2/src/decode/generic_refinement.rs
+@@ -9,6 +9,7 @@ use super::{
+ use crate::ScratchBuffers;
+ use crate::arithmetic_decoder::{ArithmeticDecoder, ArithmeticDecoderContext};
+ use crate::bitmap::{Bitmap, WORD_BITS, WORD_SHIFT, Word};
++use crate::budget::MemoryBudget;
+ use crate::decode::generic::ContextGatherer;
+ use crate::error::{OverflowError, ParseError, RegionError, Result, bail};
+ use crate::reader::Reader;
+@@ -18,6 +19,7 @@ pub(crate) fn decode(
+     header: &GenericRefinementRegionHeader<'_>,
+     reference: &Bitmap,
+     ctx: &mut ScratchBuffers,
++    budget: &MemoryBudget,
+ ) -> Result<RegionBitmap> {
+     let mut region = Bitmap::new_with(
+         header.region_info.width,
+@@ -25,6 +27,7 @@ pub(crate) fn decode(
+         header.region_info.x_location,
+         header.region_info.y_location,
+         false,
++        budget,
+     )?;
+ 
+     decode_into(header, reference, &mut region, ctx)?;
+diff --git a/hayro-jbig2/src/decode/halftone.rs b/hayro-jbig2/src/decode/halftone.rs
+index 637eabc..a53c6cb 100644
+--- a/hayro-jbig2/src/decode/halftone.rs
++++ b/hayro-jbig2/src/decode/halftone.rs
+@@ -8,6 +8,7 @@ use super::pattern::PatternDictionary;
+ use super::{CombinationOperator, RegionSegmentInfo, Template, parse_region_segment_info};
+ use crate::ScratchBuffers;
+ use crate::bitmap::{Bitmap, MAX_DIMENSION, WORD_BITS};
++use crate::budget::MemoryBudget;
+ use crate::error::{OverflowError, ParseError, RegionError, Result, bail};
+ use crate::gray_scale::{GrayScaleParams, decode_gray_scale_image};
+ use crate::reader::Reader;
+@@ -17,6 +18,7 @@ pub(crate) fn decode(
+     header: &HalftoneRegionHeader<'_>,
+     pattern_dict: &PatternDictionary,
+     ctx: &mut ScratchBuffers,
++    budget: &MemoryBudget,
+ ) -> Result<RegionBitmap> {
+     let region = &header.region_info;
+ 
+@@ -26,9 +28,10 @@ pub(crate) fn decode(
+         region.x_location,
+         region.y_location,
+         header.flags.initial_pixel_color,
++        budget,
+     )?;
+ 
+-    decode_into(header, pattern_dict, &mut htreg, ctx)?;
++    decode_into(header, pattern_dict, &mut htreg, ctx, budget)?;
+ 
+     Ok(RegionBitmap {
+         bitmap: htreg,
+@@ -41,9 +44,10 @@ pub(crate) fn decode_into(
+     pattern_dict: &PatternDictionary,
+     htreg: &mut Bitmap,
+     ctx: &mut ScratchBuffers,
++    budget: &MemoryBudget,
+ ) -> Result<()> {
+     let skip_bitmap = if header.flags.enable_skip {
+-        Some(compute_skip_bitmap(header, pattern_dict, htreg)?)
++        Some(compute_skip_bitmap(header, pattern_dict, htreg, budget)?)
+     } else {
+         None
+     };
+@@ -64,7 +68,7 @@ pub(crate) fn decode_into(
+         template: header.flags.template,
+         skip_mask: skip_bitmap.as_deref(),
+     };
+-    let gi = decode_gray_scale_image(header.data, &gs_params, ctx)?;
++    let gi = decode_gray_scale_image(header.data, &gs_params, ctx, budget)?;
+ 
+     // "5) Place sequentially the patterns corresponding to the values in GI into
+     // HTREG by the procedure described in 6.6.5.2." (6.6.5)
+@@ -213,6 +217,7 @@ fn compute_skip_bitmap(
+     header: &HalftoneRegionHeader<'_>,
+     pattern_dict: &PatternDictionary,
+     htreg: &Bitmap,
++    budget: &MemoryBudget,
+ ) -> Result<Vec<u32>> {
+     let grid = &header.grid_position_and_size;
+     let pattern_width = pattern_dict.pattern_width as i32;
+@@ -224,6 +229,7 @@ fn compute_skip_bitmap(
+     let len = stride
+         .checked_mul(grid.height)
+         .ok_or(OverflowError::BitmapDimension)? as usize;
++    budget.charge_array::<u32>(len as u64)?;
+     let mut hskip = vec![0_u32; len];
+     let mut coords = GridCoords::new(grid, &header.grid_vector);
+ 
+diff --git a/hayro-jbig2/src/decode/mod.rs b/hayro-jbig2/src/decode/mod.rs
+index da9e0ec..e994232 100644
+--- a/hayro-jbig2/src/decode/mod.rs
++++ b/hayro-jbig2/src/decode/mod.rs
+@@ -15,7 +15,7 @@ use alloc::vec;
+ use alloc::vec::Vec;
+ 
+ /// A decoded region bitmap with its combination operator.
+-#[derive(Debug, Clone)]
++#[derive(Debug)]
+ pub(crate) struct RegionBitmap {
+     /// The decoded bitmap.
+     pub(crate) bitmap: Bitmap,
+diff --git a/hayro-jbig2/src/decode/pattern.rs b/hayro-jbig2/src/decode/pattern.rs
+index 2c15d70..3b8621a 100644
+--- a/hayro-jbig2/src/decode/pattern.rs
++++ b/hayro-jbig2/src/decode/pattern.rs
+@@ -4,6 +4,7 @@ use super::{AdaptiveTemplatePixel, Template, generic};
+ use crate::ScratchBuffers;
+ use crate::arithmetic_decoder::{ArithmeticDecoder, ArithmeticDecoderContext};
+ use crate::bitmap::{Bitmap, WORD_BITS, Word};
++use crate::budget::MemoryBudget;
+ use crate::error::{OverflowError, ParseError, Result};
+ use crate::reader::Reader;
+ use alloc::vec::Vec;
+@@ -12,6 +13,7 @@ use alloc::vec::Vec;
+ pub(crate) fn decode(
+     header: &PatternDictionaryHeader<'_>,
+     scratch: &mut ScratchBuffers,
++    budget: &MemoryBudget,
+ ) -> Result<PatternDictionary> {
+     let pattern_width = header.pattern_width as u32;
+     let pattern_height = header.pattern_height as u32;
+@@ -27,7 +29,7 @@ pub(crate) fn decode(
+         .checked_mul(pattern_width)
+         .ok_or(OverflowError::BitmapDimension)?;
+ 
+-    let mut collective_bitmap = Bitmap::new(collective_width, pattern_height)?;
++    let mut collective_bitmap = Bitmap::new(collective_width, pattern_height, budget)?;
+ 
+     // "2) Decode the collective bitmap using a generic region decoding procedure
+     // as described in 6.2." (6.7.5)
+@@ -75,6 +77,7 @@ pub(crate) fn decode(
+ 
+     // "3) Set: GRAY = 0" (6.7.5)
+     // "4) While GRAY ≤ GRAYMAX:" (6.7.5)
++    budget.charge_array::<Bitmap>(u64::from(num_patterns))?;
+     let mut patterns = Vec::with_capacity(num_patterns as usize);
+ 
+     let src_stride = collective_bitmap.stride;
+@@ -84,7 +87,7 @@ pub(crate) fn decode(
+         // HDPW × GRAY through HDPW × (GRAY + 1) − 1 be denoted B_P. Set:
+         // HDPATS[GRAY] = B_P" (6.7.5)"
+         let start_x = gray * pattern_width;
+-        let mut pattern = Bitmap::new(pattern_width, pattern_height)?;
++        let mut pattern = Bitmap::new(pattern_width, pattern_height, budget)?;
+ 
+         let src_word_idx = start_x / WORD_BITS;
+         let src_bit_offset = start_x % WORD_BITS;
+@@ -135,6 +138,7 @@ pub(crate) fn decode(
+     // the whole process.
+     let shifted_patterns = if pattern_width <= WORD_BITS && pattern_height <= WORD_BITS {
+         let h = pattern_height as usize;
++        budget.charge_array::<Word>((patterns.len() * 32 * h * 2) as u64)?;
+         let mut data = Vec::with_capacity(patterns.len() * 32 * h * 2);
+         for pattern in &patterns {
+             for k in 0..32_u32 {
+@@ -164,7 +168,7 @@ pub(crate) fn decode(
+ }
+ 
+ /// A decoded pattern dictionary.
+-#[derive(Debug, Clone)]
++#[derive(Debug)]
+ pub(crate) struct PatternDictionary {
+     pub(crate) patterns: Vec<Bitmap>,
+     pub(crate) pattern_width: u32,
+diff --git a/hayro-jbig2/src/decode/symbol.rs b/hayro-jbig2/src/decode/symbol.rs
+index 6ab0528..a9fffe4 100644
+--- a/hayro-jbig2/src/decode/symbol.rs
++++ b/hayro-jbig2/src/decode/symbol.rs
+@@ -5,6 +5,7 @@ use alloc::vec::Vec;
+ 
+ use crate::arithmetic_decoder::{ArithmeticDecoder, ArithmeticDecoderContext};
+ use crate::bitmap::{Bitmap, WORD_BITS};
++use crate::budget::MemoryBudget;
+ use crate::decode::generic::{decode_bitmap_mmr, parse_adaptive_template_pixels};
+ use crate::decode::text::{
+     DecodeContext, ReferenceCorner, TextRegionContexts, TextRegionFlags, TextRegionHeader,
+@@ -31,14 +32,20 @@ pub(crate) fn decode(
+     referred_tables: &[HuffmanTable],
+     standard_tables: &StandardHuffmanTables,
+     input_contexts: Option<&RetainedContexts>,
++    budget: &MemoryBudget,
+ ) -> Result<SymbolDictionary> {
+     let num_new_symbols = header.num_new_symbols;
+ 
++    // The two lists below are sized by the declared symbol count.
++    budget.charge_array::<Bitmap>(u64::from(num_new_symbols))?;
++    budget.charge_array::<u32>(u64::from(num_new_symbols))?;
++
+     let mut ctx = SymbolDecodeContext {
+         a_ctx: ArithmeticContext::new(header.data, header, input_contexts)?,
+         h_ctx: HuffmanContext::new(header.data, header, referred_tables, standard_tables)?,
+         symbols: Symbols::new(input_symbols, num_new_symbols as usize),
+         symbol_widths: Vec::with_capacity(num_new_symbols as usize),
++        budget,
+         height_class_first_symbol: 0,
+         symbols_decoded_count: 0,
+         total_width: 0,
+@@ -106,7 +113,8 @@ pub(crate) fn decode(
+                 (false, false) => {
+                     // Decode a single symbol using a simple generic decoding procedure,
+                     // described in 6.5.8.1.
+-                    let mut region = Bitmap::new(symbol_width, ctx.height_class_height)?;
++                    let mut region =
++                        Bitmap::new(symbol_width, ctx.height_class_height, ctx.budget)?;
+                     generic::decode_bitmap_arithmetic_coding(
+                         &mut region,
+                         &mut ctx.a_ctx.decoder,
+@@ -167,7 +175,7 @@ pub(crate) struct RetainedContexts {
+ }
+ 
+ /// A decoded symbol dictionary segment.
+-#[derive(Debug, Clone)]
++#[derive(Debug)]
+ pub(crate) struct SymbolDictionary {
+     pub(crate) exported_symbols: Vec<Bitmap>,
+     pub(crate) retained_contexts: Option<RetainedContexts>,
+@@ -233,10 +241,11 @@ fn decode_refinement_bitmap(
+     } else {
+         // Note that the contexts should be reused across multiple
+         // bitmaps in the same symbol dictionary.
+-        let contexts = ctx
+-            .a_ctx
+-            .text_region_contexts
+-            .get_or_insert_with(|| TextRegionContexts::new(symbol_code_length));
++        let contexts = match ctx.a_ctx.text_region_contexts.take() {
++            Some(contexts) => contexts,
++            None => TextRegionContexts::new(symbol_code_length, ctx.budget)?,
++        };
++        let contexts = ctx.a_ctx.text_region_contexts.insert(contexts);
+ 
+         let symbol_id = contexts.iaid.decode(&mut ctx.a_ctx.decoder) as usize;
+ 
+@@ -254,7 +263,7 @@ fn decode_refinement_bitmap(
+     };
+ 
+     let reference_region = ctx.symbols.get(symbol_id).ok_or(SymbolError::OutOfRange)?;
+-    let mut region = Bitmap::new(symbol_width, ctx.height_class_height)?;
++    let mut region = Bitmap::new(symbol_width, ctx.height_class_height, ctx.budget)?;
+ 
+     if use_huffman {
+         let bitmap_size = ctx
+@@ -309,8 +318,9 @@ fn decode_aggregation_bitmap(
+     let use_huffman = ctx.header.flags.use_huffman;
+ 
+     // Concatenate input and new symbols.
+-    let mut all_symbols: Vec<&Bitmap> =
+-        Vec::with_capacity(ctx.symbols.input.len() + ctx.symbols.new.len());
++    let all_count = ctx.symbols.input.len() + ctx.symbols.new.len();
++    ctx.budget.charge_array::<&Bitmap>(all_count as u64)?;
++    let mut all_symbols: Vec<&Bitmap> = Vec::with_capacity(all_count);
+     all_symbols.extend(ctx.symbols.input.iter().copied());
+     for sym in &ctx.symbols.new {
+         all_symbols.push(sym);
+@@ -324,6 +334,7 @@ fn decode_aggregation_bitmap(
+         Some(HuffmanTable::build_uniform(
+             ctx.total_symbols(),
+             symbol_code_length,
++            ctx.budget,
+         )?)
+     } else {
+         None
+@@ -374,10 +385,11 @@ fn decode_aggregation_bitmap(
+     let decode_ctx = if use_huffman {
+         DecodeContext::new_huffman(&mut ctx.h_ctx.reader, &header, &[], ctx.standard_tables)?
+     } else {
+-        let contexts = ctx
+-            .a_ctx
+-            .text_region_contexts
+-            .get_or_insert_with(|| TextRegionContexts::new(symbol_code_length));
++        let contexts = match ctx.a_ctx.text_region_contexts.take() {
++            Some(contexts) => contexts,
++            None => TextRegionContexts::new(symbol_code_length, ctx.budget)?,
++        };
++        let contexts = ctx.a_ctx.text_region_contexts.insert(contexts);
+ 
+         DecodeContext::new_arithmetic(
+             &mut ctx.a_ctx.decoder,
+@@ -392,8 +404,9 @@ fn decode_aggregation_bitmap(
+         header.region_info.x_location,
+         header.region_info.y_location,
+         header.flags.default_pixel,
++        ctx.budget,
+     )?;
+-    decode_with(decode_ctx, &all_symbols, &header, &mut bitmap)?;
++    decode_with(decode_ctx, &all_symbols, &header, &mut bitmap, ctx.budget)?;
+     Ok(bitmap)
+ }
+ 
+@@ -430,6 +443,7 @@ struct SymbolDecodeContext<'a> {
+     symbols: Symbols<'a>,
+     standard_tables: &'a StandardHuffmanTables,
+     symbol_widths: Vec<u32>,
++    budget: &'a MemoryBudget,
+     height_class_first_symbol: u32,
+     symbols_decoded_count: u32,
+     total_width: u32,
+@@ -586,7 +600,7 @@ fn decode_height_class_collective_bitmap(ctx: &mut SymbolDecodeContext<'_>) -> R
+         // each byte. Rows are padded to the byte boundary.
+         let row_bytes = ctx.total_width.div_ceil(8);
+ 
+-        let mut bitmap = Bitmap::new(ctx.total_width, ctx.height_class_height)?;
++        let mut bitmap = Bitmap::new(ctx.total_width, ctx.height_class_height, ctx.budget)?;
+         for y in 0..ctx.height_class_height {
+             for byte_x in 0..row_bytes {
+                 let byte = ctx
+@@ -612,7 +626,7 @@ fn decode_height_class_collective_bitmap(ctx: &mut SymbolDecodeContext<'_>) -> R
+             .read_bytes(bitmap_size as usize)
+             .ok_or(ParseError::UnexpectedEof)?;
+ 
+-        let mut bitmap = Bitmap::new(ctx.total_width, ctx.height_class_height)?;
++        let mut bitmap = Bitmap::new(ctx.total_width, ctx.height_class_height, ctx.budget)?;
+         decode_bitmap_mmr(&mut bitmap, bitmap_data)?;
+         bitmap
+     };
+@@ -622,7 +636,7 @@ fn decode_height_class_collective_bitmap(ctx: &mut SymbolDecodeContext<'_>) -> R
+     let mut x_offset: u32 = 0;
+     for symbol_idx in ctx.height_class_first_symbol..ctx.symbols_decoded_count {
+         let symbol_width = ctx.symbol_widths[symbol_idx as usize];
+-        let mut symbol = Bitmap::new(symbol_width, ctx.height_class_height)?;
++        let mut symbol = Bitmap::new(symbol_width, ctx.height_class_height, ctx.budget)?;
+ 
+         for y in 0..ctx.height_class_height {
+             let src_bit_offset = x_offset % WORD_BITS;
+@@ -659,8 +673,14 @@ fn decode_height_class_collective_bitmap(ctx: &mut SymbolDecodeContext<'_>) -> R
+ }
+ 
+ /// Exported symbols (6.5.10).
++///
++/// Every exported symbol is a copy, and the export flags can name a large
++/// symbol many times over when the input symbols repeat a dictionary, so the
++/// flags are decoded first and the copies' total size is checked against the
++/// budget before the first copy is made; each copy is then charged as made.
+ fn export_symbols(ctx: &mut SymbolDecodeContext<'_>) -> Result<Vec<Bitmap>> {
+     let total_symbols = ctx.total_symbols();
++    let budget = ctx.budget;
+ 
+     let mut read_run_length = || -> Result<u32> {
+         let value = if ctx.header.flags.use_huffman {
+@@ -676,7 +696,10 @@ fn export_symbols(ctx: &mut SymbolDecodeContext<'_>) -> Result<Vec<Bitmap>> {
+ 
+         u32::try_from(value).map_err(|_| HuffmanError::InvalidCode.into())
+     };
+-    let mut exported = Vec::with_capacity(ctx.header.num_exported_symbols as usize);
++    // The runs of exported indices; empty runs are not kept, so there are at
++    // most `total_symbols` of them.
++    let mut export_runs: Vec<(u32, u32)> = Vec::new();
++    let mut export_count: u64 = 0;
+     let mut index: u32 = 0;
+     let mut should_export = false;
+ 
+@@ -688,25 +711,46 @@ fn export_symbols(ctx: &mut SymbolDecodeContext<'_>) -> Result<Vec<Bitmap>> {
+             bail!(SymbolError::OutOfRange);
+         }
+ 
+-        if should_export {
+-            for symbol_idx in index..end_index {
+-                let symbol = ctx
+-                    .symbols
+-                    .get(symbol_idx as usize)
+-                    .ok_or(SymbolError::OutOfRange)?
+-                    .clone();
+-                exported.push(symbol);
+-            }
++        if should_export && run_length > 0 {
++            budget.charge_array::<(u32, u32)>(1)?;
++            export_runs.push((index, end_index));
++            export_count += u64::from(run_length);
+         }
+ 
+         index = end_index;
+         should_export = !should_export;
+     }
+ 
+-    if exported.len() != ctx.header.num_exported_symbols as usize {
++    if export_count != u64::from(ctx.header.num_exported_symbols) {
+         bail!(SymbolError::NoSymbols);
+     }
+ 
++    let mut copy_bytes: u64 = 0;
++    for &(start, end) in &export_runs {
++        for symbol_idx in start..end {
++            let symbol = ctx
++                .symbols
++                .get(symbol_idx as usize)
++                .ok_or(SymbolError::OutOfRange)?;
++            copy_bytes = copy_bytes.saturating_add(Bitmap::data_bytes(symbol.width, symbol.height));
++        }
++    }
++    let list_bytes = export_count.saturating_mul(size_of::<Bitmap>() as u64);
++    budget.check(copy_bytes.saturating_add(list_bytes))?;
++
++    budget.charge(list_bytes)?;
++    let mut exported = Vec::with_capacity(ctx.header.num_exported_symbols as usize);
++    for (start, end) in export_runs {
++        for symbol_idx in start..end {
++            let symbol = ctx
++                .symbols
++                .get(symbol_idx as usize)
++                .ok_or(SymbolError::OutOfRange)?
++                .clone_within(budget)?;
++            exported.push(symbol);
++        }
++    }
++
+     Ok(exported)
+ }
+ 
+diff --git a/hayro-jbig2/src/decode/text.rs b/hayro-jbig2/src/decode/text.rs
+index bbc2ac5..f48e94b 100644
+--- a/hayro-jbig2/src/decode/text.rs
++++ b/hayro-jbig2/src/decode/text.rs
+@@ -12,6 +12,7 @@ use super::{RegionBitmap, generic_refinement};
+ use crate::ScratchBuffers;
+ use crate::arithmetic_decoder::{ArithmeticDecoder, ArithmeticDecoderContext};
+ use crate::bitmap::Bitmap;
++use crate::budget::MemoryBudget;
+ use crate::error::{HuffmanError, OverflowError, ParseError, Result, SymbolError, bail};
+ use crate::huffman_table::{HuffmanTable, StandardHuffmanTables, TableLine};
+ use crate::integer_decoder::IntegerDecoder;
+@@ -25,6 +26,7 @@ pub(crate) fn decode(
+     referred_tables: &[HuffmanTable],
+     standard_tables: &StandardHuffmanTables,
+     scratch: &mut ScratchBuffers,
++    budget: &MemoryBudget,
+ ) -> Result<RegionBitmap> {
+     let mut bitmap = Bitmap::new_with(
+         header.region_info.width,
+@@ -32,6 +34,7 @@ pub(crate) fn decode(
+         header.region_info.x_location,
+         header.region_info.y_location,
+         header.flags.default_pixel,
++        budget,
+     )?;
+ 
+     decode_into(
+@@ -41,6 +44,7 @@ pub(crate) fn decode(
+         standard_tables,
+         &mut bitmap,
+         scratch,
++        budget,
+     )?;
+ 
+     Ok(RegionBitmap {
+@@ -56,18 +60,19 @@ pub(crate) fn decode_into(
+     standard_tables: &StandardHuffmanTables,
+     bitmap: &mut Bitmap,
+     scratch: &mut ScratchBuffers,
++    budget: &MemoryBudget,
+ ) -> Result<()> {
+     if header.flags.use_huffman {
+         let mut reader = Reader::new(header.data);
+         let ctx =
+             DecodeContext::new_huffman(&mut reader, header, referred_tables, standard_tables)?;
+-        decode_with(ctx, symbols, header, bitmap)?;
++        decode_with(ctx, symbols, header, bitmap, budget)?;
+     } else {
+         let mut decoder = ArithmeticDecoder::new(header.data);
+ 
+         let num_symbols = symbols.len() as u32;
+         let symbol_code_length = 32 - num_symbols.saturating_sub(1).leading_zeros();
+-        let mut contexts = TextRegionContexts::new(symbol_code_length);
++        let mut contexts = TextRegionContexts::new(symbol_code_length, budget)?;
+ 
+         let num_gr_contexts = 1 << header.flags.refinement_template.context_bits();
+         scratch.contexts.clear();
+@@ -76,7 +81,7 @@ pub(crate) fn decode_into(
+             .resize(num_gr_contexts, ArithmeticDecoderContext::default());
+ 
+         let ctx = DecodeContext::new_arithmetic(&mut decoder, &mut contexts, &mut scratch.contexts);
+-        decode_with(ctx, symbols, header, bitmap)?;
++        decode_with(ctx, symbols, header, bitmap, budget)?;
+     }
+ 
+     Ok(())
+@@ -88,6 +93,7 @@ pub(crate) fn decode_with(
+     symbols: &[&Bitmap],
+     header: &TextRegionHeader<'_>,
+     region: &mut Bitmap,
++    budget: &MemoryBudget,
+ ) -> Result<()> {
+     let strip_size = header.strip_size();
+ 
+@@ -147,7 +153,7 @@ pub(crate) fn decode_with(
+             let symbol_id = ctx.read_symbol_id()?;
+ 
+             let symbol_bitmap =
+-                decode_symbol_instance_bitmap(&mut ctx, symbols, header, symbol_id)?;
++                decode_symbol_instance_bitmap(&mut ctx, symbols, header, symbol_id, budget)?;
+ 
+             let symbol_bitmap_ref: &Bitmap = match &symbol_bitmap {
+                 SymbolBitmap::Reference(idx) => symbols.get(*idx).ok_or(SymbolError::OutOfRange)?,
+@@ -244,20 +250,21 @@ pub(crate) struct TextRegionContexts {
+ }
+ 
+ impl TextRegionContexts {
+-    /// Create new text region contexts with the given symbol code length.
+-    pub(crate) fn new(symbol_code_length: u32) -> Self {
+-        Self {
++    /// Create new text region contexts with the given symbol code length,
++    /// charging the symbol-ID context table to `budget`.
++    pub(crate) fn new(symbol_code_length: u32, budget: &MemoryBudget) -> Result<Self> {
++        Ok(Self {
+             iadt: IntegerDecoder::new(),
+             iafs: IntegerDecoder::new(),
+             iads: IntegerDecoder::new(),
+             iait: IntegerDecoder::new(),
+-            iaid: SymbolIdDecoder::new(symbol_code_length),
++            iaid: SymbolIdDecoder::new(symbol_code_length, budget)?,
+             iari: IntegerDecoder::new(),
+             iardw: IntegerDecoder::new(),
+             iardh: IntegerDecoder::new(),
+             iardx: IntegerDecoder::new(),
+             iardy: IntegerDecoder::new(),
+-        }
++        })
+     }
+ }
+ 
+@@ -531,6 +538,7 @@ fn decode_symbol_instance_bitmap(
+     symbols: &[&Bitmap],
+     header: &TextRegionHeader<'_>,
+     symbol_id: usize,
++    budget: &MemoryBudget,
+ ) -> Result<SymbolBitmap> {
+     if !header.flags.use_refinement || ctx.read_refinement_flag()? == 0 {
+         return Ok(SymbolBitmap::Reference(symbol_id));
+@@ -562,7 +570,7 @@ fn decode_symbol_instance_bitmap(
+         .checked_add(rdy)
+         .ok_or(OverflowError::ReferenceOffset)?;
+ 
+-    let mut refined_bitmap = Bitmap::new(refined_width, refined_height)?;
++    let mut refined_bitmap = Bitmap::new(refined_width, refined_height, budget)?;
+ 
+     ctx.decode_refinement_bitmap(
+         &mut refined_bitmap,
+@@ -673,6 +681,7 @@ fn select_huffman_tables<'a>(
+ fn decode_symbol_id_huffman_table(
+     reader: &mut Reader<'_>,
+     num_symbols: u32,
++    budget: &MemoryBudget,
+ ) -> Result<HuffmanTable> {
+     let mut runcode_lines: Vec<TableLine> = Vec::with_capacity(35);
+     for runcode_idx in 0..35 {
+@@ -681,6 +690,10 @@ fn decode_symbol_id_huffman_table(
+     }
+ 
+     let runcode_table = HuffmanTable::build(&runcode_lines)?;
++    // Sized by the number of input symbols, not by the data: the code
++    // lengths, then a table of the same length.
++    budget.charge_array::<u8>(u64::from(num_symbols))?;
++    HuffmanTable::charge_build(u64::from(num_symbols), budget)?;
+     let mut symbol_code_lengths = Vec::with_capacity(num_symbols as usize);
+ 
+     while symbol_code_lengths.len() < num_symbols as usize {
+@@ -865,7 +878,11 @@ fn parse_text_region_huffman_flags(reader: &mut Reader<'_>) -> Result<TextRegion
+ }
+ 
+ /// Parse a text region segment header (7.4.3.1).
+-pub(crate) fn parse<'a>(reader: &mut Reader<'a>, num_symbols: u32) -> Result<TextRegionHeader<'a>> {
++pub(crate) fn parse<'a>(
++    reader: &mut Reader<'a>,
++    num_symbols: u32,
++    budget: &MemoryBudget,
++) -> Result<TextRegionHeader<'a>> {
+     let region_info = parse_region_segment_info(reader)?;
+     let flags = parse_text_region_flags(reader)?;
+     let huffman_flags = if flags.use_huffman {
+@@ -884,7 +901,7 @@ pub(crate) fn parse<'a>(reader: &mut Reader<'a>, num_symbols: u32) -> Result<Tex
+     let num_instances = reader.read_u32().ok_or(ParseError::UnexpectedEof)?;
+ 
+     let symbol_id_table = if flags.use_huffman {
+-        Some(decode_symbol_id_huffman_table(reader, num_symbols)?)
++        Some(decode_symbol_id_huffman_table(reader, num_symbols, budget)?)
+     } else {
+         None
+     };
+diff --git a/hayro-jbig2/src/error.rs b/hayro-jbig2/src/error.rs
+index c579368..b31adac 100644
+--- a/hayro-jbig2/src/error.rs
++++ b/hayro-jbig2/src/error.rs
+@@ -135,6 +135,10 @@ pub enum OverflowError {
+     Index,
+     /// A symbol dictionary has too many symbols.
+     SymbolCount,
++    /// The decode would have allocated more than
++    /// [`DecoderContext::memory_budget`](crate::DecoderContext::memory_budget)
++    /// bytes in total. Raised before the allocation that would exceed it.
++    MemoryBudget,
+ }
+ 
+ impl fmt::Display for DecodeError {
+@@ -162,6 +166,7 @@ impl fmt::Display for OverflowError {
+             Self::Index => write!(f, "overflow in index computation"),
+             Self::GridDimension => write!(f, "overflow in grid dimension computation"),
+             Self::SymbolCount => write!(f, "a symbol dictionary has too many symbols"),
++            Self::MemoryBudget => write!(f, "the decode would exceed its memory budget"),
+         }
+     }
+ }
+diff --git a/hayro-jbig2/src/gray_scale.rs b/hayro-jbig2/src/gray_scale.rs
+index 60a5269..29f5984 100644
+--- a/hayro-jbig2/src/gray_scale.rs
++++ b/hayro-jbig2/src/gray_scale.rs
+@@ -6,6 +6,7 @@ use alloc::vec::Vec;
+ use crate::ScratchBuffers;
+ use crate::arithmetic_decoder::{ArithmeticDecoder, ArithmeticDecoderContext};
+ use crate::bitmap::{Bitmap, MAX_DIMENSION, WORD_BITS};
++use crate::budget::MemoryBudget;
+ use crate::decode::generic::{ContextGatherer, decode_bitmap_mmr};
+ use crate::decode::{AdaptiveTemplatePixel, Template};
+ use crate::error::{OverflowError, Result, bail};
+@@ -37,19 +38,24 @@ pub(crate) fn decode_gray_scale_image(
+     data: &[u8],
+     params: &GrayScaleParams<'_>,
+     ctx: &mut ScratchBuffers,
++    budget: &MemoryBudget,
+ ) -> Result<Vec<u32>> {
+     // Table C.1: "GSMMR specifies whether MMR is used."
+     if params.use_mmr {
+-        decode_mmr(data, params)
++        decode_mmr(data, params, budget)
+     } else {
+-        decode_arithmetic(data, params, ctx)
++        decode_arithmetic(data, params, ctx, budget)
+     }
+ }
+ 
+ /// The gray-scale image decoding procedure using MMR (Annex C, C.5).
+ ///
+ /// Table C.4: "MMR = GSMMR"
+-fn decode_mmr(data: &[u8], params: &GrayScaleParams<'_>) -> Result<Vec<u32>> {
++fn decode_mmr(
++    data: &[u8],
++    params: &GrayScaleParams<'_>,
++    budget: &MemoryBudget,
++) -> Result<Vec<u32>> {
+     // `GSW` - The width of the gray-scale image.
+     let width = params.width;
+     // `GSH` - The height of the gray-scale image.
+@@ -59,12 +65,19 @@ fn decode_mmr(data: &[u8], params: &GrayScaleParams<'_>) -> Result<Vec<u32>> {
+     let stride = width.div_ceil(WORD_BITS);
+ 
+     let mut offset = 0;
+-    decode_bitplanes(width, height, stride, bits_per_pixel, |_, bitplane| {
+-        // Table C.4: "GBW = GSW, GBH = GSH"
+-        offset += decode_bitmap_mmr(bitplane, &data[offset..])?;
+-
+-        Ok(())
+-    })
++    decode_bitplanes(
++        width,
++        height,
++        stride,
++        bits_per_pixel,
++        budget,
++        |_, bitplane| {
++            // Table C.4: "GBW = GSW, GBH = GSH"
++            offset += decode_bitmap_mmr(bitplane, &data[offset..])?;
++
++            Ok(())
++        },
++    )
+ }
+ 
+ /// The gray-scale image decoding procedure using arithmetic coding (Annex C, C.5).
+@@ -74,6 +87,7 @@ fn decode_arithmetic(
+     data: &[u8],
+     params: &GrayScaleParams<'_>,
+     ctx: &mut ScratchBuffers,
++    budget: &MemoryBudget,
+ ) -> Result<Vec<u32>> {
+     // `GSW` - The width of the gray-scale image.
+     let width = params.width;
+@@ -126,38 +140,45 @@ fn decode_arithmetic(
+ 
+     macro_rules! gs_decode_loop {
+         ($gather:expr) => {
+-            decode_bitplanes(width, height, stride, bits_per_pixel, |_, bitplane| {
+-                // Table C.4: "GBW = GSW, GBH = GSH, TPGDON = 0"
+-                let mut gatherer = ContextGatherer::new(template, &at_pixels);
+-
+-                for y in 0..height {
+-                    gatherer.start_row(bitplane, y);
+-                    for x in 0..width {
+-                        gatherer.maybe_reload_buffers(bitplane, x);
+-
+-                        // Table C.4: "USESKIP = GSUSESKIP, SKIP = GSKIP"
+-                        if let Some(mask) = skip_mask {
+-                            let word_idx = (y * skip_stride + x / 32) as usize;
+-                            let bit_pos = 31 - (x % 32);
+-                            if (mask[word_idx] >> bit_pos) & 1 != 0 {
+-                                // Still need to update the context.
+-                                let _ = ($gather)(&mut gatherer, bitplane, x);
+-                                gatherer.update_current_row(x, 0);
+-                                continue;
++            decode_bitplanes(
++                width,
++                height,
++                stride,
++                bits_per_pixel,
++                budget,
++                |_, bitplane| {
++                    // Table C.4: "GBW = GSW, GBH = GSH, TPGDON = 0"
++                    let mut gatherer = ContextGatherer::new(template, &at_pixels);
++
++                    for y in 0..height {
++                        gatherer.start_row(bitplane, y);
++                        for x in 0..width {
++                            gatherer.maybe_reload_buffers(bitplane, x);
++
++                            // Table C.4: "USESKIP = GSUSESKIP, SKIP = GSKIP"
++                            if let Some(mask) = skip_mask {
++                                let word_idx = (y * skip_stride + x / 32) as usize;
++                                let bit_pos = 31 - (x % 32);
++                                if (mask[word_idx] >> bit_pos) & 1 != 0 {
++                                    // Still need to update the context.
++                                    let _ = ($gather)(&mut gatherer, bitplane, x);
++                                    gatherer.update_current_row(x, 0);
++                                    continue;
++                                }
+                             }
+-                        }
+ 
+-                        let context = ($gather)(&mut gatherer, bitplane, x);
+-                        let pixel = decoder.read_bit(&mut ctx.contexts[context as usize]);
+-                        let value = pixel as u8;
++                            let context = ($gather)(&mut gatherer, bitplane, x);
++                            let pixel = decoder.read_bit(&mut ctx.contexts[context as usize]);
++                            let value = pixel as u8;
+ 
+-                        bitplane.set_pixel(x, y, value);
+-                        gatherer.update_current_row(x, value);
++                            bitplane.set_pixel(x, y, value);
++                            gatherer.update_current_row(x, value);
++                        }
+                     }
+-                }
+ 
+-                Ok(())
+-            })
++                    Ok(())
++                },
++            )
+         };
+     }
+ 
+@@ -178,16 +199,28 @@ fn decode_bitplanes<F>(
+     height: u32,
+     stride: u32,
+     bits_per_pixel: u32,
++    budget: &MemoryBudget,
+     mut decode_next: F,
+ ) -> Result<Vec<u32>>
+ where
+     F: FnMut(u32, &mut Bitmap) -> Result<()>,
+ {
+     let size = width as usize * height as usize;
++    // The value plane and the two bit planes are charged together before any
++    // of them is allocated: a 65535 × 65535 grid asks for 16 GiB from eight
++    // header bytes.
++    let plane_bytes = Bitmap::data_bytes(width, height);
++    budget.check(
++        (size as u64)
++            .saturating_mul(4)
++            .saturating_add(plane_bytes.saturating_mul(2)),
++    )?;
++    budget.charge_array::<u32>(size as u64)?;
+     // `GSVALS` - The decoded gray-scale image array.
+     let mut values = vec![0_u32; size];
+ 
+-    let mut bitplane = Bitmap::new(width, height)?;
++    let mut bitplane = Bitmap::new(width, height, budget)?;
++    budget.charge(plane_bytes)?;
+     let mut prev_plane = vec![0; bitplane.data.len()];
+ 
+     simd::dispatch!(Level::new(), simd => {
+diff --git a/hayro-jbig2/src/huffman_table.rs b/hayro-jbig2/src/huffman_table.rs
+index 2183c8e..04cb82b 100644
+--- a/hayro-jbig2/src/huffman_table.rs
++++ b/hayro-jbig2/src/huffman_table.rs
+@@ -5,6 +5,7 @@ use alloc::vec;
+ use alloc::vec::Vec;
+ use core::num::NonZeroU32;
+ 
++use crate::budget::MemoryBudget;
+ use crate::error::{HuffmanError, ParseError, Result, bail};
+ use crate::lazy::Lazy;
+ use crate::reader::Reader;
+@@ -137,13 +138,29 @@ impl HuffmanTable {
+     /// This is used for symbol ID encoding (6.5.8.2.3): "For each value of i from
+     /// 0 to SDNUMINSYMS + NSYMSDECODED – 1, set SBSYMCODES[i] to the binary
+     /// representation of i using a SBSYMCODELEN-bit string."
+-    pub(crate) fn build_uniform(num_symbols: u32, code_length: u32) -> Result<Self> {
++    pub(crate) fn build_uniform(
++        num_symbols: u32,
++        code_length: u32,
++        budget: &MemoryBudget,
++    ) -> Result<Self> {
++        Self::charge_build(u64::from(num_symbols), budget)?;
+         let lines: Vec<TableLine> = (0..num_symbols)
+             .map(|i| TableLine::new(i as i32, code_length as u8, 0))
+             .collect();
+         Self::build(&lines)
+     }
+ 
++    /// Charge what [`build`](Self::build) allocates for a table of
++    /// `line_count` lines whose count comes from a declared value rather
++    /// than from the data: the lines themselves, one code per line, and the
++    /// tree, whose nodes are at most two per line plus one per bit of the
++    /// longest code.
++    pub(crate) fn charge_build(line_count: u64, budget: &MemoryBudget) -> Result<()> {
++        budget.charge_array::<TableLine>(line_count)?;
++        budget.charge_array::<u32>(line_count)?;
++        budget.charge_array::<HuffmanNode>(line_count.saturating_mul(2).saturating_add(33))
++    }
++
+     /// Insert a code into the Huffman tree.
+     fn insert_code(
+         nodes: &mut Vec<HuffmanNode>,
+diff --git a/hayro-jbig2/src/lib.rs b/hayro-jbig2/src/lib.rs
+index ad77a6d..8e08011 100644
+--- a/hayro-jbig2/src/lib.rs
++++ b/hayro-jbig2/src/lib.rs
+@@ -27,6 +27,14 @@ pub struct DecoderContext {
+     pub(crate) page_state: PageState,
+     pub(crate) scratch_buffers: ScratchBuffers,
+     pub(crate) page_bitmap: Bitmap,
++    /// The most bytes one [`Image::decode_with`] call may allocate in total
++    /// for buffers whose size the file declares (bitmaps and their copies,
++    /// gray-scale planes, symbol tables). The total is counted from zero at
++    /// the start of each call and never refunded, so a decode that frees and
++    /// reallocates is charged for both. A decode that would exceed it fails
++    /// with [`OverflowError::MemoryBudget`] before the allocation. The
++    /// default, `None`, means no limit.
++    pub memory_budget: Option<u64>,
+ }
+ 
+ #[derive(Default)]
+@@ -56,6 +64,7 @@ pub mod integration;
+ 
+ mod arithmetic_decoder;
+ mod bitmap;
++mod budget;
+ mod decode;
+ mod error;
+ mod file;
+@@ -77,6 +86,7 @@ pub use error::{
+ 
+ use crate::file::parse_segments_sequential;
+ use bitmap::Bitmap;
++use budget::MemoryBudget;
+ use decode::CombinationOperator;
+ use decode::generic;
+ use decode::generic_refinement;
+@@ -192,8 +202,11 @@ impl<'a> Image<'a> {
+     ///
+     /// This is useful in case you want to convert multiple JBIG2 images,
+     /// as it allows `hayro-jbig2` to reuse allocations during decoding.
++    /// The decode is held to the context's
++    /// [`memory_budget`](DecoderContext::memory_budget).
+     pub fn decode_with<D: Decoder>(&self, decoder: &mut D, ctx: &mut DecoderContext) -> Result<()> {
+-        decode_segments(&self.segments, self.height_from_stripes, ctx)?;
++        let budget = MemoryBudget::new(ctx.memory_budget);
++        decode_segments(&self.segments, self.height_from_stripes, ctx, &budget)?;
+         emit_bitmap(&ctx.page_bitmap, decoder);
+ 
+         Ok(())
+@@ -261,6 +274,7 @@ fn decode_segments(
+     segments: &[segment::Segment<'_>],
+     height_from_stripes: Option<u32>,
+     decoder_ctx: &mut DecoderContext,
++    budget: &MemoryBudget,
+ ) -> Result<()> {
+     // Find and parse page information segment first.
+     if let Some(page_info) = segments
+@@ -273,6 +287,7 @@ fn decode_segments(
+             height_from_stripes,
+             &mut decoder_ctx.page_state,
+             &mut decoder_ctx.page_bitmap,
++            budget,
+         )?;
+     } else {
+         bail!(FormatError::MissingPageInfo);
+@@ -297,7 +312,7 @@ fn decode_segments(
+                 if page_state.can_decode_directly(page_bitmap, &header.region_info, false) {
+                     generic::decode_into(&header, page_bitmap, scratch_buffers)?;
+                 } else {
+-                    let region = generic::decode(&header, scratch_buffers)?;
++                    let region = generic::decode(&header, scratch_buffers, budget)?;
+                     page_bitmap.combine(
+                         &region.bitmap,
+                         region.bitmap.x_location as i32,
+@@ -310,34 +325,22 @@ fn decode_segments(
+             SegmentType::IntermediateGenericRegion => {
+                 // Intermediate segments cannot have unknown length.
+                 let header = generic::parse(&mut reader, false)?;
+-                let region = generic::decode(&header, scratch_buffers)?;
++                let region = generic::decode(&header, scratch_buffers, budget)?;
+                 page_state.store_region(seg.header.segment_number, region.bitmap);
+             }
+             SegmentType::PatternDictionary => {
+                 let header = pattern::parse(&mut reader)?;
+-                let dictionary = pattern::decode(&header, scratch_buffers)?;
++                let dictionary = pattern::decode(&header, scratch_buffers, budget)?;
+                 page_state.store_pattern_dictionary(seg.header.segment_number, dictionary);
+             }
+             SegmentType::SymbolDictionary => {
+                 // "1) Concatenate all the input symbol dictionaries to form SDINSYMS."
+                 // (6.5.5, step 1)
+                 // Collect references to avoid cloning; symbols are only cloned if re-exported.
+-                let input_symbols: Vec<&Bitmap> = seg
+-                    .header
+-                    .referred_to_segments
+-                    .iter()
+-                    .filter_map(|&num| page_state.get_symbol_dictionary(num))
+-                    .flat_map(|dict| dict.exported_symbols.iter())
+-                    .collect();
++                let input_symbols = page_state.referred_symbols(seg, budget)?;
+ 
+                 // Collect Huffman tables from referred table segments.
+-                let referred_tables: Vec<HuffmanTable> = seg
+-                    .header
+-                    .referred_to_segments
+-                    .iter()
+-                    .filter_map(|&num| page_state.get_huffman_table(num))
+-                    .cloned()
+-                    .collect();
++                let referred_tables = page_state.referred_tables(seg, budget)?;
+ 
+                 // Get retained contexts from the last referred symbol dictionary (7.4.2.2 step 3).
+                 let retained_contexts = seg
+@@ -354,31 +357,20 @@ fn decode_segments(
+                     &referred_tables,
+                     &page_state.standard_tables,
+                     retained_contexts,
++                    budget,
+                 )?;
+                 page_state.store_symbol_dictionary(seg.header.segment_number, dictionary);
+             }
+             SegmentType::ImmediateTextRegion | SegmentType::ImmediateLosslessTextRegion => {
+                 // Collect symbols from referred symbol dictionaries (SBSYMS).
+-                let symbols: Vec<&Bitmap> = seg
+-                    .header
+-                    .referred_to_segments
+-                    .iter()
+-                    .filter_map(|&num| page_state.get_symbol_dictionary(num))
+-                    .flat_map(|dict| dict.exported_symbols.iter())
+-                    .collect();
++                let symbols = page_state.referred_symbols(seg, budget)?;
+ 
+                 // Collect Huffman tables from referred table segments.
+                 // "These user-supplied Huffman decoding tables may be supplied either
+                 // as a Tables segment..." (7.4.3.1.6)
+-                let referred_tables: Vec<HuffmanTable> = seg
+-                    .header
+-                    .referred_to_segments
+-                    .iter()
+-                    .filter_map(|&num| page_state.get_huffman_table(num))
+-                    .cloned()
+-                    .collect();
++                let referred_tables = page_state.referred_tables(seg, budget)?;
+ 
+-                let header = text::parse(&mut reader, symbols.len() as u32)?;
++                let header = text::parse(&mut reader, symbols.len() as u32, budget)?;
+ 
+                 if page_state.can_decode_directly(
+                     page_bitmap,
+@@ -392,6 +384,7 @@ fn decode_segments(
+                         &page_state.standard_tables,
+                         page_bitmap,
+                         scratch_buffers,
++                        budget,
+                     )?;
+                 } else {
+                     let region = text::decode(
+@@ -400,6 +393,7 @@ fn decode_segments(
+                         &referred_tables,
+                         &page_state.standard_tables,
+                         scratch_buffers,
++                        budget,
+                     )?;
+                     page_bitmap.combine(
+                         &region.bitmap,
+@@ -412,30 +406,19 @@ fn decode_segments(
+             }
+             SegmentType::IntermediateTextRegion => {
+                 // Collect symbols from referred symbol dictionaries (SBSYMS).
+-                let symbols: Vec<&Bitmap> = seg
+-                    .header
+-                    .referred_to_segments
+-                    .iter()
+-                    .filter_map(|&num| page_state.get_symbol_dictionary(num))
+-                    .flat_map(|dict| dict.exported_symbols.iter())
+-                    .collect();
++                let symbols = page_state.referred_symbols(seg, budget)?;
+ 
+                 // Collect Huffman tables from referred table segments.
+-                let referred_tables: Vec<HuffmanTable> = seg
+-                    .header
+-                    .referred_to_segments
+-                    .iter()
+-                    .filter_map(|&num| page_state.get_huffman_table(num))
+-                    .cloned()
+-                    .collect();
++                let referred_tables = page_state.referred_tables(seg, budget)?;
+ 
+-                let header = text::parse(&mut reader, symbols.len() as u32)?;
++                let header = text::parse(&mut reader, symbols.len() as u32, budget)?;
+                 let region = text::decode(
+                     &header,
+                     &symbols,
+                     &referred_tables,
+                     &page_state.standard_tables,
+                     scratch_buffers,
++                    budget,
+                 )?;
+                 page_state.store_region(seg.header.segment_number, region.bitmap);
+             }
+@@ -454,9 +437,15 @@ fn decode_segments(
+                     &header.region_info,
+                     header.flags.initial_pixel_color,
+                 ) {
+-                    halftone::decode_into(&header, pattern_dict, page_bitmap, scratch_buffers)?;
++                    halftone::decode_into(
++                        &header,
++                        pattern_dict,
++                        page_bitmap,
++                        scratch_buffers,
++                        budget,
++                    )?;
+                 } else {
+-                    let region = halftone::decode(&header, pattern_dict, scratch_buffers)?;
++                    let region = halftone::decode(&header, pattern_dict, scratch_buffers, budget)?;
+                     page_bitmap.combine(
+                         &region.bitmap,
+                         region.bitmap.x_location as i32,
+@@ -475,7 +464,7 @@ fn decode_segments(
+                     .ok_or(SegmentError::MissingPatternDictionary)?;
+ 
+                 let header = halftone::parse(&mut reader)?;
+-                let region = halftone::decode(&header, pattern_dict, scratch_buffers)?;
++                let region = halftone::decode(&header, pattern_dict, scratch_buffers, budget)?;
+                 page_state.store_region(seg.header.segment_number, region.bitmap);
+             }
+             SegmentType::IntermediateGenericRefinementRegion => {
+@@ -488,7 +477,8 @@ fn decode_segments(
+                     .unwrap_or(page_bitmap);
+ 
+                 let header = generic_refinement::parse(&mut reader)?;
+-                let region = generic_refinement::decode(&header, reference, scratch_buffers)?;
++                let region =
++                    generic_refinement::decode(&header, reference, scratch_buffers, budget)?;
+                 page_state.store_region(seg.header.segment_number, region.bitmap);
+             }
+             SegmentType::ImmediateGenericRefinementRegion
+@@ -517,7 +507,8 @@ fn decode_segments(
+                     )?;
+                 } else {
+                     let reference = referred_segment.unwrap_or(page_bitmap);
+-                    let region = generic_refinement::decode(&header, reference, scratch_buffers)?;
++                    let region =
++                        generic_refinement::decode(&header, reference, scratch_buffers, budget)?;
+                     page_bitmap.combine(
+                         &region.bitmap,
+                         region.bitmap.x_location as i32,
+@@ -649,6 +640,49 @@ impl PageState {
+             .map(|idx| &self.symbol_dictionaries[idx].1)
+     }
+ 
++    /// The exported symbols of every symbol dictionary `seg` refers to, in
++    /// order (SDINSYMS / SBSYMS). A segment may name the same dictionary many
++    /// times, so the list is not bounded by the number of symbols decoded:
++    /// its length is computed and charged before it is built.
++    fn referred_symbols<'s>(
++        &'s self,
++        seg: &segment::Segment<'_>,
++        budget: &MemoryBudget,
++    ) -> Result<Vec<&'s Bitmap>> {
++        let dictionaries = || {
++            seg.header
++                .referred_to_segments
++                .iter()
++                .filter_map(|&num| self.get_symbol_dictionary(num))
++        };
++        let count = dictionaries()
++            .map(|dict| dict.exported_symbols.len() as u64)
++            .fold(0_u64, u64::saturating_add);
++        budget.charge_array::<&Bitmap>(count)?;
++
++        Ok(dictionaries()
++            .flat_map(|dict| dict.exported_symbols.iter())
++            .collect())
++    }
++
++    /// The Huffman tables of every table segment `seg` refers to, in order.
++    /// Cloning a table copies a reference-counted pointer, not the table.
++    fn referred_tables(
++        &self,
++        seg: &segment::Segment<'_>,
++        budget: &MemoryBudget,
++    ) -> Result<Vec<HuffmanTable>> {
++        let tables = || {
++            seg.header
++                .referred_to_segments
++                .iter()
++                .filter_map(|&num| self.get_huffman_table(num))
++        };
++        budget.charge_array::<HuffmanTable>(tables().count() as u64)?;
++
++        Ok(tables().cloned().collect())
++    }
++
+     /// Store a decoded Huffman table for later reference.
+     fn store_huffman_table(&mut self, segment_number: u32, table: HuffmanTable) {
+         self.huffman_tables.push((segment_number, table));
+@@ -669,6 +703,7 @@ fn init_page(
+     height_from_stripes: Option<u32>,
+     page: &mut PageState,
+     bitmap: &mut Bitmap,
++    budget: &MemoryBudget,
+ ) -> Result<()> {
+     let page_info = parse_page_information(reader)?;
+ 
+@@ -684,7 +719,12 @@ fn init_page(
+     // "Bit 2: Page default pixel value. This bit contains the initial value
+     // for every pixel in the page, before any region segments are decoded
+     // or drawn." (7.4.8.5)
+-    bitmap.reinitialize(page_info.width, height, page_info.flags.default_pixel != 0)?;
++    bitmap.reinitialize(
++        page_info.width,
++        height,
++        page_info.flags.default_pixel != 0,
++        budget,
++    )?;
+ 
+     page.reset(page_info);
+ 
+diff --git a/hayro-jbig2/src/symbol_id_decoder.rs b/hayro-jbig2/src/symbol_id_decoder.rs
+index 33ca1c6..0bfb51b 100644
+--- a/hayro-jbig2/src/symbol_id_decoder.rs
++++ b/hayro-jbig2/src/symbol_id_decoder.rs
+@@ -4,6 +4,8 @@ use alloc::vec;
+ use alloc::vec::Vec;
+ 
+ use crate::arithmetic_decoder::{ArithmeticDecoder, ArithmeticDecoderContext};
++use crate::budget::MemoryBudget;
++use crate::error::Result;
+ 
+ pub(crate) struct SymbolIdDecoder {
+     contexts: Vec<ArithmeticDecoderContext>,
+@@ -11,15 +13,19 @@ pub(crate) struct SymbolIdDecoder {
+ }
+ 
+ impl SymbolIdDecoder {
+-    pub(crate) fn new(code_len: u32) -> Self {
++    /// A decoder for `code_len`-bit symbol IDs, charging its context table
++    /// to `budget`: `code_len` follows the number of input symbols, which a
++    /// segment can inflate by naming one dictionary many times.
++    pub(crate) fn new(code_len: u32, budget: &MemoryBudget) -> Result<Self> {
+         // A.3: "The number of contexts required is 2^SBSYMCODELEN, which is less
+         // than twice the maximum symbol ID."
+         let num_contexts = 1_usize << code_len;
++        budget.charge_array::<ArithmeticDecoderContext>(num_contexts as u64)?;
+ 
+-        Self {
++        Ok(Self {
+             contexts: vec![ArithmeticDecoderContext::default(); num_contexts],
+             code_len,
+-        }
++        })
+     }
+ 
+     #[inline(always)]

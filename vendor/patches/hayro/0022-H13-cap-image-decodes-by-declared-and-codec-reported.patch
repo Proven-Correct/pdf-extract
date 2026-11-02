@@ -1,0 +1,668 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Sat, 3 Oct 2026 00:10:42 -0700
+Subject: [PATCH 22/22] H13: cap image decodes by declared and codec-reported
+ pixel count
+
+An image's decoders allocate in proportion to its size, so a few bytes
+can demand gigabytes when a renderer asks for its pixels. The per-stream
+byte limit does not help: the image codecs are outside it.
+
+DecodeLimits gains max_image_pixels (default None, no limit), checked
+wherever an image's size first becomes known, before the allocation it
+governs. Every refusal is the new DecodeFailure::ImagePixelLimit and
+one bump of the thread-local image_pixel_limit_hits().
+
+- Declared: before decryption and any filter, the width x height the
+  image parameters declare. Non-image decodes declare 0 x 0 and are
+  never refused.
+- Codec header: CCITT, JBIG2 and JPEG 2000 size their output from the
+  encoded data, not the dictionary. Filter::apply passes the cap down:
+  CCITT checks /Columns x rows (4 rows per byte when /Rows is 0, the
+  most Group 3 can decode), JBIG2 the page size after reading segment
+  headers, JPEG 2000 the full-resolution size from a header-only parse
+  (its working set ignores the requested resolution), and DCT the frame
+  size after decode_headers().
+- Reported: after the filter loop, the size the codec reports, which
+  is what hayro-interpret converts at (CCITT mixes /Columns with the
+  declared height).
+
+Inline images are parsed without their document and so carried no
+limits; the new Stream::decoded_inline_image holds them to a given
+document's pixel cap, and the interpreter uses it for every inline
+image it draws. In hayro-interpret a refused image raises the new
+InterpreterWarning::ImagePixelLimit instead of ImageDecodeFailure, so it
+is reported once, as what it is.
+
+Core opens every document with Limits.max_image_pixels in its decode
+limits, and the per-page signal window samples the new counter alongside
+the interpreter's warning.
+---
+ hayro-interpret/src/interpret/mod.rs |  8 +++
+ hayro-interpret/src/x_object.rs      | 32 +++++++++--
+ hayro-syntax/src/filter/ccitt.rs     | 25 +++++++--
+ hayro-syntax/src/filter/dct.rs       | 28 +++++++---
+ hayro-syntax/src/filter/jbig2.rs     | 32 ++++++++---
+ hayro-syntax/src/filter/jpx.rs       | 43 ++++++++++++---
+ hayro-syntax/src/filter/mod.rs       | 80 +++++++++++++++++++++++-----
+ hayro-syntax/src/object/stream.rs    | 55 ++++++++++++++++++-
+ 8 files changed, 259 insertions(+), 44 deletions(-)
+
+diff --git a/hayro-interpret/src/interpret/mod.rs b/hayro-interpret/src/interpret/mod.rs
+index 289fac8..d125291 100644
+--- a/hayro-interpret/src/interpret/mod.rs
++++ b/hayro-interpret/src/interpret/mod.rs
+@@ -143,6 +143,11 @@ pub enum InterpreterWarning {
+     UnsupportedFont,
+     /// An image failed to decode.
+     ImageDecodeFailure,
++    /// An image declared more pixels than the document's
++    /// [`DecodeLimits::max_image_pixels`](hayro_syntax::DecodeLimits::max_image_pixels)
++    /// allow and was skipped without being decoded. Raised instead of
++    /// [`Self::ImageDecodeFailure`], never as well.
++    ImagePixelLimit,
+ }
+ 
+ /// Limits on the work an interpreter may do, for processing untrusted input.
+@@ -944,6 +949,9 @@ pub fn interpret<'a>(
+                     false,
+                     transfer_function,
+                 ) {
++                    // An inline image's stream is parsed without its document, so it
++                    // must be told which document's image pixel cap applies.
++                    let x_object = x_object.inline_in(context.xref);
+                     draw_image_xobject(&x_object, context, device);
+                 }
+             }
+diff --git a/hayro-interpret/src/x_object.rs b/hayro-interpret/src/x_object.rs
+index afa8320..d524863 100644
+--- a/hayro-interpret/src/x_object.rs
++++ b/hayro-interpret/src/x_object.rs
+@@ -16,7 +16,10 @@ use hayro_syntax::object::Name;
+ use hayro_syntax::object::Object;
+ use hayro_syntax::object::Stream;
+ use hayro_syntax::object::dict::keys::*;
+-use hayro_syntax::object::stream::{FilterResult, ImageColorSpace, ImageDecodeParams};
++use hayro_syntax::object::stream::{
++    DecodeFailure, FilterResult, ImageColorSpace, ImageDecodeParams,
++};
++use hayro_syntax::xref::XRef;
+ use hayro_syntax::page::Resources;
+ use kurbo::{Affine, Rect, Shape};
+ use smallvec::{SmallVec, smallvec};
+@@ -300,9 +303,19 @@ pub(crate) struct ImageXObject<'a> {
+     stream: Stream<'a>,
+     transfer_function: Option<ActiveTransferFunction>,
+     warning_sink: WarningSinkFn,
++    /// For an inline image, the document it was drawn in. Its stream was parsed
++    /// without one and so carries no decode limits; the image pixel cap is taken
++    /// from here instead.
++    inline_xref: Option<&'a XRef>,
+ }
+ 
+ impl<'a> ImageXObject<'a> {
++    /// Marks the image as an inline image of the document behind `xref`.
++    pub(crate) fn inline_in(mut self, xref: &'a XRef) -> Self {
++        self.inline_xref = Some(xref);
++        self
++    }
++
+     pub(crate) fn new(
+         stream: &Stream<'a>,
+         resolve_cs: impl FnOnce(&Name<'_>) -> Option<ColorSpace>,
+@@ -361,6 +374,7 @@ impl<'a> ImageXObject<'a> {
+             stream: stream.clone(),
+             is_mask,
+             is_stencil_mask,
++            inline_xref: None,
+         })
+     }
+ 
+@@ -441,10 +455,18 @@ fn decode_context<'a>(
+         height: obj.height,
+     };
+ 
+-    let decoded = obj
+-        .stream
+-        .decoded_image(&decode_params)
+-        .map_err(|_| (obj.warning_sink)(InterpreterWarning::ImageDecodeFailure))
++    let decoded = match obj.inline_xref {
++        Some(xref) => obj.stream.decoded_inline_image(&decode_params, xref),
++        None => obj.stream.decoded_image(&decode_params),
++    };
++    // A refusal by the pixel cap is its own warning, never also a decode failure.
++    let decoded = decoded
++        .map_err(|e| {
++            (obj.warning_sink)(match e {
++                DecodeFailure::ImagePixelLimit => InterpreterWarning::ImagePixelLimit,
++                _ => InterpreterWarning::ImageDecodeFailure,
++            })
++        })
+         .ok()?;
+ 
+     let (mut scale_x, mut scale_y) = (1.0, 1.0);
+diff --git a/hayro-syntax/src/filter/ccitt.rs b/hayro-syntax/src/filter/ccitt.rs
+index b96fc49..7a2cc5e 100644
+--- a/hayro-syntax/src/filter/ccitt.rs
++++ b/hayro-syntax/src/filter/ccitt.rs
+@@ -2,7 +2,10 @@ use crate::object::Dict;
+ use crate::object::dict::keys::{
+     BLACK_IS_1, COLUMNS, ENCODED_BYTE_ALIGN, END_OF_BLOCK, END_OF_LINE, K, ROWS,
+ };
+-use crate::object::stream::{FilterResult, ImageColorSpace, ImageData, ImageDecodeParams};
++use crate::filter::check_image_pixels;
++use crate::object::stream::{
++    DecodeFailure, FilterResult, ImageColorSpace, ImageData, ImageDecodeParams,
++};
+ use alloc::borrow::Cow;
+ use alloc::vec::Vec;
+ use core::iter;
+@@ -12,7 +15,8 @@ pub(crate) fn decode(
+     data: &[u8],
+     params: &Dict<'_>,
+     image_params: &ImageDecodeParams,
+-) -> Option<FilterResult<'static>> {
++    max_pixels: Option<u64>,
++) -> Result<FilterResult<'static>, DecodeFailure> {
+     let k = params.get::<i32>(K).unwrap_or(0);
+ 
+     let rows = params.get::<u32>(ROWS).unwrap_or(image_params.height);
+@@ -34,6 +38,17 @@ pub(crate) fn decode(
+         invert_black: params.get::<bool>(BLACK_IS_1).unwrap_or(false),
+     };
+ 
++    // H13: the output is `columns` wide and `rows` high whatever the image
++    // dictionary declares. With `rows` 0, Group 3 decodes until the data runs
++    // out, at no fewer than two bits per row, so at most `4 × data.len()` rows
++    // (Group 4 decodes nothing; counting it the same way only errs high).
++    let max_rows = if rows == 0 {
++        (data.len() as u64).saturating_mul(4)
++    } else {
++        u64::from(rows)
++    };
++    check_image_pixels(u64::from(settings.columns), max_rows, max_pixels)?;
++
+     // Whenever possible (if we don't have an indexed color space), we convert
+     // the data as 8-bit instead of 1-bit, so that it can be easier converted
+     // into an RGBA8 image.
+@@ -98,7 +113,7 @@ pub(crate) fn decode(
+         // If we decoded at least one row, let's be lenient and return what we got.
+         // See also 0001763.pdf.
+         if result.is_err() && decoder.decoded_rows == 0 {
+-            return None;
++            return Err(DecodeFailure::ImageDecode);
+         }
+ 
+         (decoder.output, 1)
+@@ -132,13 +147,13 @@ pub(crate) fn decode(
+         let result = hayro_ccitt::decode(data, &mut decoder, &mut context);
+ 
+         if result.is_err() && decoder.decoded_rows == 0 {
+-            return None;
++            return Err(DecodeFailure::ImageDecode);
+         }
+ 
+         (decoder.output, 8)
+     };
+ 
+-    Some(FilterResult {
++    Ok(FilterResult {
+         data: Cow::Owned(decoded),
+         image_data: Some(ImageData {
+             alpha: None,
+diff --git a/hayro-syntax/src/filter/dct.rs b/hayro-syntax/src/filter/dct.rs
+index a4fbd17..c3b907f 100644
+--- a/hayro-syntax/src/filter/dct.rs
++++ b/hayro-syntax/src/filter/dct.rs
+@@ -1,6 +1,9 @@
+ use crate::object::Dict;
+ use crate::object::dict::keys::COLOR_TRANSFORM;
+-use crate::object::stream::{FilterResult, ImageColorSpace, ImageData, ImageDecodeParams};
++use crate::filter::check_image_pixels;
++use crate::object::stream::{
++    DecodeFailure, FilterResult, ImageColorSpace, ImageData, ImageDecodeParams,
++};
+ use alloc::borrow::Cow;
+ use core::num::NonZeroU32;
+ use zune_jpeg::zune_core::bytestream::ZCursor;
+@@ -12,9 +15,12 @@ pub(crate) fn decode(
+     data: &[u8],
+     params: &Dict<'_>,
+     image_params: &ImageDecodeParams,
+-) -> Option<FilterResult<'static>> {
++    max_pixels: Option<u64>,
++) -> Result<FilterResult<'static>, DecodeFailure> {
++    const FAILED: DecodeFailure = DecodeFailure::ImageDecode;
++
+     if image_params.width > u16::MAX as u32 || image_params.height > u16::MAX as u32 {
+-        return None;
++        return Err(FAILED);
+     }
+ 
+     // Some PDFs have weird JPEGs where the JPEG metadata is completely wrong
+@@ -22,13 +28,19 @@ pub(crate) fn decode(
+     // metadata in the PDF image dictionary is correct. Therefore, we first
+     // validate the JPEG metadata and patch the data if any of the dimensions
+     // are too large (if they are too small, they will just be padded later on).
+-    let data = maybe_patch_jpeg_dimensions(data, image_params)?;
++    let data = maybe_patch_jpeg_dimensions(data, image_params).ok_or(FAILED)?;
+ 
+     let options = DecoderOptions::default()
+         .set_max_width(u16::MAX as usize)
+         .set_max_height(u16::MAX as usize);
+     let mut decoder = zune_jpeg::JpegDecoder::new_with_options(ZCursor::new(&*data), options);
+-    decoder.decode_headers().ok()?;
++    decoder.decode_headers().map_err(|_| FAILED)?;
++
++    // H13: the frame size, known now and allocated by `decode()`. Already at
++    // most the declared area (the SOF was patched down above); checked anyway
++    // so that every codec follows the same rule.
++    let (frame_width, frame_height) = decoder.dimensions().ok_or(FAILED)?;
++    check_image_pixels(frame_width as u64, frame_height as u64, max_pixels)?;
+ 
+     let color_transform = params.get::<u8>(COLOR_TRANSFORM);
+     let input_color_space = decoder.input_colorspace().unwrap();
+@@ -36,7 +48,7 @@ pub(crate) fn decode(
+     let mut out_colorspace = if let Some(num_components) = image_params.num_components
+         && !matches!(num_components, 1 | 3 | 4)
+     {
+-        ColorSpace::MultiBand(NonZeroU32::new(num_components as u32)?)
++        ColorSpace::MultiBand(NonZeroU32::new(num_components as u32).ok_or(FAILED)?)
+     } else {
+         match input_color_space {
+             ColorSpace::YCbCr => {
+@@ -61,7 +73,7 @@ pub(crate) fn decode(
+     }
+ 
+     decoder.set_options(DecoderOptions::default().jpeg_set_out_colorspace(out_colorspace));
+-    let mut decoded = decoder.decode().ok()?;
++    let mut decoded = decoder.decode().map_err(|_| FAILED)?;
+ 
+     if out_colorspace == ColorSpace::YCCK {
+         // See <https://github.com/mozilla/pdf.js/blob/69595a29192b7704733404a42a2ebb537601117b/src/core/jpg.js#L1331>
+@@ -92,7 +104,7 @@ pub(crate) fn decode(
+         height,
+     };
+ 
+-    Some(FilterResult {
++    Ok(FilterResult {
+         data: Cow::Owned(decoded),
+         image_data: Some(image_data),
+     })
+diff --git a/hayro-syntax/src/filter/jbig2.rs b/hayro-syntax/src/filter/jbig2.rs
+index d87253f..6c8521c 100644
+--- a/hayro-syntax/src/filter/jbig2.rs
++++ b/hayro-syntax/src/filter/jbig2.rs
+@@ -2,7 +2,10 @@ use crate::bit_reader::BitWriter;
+ use crate::object::Dict;
+ use crate::object::Stream;
+ use crate::object::dict::keys::JBIG2_GLOBALS;
+-use crate::object::stream::{FilterResult, ImageColorSpace, ImageData, ImageDecodeParams};
++use crate::filter::check_image_pixels;
++use crate::object::stream::{
++    DecodeFailure, FilterResult, ImageColorSpace, ImageData, ImageDecodeParams,
++};
+ use alloc::borrow::Cow;
+ use alloc::vec;
+ use alloc::vec::Vec;
+@@ -16,12 +19,23 @@ pub(crate) fn decode(
+     data: &[u8],
+     params: &Dict<'_>,
+     image_params: &ImageDecodeParams,
+-) -> Option<FilterResult<'static>> {
++    max_pixels: Option<u64>,
++) -> Result<FilterResult<'static>, DecodeFailure> {
+     let globals = params
+         .get::<Stream<'_>>(JBIG2_GLOBALS)
+         .and_then(|g| g.decoded().ok());
+ 
+-    let image = hayro_jbig2::Image::new_embedded(data, globals.as_deref()).ok()?;
++    let image = hayro_jbig2::Image::new_embedded(data, globals.as_deref())
++        .map_err(|_| DecodeFailure::ImageDecode)?;
++
++    // H13: `new_embedded` read only the segment headers; the page size (an
++    // unknown height already resolved from the end-of-stripe segments) is
++    // what `decode` and the buffers below allocate for.
++    check_image_pixels(
++        u64::from(image.width()),
++        u64::from(image.height()),
++        max_pixels,
++    )?;
+ 
+     // Whenever possible (if we don't have an indexed color space), we convert
+     // the data as 8-bit instead of 1-bit, so that it can be easier converted
+@@ -53,9 +67,11 @@ pub(crate) fn decode(
+             }
+         }
+ 
+-        let writer = BitWriter::new(&mut packed, 1)?;
++        let writer = BitWriter::new(&mut packed, 1).ok_or(DecodeFailure::ImageDecode)?;
+         let mut decoder = BitWriterDecoder { writer };
+-        image.decode(&mut decoder).ok()?;
++        image
++            .decode(&mut decoder)
++            .map_err(|_| DecodeFailure::ImageDecode)?;
+ 
+         (packed, 1)
+     } else {
+@@ -78,12 +94,14 @@ pub(crate) fn decode(
+         }
+ 
+         let mut decoder = Luma8Decoder { output: Vec::new() };
+-        image.decode(&mut decoder).ok()?;
++        image
++            .decode(&mut decoder)
++            .map_err(|_| DecodeFailure::ImageDecode)?;
+ 
+         (decoder.output, 8)
+     };
+ 
+-    Some(FilterResult {
++    Ok(FilterResult {
+         data: Cow::Owned(decoded),
+         image_data: Some(ImageData {
+             alpha: None,
+diff --git a/hayro-syntax/src/filter/jpx.rs b/hayro-syntax/src/filter/jpx.rs
+index 4acc343..6419f5c 100644
+--- a/hayro-syntax/src/filter/jpx.rs
++++ b/hayro-syntax/src/filter/jpx.rs
+@@ -1,7 +1,8 @@
+ use crate::bit_reader::BitWriter;
+ use crate::filter::FilterResult;
+ use crate::math::round_f32;
+-use crate::object::stream::{ImageColorSpace, ImageData, ImageDecodeParams};
++use crate::filter::check_image_pixels;
++use crate::object::stream::{DecodeFailure, ImageColorSpace, ImageData, ImageDecodeParams};
+ use alloc::borrow::Cow;
+ use alloc::vec;
+ use alloc::vec::Vec;
+@@ -18,16 +19,46 @@ impl ImageColorSpace {
+     }
+ }
+ 
+-pub(crate) fn decode(data: &[u8], params: &ImageDecodeParams) -> Option<FilterResult<'static>> {
+-    use crate::object::stream::ImageColorSpace;
+-
++pub(crate) fn decode(
++    data: &[u8],
++    params: &ImageDecodeParams,
++    max_pixels: Option<u64>,
++) -> Result<FilterResult<'static>, DecodeFailure> {
+     let settings = DecodeSettings {
+         resolve_palette_indices: false,
+         strict: false,
+-        target_resolution: params.target_dimension,
++        target_resolution: None,
+     };
+ 
+-    let image = hayro_jpeg2000::Image::new(data, &settings).ok()?;
++    // H13: `Image::new` parses the headers only. Checked at full resolution
++    // even when a smaller target is requested, because the decoder's per-tile
++    // records and coefficient buffers follow the full-resolution geometry
++    // whatever resolution it outputs.
++    let full = hayro_jpeg2000::Image::new(data, &settings).map_err(|_| DecodeFailure::ImageDecode)?;
++    check_image_pixels(
++        u64::from(full.width()),
++        u64::from(full.height()),
++        max_pixels,
++    )?;
++
++    let image = match params.target_dimension {
++        None => full,
++        target @ Some(_) => {
++            let settings = DecodeSettings {
++                target_resolution: target,
++                ..settings
++            };
++            hayro_jpeg2000::Image::new(data, &settings).map_err(|_| DecodeFailure::ImageDecode)?
++        }
++    };
++
++    decode_image(image, params).ok_or(DecodeFailure::ImageDecode)
++}
++
++fn decode_image(
++    image: hayro_jpeg2000::Image<'_>,
++    params: &ImageDecodeParams,
++) -> Option<FilterResult<'static>> {
+ 
+     let width = image.width();
+     let height = image.height();
+diff --git a/hayro-syntax/src/filter/mod.rs b/hayro-syntax/src/filter/mod.rs
+index 2d474bc..70b8b39 100644
+--- a/hayro-syntax/src/filter/mod.rs
++++ b/hayro-syntax/src/filter/mod.rs
+@@ -34,18 +34,28 @@ use core::sync::atomic::{AtomicU64, Ordering};
+ ///
+ /// Streams read without a document, such as objects parsed with
+ /// [`FromBytes`](crate::object::FromBytes) or inline images in a content
+-/// stream, are not limited.
++/// stream, are not limited, with one exception: an inline image decoded with
++/// [`Stream::decoded_inline_image`](crate::object::Stream::decoded_inline_image)
++/// is held to its document's `max_image_pixels`.
+ #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+ pub struct DecodeLimits {
+     /// The maximum number of bytes one filter may produce for one stream.
+     /// The default, `u64::MAX`, means no limit.
+     pub max_stream_decoded_bytes: u64,
++    /// The largest image, by the `width × height` its decode parameters
++    /// declare, that may be decoded at all. A larger one fails with
++    /// [`DecodeFailure::ImagePixelLimit`] before any filter runs, so the cap
++    /// bounds what the decoders allocate, not only what they return. Streams
++    /// decoded without image parameters declare 0 × 0 and are never refused.
++    /// The default, `None`, means no limit.
++    pub max_image_pixels: Option<u64>,
+ }
+ 
+ impl Default for DecodeLimits {
+     fn default() -> Self {
+         Self {
+             max_stream_decoded_bytes: u64::MAX,
++            max_image_pixels: None,
+         }
+     }
+ }
+@@ -122,6 +132,54 @@ pub(crate) fn note_stream_decode_limit_hit() {
+     STREAM_DECODE_LIMIT_HITS.with(|n| n.set(n.get().saturating_add(1)));
+ }
+ 
++#[cfg(feature = "std")]
++std::thread_local! {
++    // Per thread for the same reason as `STREAM_DECODE_LIMIT_HITS`.
++    static IMAGE_PIXEL_LIMIT_HITS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
++}
++
++/// Return how many image decodes on the current thread were refused with
++/// [`DecodeFailure::ImagePixelLimit`](crate::object::stream::DecodeFailure::ImagePixelLimit)
++/// because the image declared more pixels than [`DecodeLimits::max_image_pixels`].
++///
++/// It only ever increases: read it before and after an operation, on the same thread.
++/// Without the `std` feature nothing is counted and this always returns 0.
++pub fn image_pixel_limit_hits() -> u64 {
++    #[cfg(feature = "std")]
++    {
++        IMAGE_PIXEL_LIMIT_HITS.with(core::cell::Cell::get)
++    }
++
++    #[cfg(not(feature = "std"))]
++    {
++        0
++    }
++}
++
++pub(crate) fn note_image_pixel_limit_hit() {
++    #[cfg(feature = "std")]
++    IMAGE_PIXEL_LIMIT_HITS.with(|n| n.set(n.get().saturating_add(1)));
++}
++
++/// Refuse an image of `width × height` pixels when that exceeds `max_pixels`,
++/// counting the refusal. Called wherever an image's size first becomes known
++/// before the allocation it governs: the declared dimensions, each codec's
++/// header, and the dimensions a codec reports. The product saturates, so a
++/// size too large for a `u64` is refused rather than wrapping under the cap.
++pub(crate) fn check_image_pixels(
++    width: u64,
++    height: u64,
++    max_pixels: Option<u64>,
++) -> Result<(), DecodeFailure> {
++    match max_pixels {
++        Some(max) if width.saturating_mul(height) > max => {
++            note_image_pixel_limit_hit();
++            Err(DecodeFailure::ImagePixelLimit)
++        }
++        _ => Ok(()),
++    }
++}
++
+ /// A data filter.
+ #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+ pub enum Filter {
+@@ -184,13 +242,17 @@ impl Filter {
+     }
+ 
+     /// Apply the filter. `limit` is the maximum output length of the
+-    /// non-image filters (see [`DecodeLimits`]).
++    /// non-image filters (see [`DecodeLimits`]); `max_pixels` is the image
++    /// pixel cap, which the image codecs check against the size their headers
++    /// give before they allocate for it (CCITT, JBIG2 and JPEG 2000 size their
++    /// output from the encoded data, not from the image dictionary).
+     pub(crate) fn apply(
+         &self,
+         data: &[u8],
+         params: &Dict<'_>,
+         #[cfg_attr(not(feature = "images"), allow(unused))] image_params: &ImageDecodeParams,
+         limit: u64,
++        #[cfg_attr(not(feature = "images"), allow(unused))] max_pixels: Option<u64>,
+     ) -> Result<FilterResult<'static>, DecodeFailure> {
+         let limit = usize::try_from(limit).unwrap_or(usize::MAX);
+ 
+@@ -203,19 +265,13 @@ impl Filter {
+             Self::LzwDecode => limited(lzw_flate::lzw::decode(data, params, limit), limit),
+             Self::FlateDecode => limited(lzw_flate::flate::decode(data, params, limit), limit),
+             #[cfg(feature = "images")]
+-            Self::DctDecode => {
+-                dct::decode(data, params, image_params).ok_or(DecodeFailure::ImageDecode)
+-            }
++            Self::DctDecode => dct::decode(data, params, image_params, max_pixels),
+             #[cfg(feature = "images")]
+-            Self::CcittFaxDecode => {
+-                ccitt::decode(data, params, image_params).ok_or(DecodeFailure::ImageDecode)
+-            }
++            Self::CcittFaxDecode => ccitt::decode(data, params, image_params, max_pixels),
+             #[cfg(feature = "images")]
+-            Self::Jbig2Decode => {
+-                jbig2::decode(data, params, image_params).ok_or(DecodeFailure::ImageDecode)
+-            }
++            Self::Jbig2Decode => jbig2::decode(data, params, image_params, max_pixels),
+             #[cfg(feature = "images")]
+-            Self::JpxDecode => jpx::decode(data, image_params).ok_or(DecodeFailure::ImageDecode),
++            Self::JpxDecode => jpx::decode(data, image_params, max_pixels),
+             #[cfg(not(feature = "images"))]
+             Self::DctDecode | Self::CcittFaxDecode | Self::Jbig2Decode | Self::JpxDecode => {
+                 warn!("image decoding is not supported (enable the `images` feature)");
+diff --git a/hayro-syntax/src/object/stream.rs b/hayro-syntax/src/object/stream.rs
+index ec7ab5a..fa8e847 100644
+--- a/hayro-syntax/src/object/stream.rs
++++ b/hayro-syntax/src/object/stream.rs
+@@ -1,7 +1,7 @@
+ //! Streams.
+ 
+ use crate::crypto::DecryptionTarget;
+-use crate::filter::{DecodeBudget, Filter};
++use crate::filter::{DecodeBudget, Filter, check_image_pixels};
+ use crate::object;
+ use crate::object::Dict;
+ use crate::object::Name;
+@@ -12,6 +12,7 @@ use crate::reader::Reader;
+ use crate::reader::{Readable, ReaderContext, ReaderExt, Skippable};
+ use crate::trivia::is_white_space_character;
+ use crate::util::{OptionLog, find_needle};
++use crate::xref::XRef;
+ use alloc::borrow::Cow;
+ use alloc::vec::Vec;
+ use core::fmt::{Debug, Formatter};
+@@ -183,11 +184,51 @@ impl<'a> Stream<'a> {
+             .map(|r| r.data)
+     }
+ 
++    /// Like [`Self::decoded_image`], for an inline image: its stream is parsed out of a
++    /// content stream without its document, so it carries no [`DecodeLimits`] of its
++    /// own. This holds it to `xref`'s
++    /// [`max_image_pixels`](crate::DecodeLimits::max_image_pixels); the per-filter byte
++    /// limit still does not apply to inline images, whose encoded size is bounded by
++    /// the content stream that holds them.
++    ///
++    /// [`DecodeLimits`]: crate::DecodeLimits
++    pub fn decoded_inline_image(
++        &self,
++        image_params: &ImageDecodeParams,
++        xref: &XRef,
++    ) -> Result<FilterResult<'a>, DecodeFailure> {
++        let max_pixels = xref
++            .decode_budget()
++            .and_then(|b| b.limits.max_image_pixels);
++        self.decoded_image_capped(image_params, None, max_pixels)
++    }
++
+     fn decoded_image_with(
+         &self,
+         image_params: &ImageDecodeParams,
+         budget: Option<&DecodeBudget>,
+     ) -> Result<FilterResult<'a>, DecodeFailure> {
++        let max_pixels = budget.and_then(|b| b.limits.max_image_pixels);
++        self.decoded_image_capped(image_params, budget, max_pixels)
++    }
++
++    fn decoded_image_capped(
++        &self,
++        image_params: &ImageDecodeParams,
++        budget: Option<&DecodeBudget>,
++        max_pixels: Option<u64>,
++    ) -> Result<FilterResult<'a>, DecodeFailure> {
++        // The pixel cap (H13) is checked where each size first becomes known, before
++        // the allocation it governs. First the declared dimensions: decrypting the
++        // data and every filter after that allocate in proportion to the image.
++        // Non-image decodes pass default parameters (0 x 0) and are never refused.
++        // The codecs then check their header sizes inside `Filter::apply`.
++        check_image_pixels(
++            u64::from(image_params.width),
++            u64::from(image_params.height),
++            max_pixels,
++        )?;
++
+         let limit = budget.map_or(u64::MAX, |b| b.limits.max_stream_decoded_bytes);
+         let data = self.raw_data();
+         let filters_and_params = self.filters_and_params();
+@@ -205,6 +246,7 @@ impl<'a> Stream<'a> {
+                     params,
+                     image_params,
+                     limit,
++                    max_pixels,
+                 )
+                 .inspect_err(|e| {
+                     if let DecodeFailure::LimitExceeded = e {
+@@ -217,6 +259,13 @@ impl<'a> Stream<'a> {
+             current = Some(new);
+         }
+ 
++        // Last, the size the codec reports: hayro-interpret pads or truncates the
++        // output to it and converts at that size, and for CCITT it mixes `/Columns`
++        // with the declared height, so it can exceed both earlier checks.
++        if let Some(info) = current.as_ref().and_then(|c| c.image_data.as_ref()) {
++            check_image_pixels(u64::from(info.width), u64::from(info.height), max_pixels)?;
++        }
++
+         Ok(current.unwrap_or(FilterResult {
+             data,
+             image_data: None,
+@@ -275,6 +324,10 @@ pub enum DecodeFailure {
+     /// A filter would have produced more data than the document's
+     /// [`DecodeLimits`](crate::DecodeLimits) allow.
+     LimitExceeded,
++    /// An image declared more pixels than the document's
++    /// [`DecodeLimits::max_image_pixels`](crate::DecodeLimits::max_image_pixels)
++    /// allow; it was refused before any filter ran.
++    ImagePixelLimit,
+ }
+ 
+ /// An image color space.

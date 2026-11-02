@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Mon, 19 Oct 2026 14:47:10 +0100
+Subject: [PATCH 29/35] H19: cap the standard-handler key at 16 bytes for
+ revision 4 and earlier
+
+The file key of revisions 2-4 is a prefix of a 16-byte MD5 output, but
+decryption_key_rev1234 sliced hash[..Length / 8], once inside the 50-round
+loop and once for the returned key. Any /Length above 128 bits (V 2 or V 4
+with /Length 136 or 256, or V 5 paired with /R 3 or lower, which forces 256)
+therefore panicked with a range error inside Document::from_bytes.
+
+Clamp the byte length to 16 so such files open and decrypt with the 16-byte
+key, as pdf.js does, instead of panicking. A /Length of 128 bits or less is
+unchanged.
+
+The test builds R2 and R3 documents with precomputed O, U and an RC4
+content stream; the 121-byte fuzz input is committed as a regression.
+
+Fixes internal #119
+---
+ hayro-syntax/src/crypto/mod.rs | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/hayro-syntax/src/crypto/mod.rs b/hayro-syntax/src/crypto/mod.rs
+index 2d407ad..59e1bfe 100644
+--- a/hayro-syntax/src/crypto/mod.rs
++++ b/hayro-syntax/src/crypto/mod.rs
+@@ -458,6 +458,11 @@ fn decryption_key_rev1234(
+     permissions: u32,
+     id: &[u8],
+ ) -> Result<Vec<u8>, DecryptionError> {
++    // The key is a prefix of a 16-byte MD5 output, so no /Length can yield
++    // more than 16 bytes. Slicing by an out-of-range /Length (V 2 or V 4 with
++    // more than 128 bits, V 5 paired with revision <= 4) used to panic; clamp
++    // as pdf.js does so such files open instead.
++    let byte_length = byte_length.min(16);
+     let mut md5_input = vec![];
+ 
+     // TODO: Convert to PDFDocEncoding.

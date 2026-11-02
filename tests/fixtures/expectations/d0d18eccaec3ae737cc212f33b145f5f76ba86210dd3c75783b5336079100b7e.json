@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "sha256": "d0d18eccaec3ae737cc212f33b145f5f76ba86210dd3c75783b5336079100b7e",
+  "size": 9511,
+  "source": "corpus-b/pdfbox/PDFBox.GlobalResourceMergeTest.Doc01.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 2,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Lorem ipsum dolor sit amet, consetetur sadipscing \nelitr, sed diam nonumy eirmod tempor invidunt ut \nlabore et dolore magna aliquyam erat, sed diam \nvoluptua. At vero eos et accusam et justo duo \ndolores et ea rebum. Stet clita kasd gubergren, no \nsea takimata sanctus est Lorem ipsum dolor sit \namet. Lorem ipsum dolor sit amet, consetetur \nsadipscing elitr, sed diam nonumy eirmod tempor \ninvidunt ut labore et dolore magna aliquyam erat, \nsed diam voluptua. At vero eos et accusam et \njusto duo dolores et ea rebum. Stet clita kasd \ngubergren, no sea takimata sanctus est Lorem \nipsum dolor sit amet. Lorem ipsum dolor sit amet, \nconsetetur sadipscing elitr, sed diam nonumy \neirmod tempor invidunt ut labore et dolore magna \naliquyam erat, sed diam voluptua. At vero eos et \naccusam et justo duo dolores et ea rebum. Stet \nclita kasd gubergren, no sea takimata sanctus est \nLorem ipsum dolor sit amet.    \n \nDuis autem vel eum iriure dolor in hendrerit in \nvulputate velit esse molestie consequat, vel illum \ndolore eu feugiat nulla facilisis at vero eros et \naccumsan et iusto odio dignissim qui blandit \npraesent luptatum zzril delenit augue duis dolore \nte feugait nulla facilisi. Lorem ipsum dolor sit \namet, consectetuer adipiscing elit, sed diam \nnonummy nibh euismod tincidunt ut laoreet dolore \nmagna aliquam erat volutpat.    \n \nUt wisi enim ad minim veniam, quis nostrud exerci \ntation ullamcorper suscipit lobortis nisl ut aliquip \nex ea commodo consequat. Duis autem vel eum \niriure dolor in hendrerit in vulputate velit esse \nmolestie consequat, vel illum dolore eu feugiat \nnulla facilisis at vero eros et accumsan et iusto \nodio dignissim qui blandit praesent luptatum zzril \ndelenit augue duis dolore te feugait nulla facilisi.    \n \nNam liber tempor cum soluta nobis eleifend option \ncongue nihil imperdiet doming id quod mazim \nplacerat facer possim assum. Lorem ipsum dolor \nsit amet, consectetuer adipiscing elit, sed diam \nnonummy nibh euismod tincidunt ut laoreet dolore \nmagna aliquam erat volutpat. Ut wisi enim ad \nminim veniam, quis nostrud exerci tation \nullamcorper suscipit lobortis nisl ut aliquip ex ea \ncommodo consequat.    \n \nDuis autem vel eum iriure dolor in hendrerit in \nvulputate velit esse molestie consequat, vel illum \ndolore eu feugiat nulla facilisis.    \n \nAt vero eos et accusam et justo duo dolores et ea \nrebum. Stet clita kasd gubergren, no sea takimata \nsanctus est Lorem ipsum dolor sit amet. Lorem \nipsum dolor sit amet, consetetur sadipscing elitr, \nsed diam nonumy eirmod tempor invidunt ut \nlabore et dolore magna aliquyam erat, sed diam \nLorem ipsum dolor sit amet, \nconsetetur sadipscing elitr, sed diam \nnonumy eirmod tempor invidunt ut \nlabore et dolore magna aliquyam erat, \nsed diam voluptua. At vero eos et \naccusam et justo duo dolores et ea \nrebum. Stet clita kasd gubergren, no \nsea takimata sanctus est Lorem ipsum \ndolor sit amet. Lorem ipsum dolor sit \namet, consetetur sadipscing elitr, \nsed diam nonumy eirmod tempor \ninvidunt ut labore et dolore magna \naliquyam erat, sed diam voluptua. At \nvero eos et accusam et justo duo \ndolores et ea rebum. Stet clita kasd \ngubergren, no sea takimata sanctus \nest Lorem ipsum dolor sit amet. Lorem \nipsum dolor sit amet, consetetur \nsadipscing elitr, sed diam nonumy \neirmod tempor invidunt ut labore et \ndolore magna aliquyam erat, sed diam \nvoluptua. At vero eos et accusam et \njusto duo dolores et ea rebum. Stet \nclita kasd gubergren, no sea takimata \nsanctus est Lorem ipsum dolor sit \namet.    \n \nDuis autem vel eum iriure dolor in \nhendrerit in vulputate velit esse \nmolestie consequat, vel illum dolore \neu feugiat nulla facilisis at vero \neros et accumsan et iusto odio \ndignissim qui blandit praesent \nluptatum zzril delenit augue duis \ndolore te feugait nulla facilisi. \nLorem ipsum dolor sit amet, \nconsectetuer adipiscing elit, sed \ndiam nonummy nibh euismod tincidunt \nut laoreet dolore magna aliquam erat \nvolutpat.    \n \nUt wisi enim ad minim veniam, quis \nnostrud exerci tation ullamcorper \nsuscipit lobortis nisl ut aliquip ex \nea commodo consequat. Duis autem vel \neum iriure dolor in hendrerit in \nvulputate velit esse molestie \nconsequat, vel illum dolore eu \nfeugiat nulla facilisis at vero eros \net accumsan et iusto odio dignissim \nqui blandit praesent luptatum zzril \ndelenit augue duis dolore te feugait \nnulla facilisi.    \n \nNam liber tempor cum soluta nobis \neleifend option congue nihil \nimperdiet doming id quod mazim \nplacerat facer possim assum. Lorem \nipsum dolor sit amet, consectetuer \n",
+      "sha256": "80d707642ca1fcca656dba36c48dcee1026003329ab49563ac7a181fca1c0257",
+      "error": null
+    },
+    {
+      "index": 1,
+      "text": "voluptua. At vero eos et accusam et justo duo \ndolores et ea rebum. Stet clita kasd gubergren, no \nsea takimata sanctus est Lorem ipsum dolor sit \namet. Lorem ipsum dolor sit amet, consetetur \nsadipscing elitr, At accusam aliquyam diam diam \ndolore dolores duo eirmod eos erat, et nonumy \nsed tempor et et invidunt justo labore Stet clita ea \net gubergren, kasd magna no rebum. sanctus sea \nsed takimata ut vero voluptua. est Lorem ipsum \nadipiscing elit, sed diam nonummy \nnibh euismod tincidunt ut laoreet \ndolore magna aliquam erat volutpat. \nUt wisi enim ad minim veniam, quis \nnostrud exerci tation ullamcorper \nsuscipit lobortis nisl ut aliquip ex \nea commodo consequat.    \n \nDuis autem vel eum iriure dolor in \n",
+      "sha256": "20e607e130a2105ee275160b0c83db89952aac4b8048e3d8049e45cd5f52f57d",
+      "error": null
+    }
+  ]
+}

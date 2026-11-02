@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "c3a88782cbb9dc0ab55fd473fdb888d6904253287cfd1b7319bc3c3715c1dacd",
+  "size": 744,
+  "source": "corpus-c/perp_11pt_9.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Base\nsup\n",
+      "sha256": "876513de2ba0c5ed3f9409526671702aea85ad2fddc07ce28f847d9289016833",
+      "error": null
+    }
+  ]
+}

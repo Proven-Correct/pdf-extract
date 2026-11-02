@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "42793ea9b19145170255686a9007bce9448daa94b4eebdfdfae1478646ce42e8",
+  "size": 662,
+  "source": "corpus-c/broken_startxref.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Contract\n",
+      "sha256": "f15524f69508df06c9a02b171ea8e9095800e0a0b6f5b8a480ee85e6dbb1d5f4",
+      "error": null
+    }
+  ]
+}

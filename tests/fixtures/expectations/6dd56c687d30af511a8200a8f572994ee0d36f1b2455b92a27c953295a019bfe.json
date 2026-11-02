@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "6dd56c687d30af511a8200a8f572994ee0d36f1b2455b92a27c953295a019bfe",
+  "size": 659,
+  "source": "corpus-c/kp05_tab.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "A\tB\n",
+      "sha256": "6a62d9979c0b5fcc89342643cbdaca4243e5b2b1f5c885acec85f4d9fc82958b",
+      "error": null
+    }
+  ]
+}

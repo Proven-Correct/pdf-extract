@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "sha256": "44750527e51022ca06c7e9fac0af4cf90f1cb341b6511544409b0a2f5eb2fa12",
+  "size": 222690,
+  "source": "corpus-b/pdfbox/Annotations.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 3,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Page 1\nPDFBox\nExternal URL\nJump to page three\nCircle->Square\nuppercase Δ, lowercase δ\nLorem ipsum dolor sit amet, consetetur sadipscing \nelitr, sed diam nonumy eirmod tempor invidunt ut \nlabore et dolore magna aliquyam erat, sed diam \nvoluptua. At vero eos et accusam et justo duo \ndolores et ea rebum. Stet clita kasd gubergren, no \nsea takimata sanctus est Lorem ipsum dolor sit \namet. Lorem ipsum dolor sit amet, consetetur \nsadipscing elitr, sed diam nonumy eirmod tempor \n",
+      "sha256": "b73b61d7b39d7f86ea2d1ff09e6713ec842671b4dd1774a08ae55905de35c083",
+      "error": null
+    },
+    {
+      "index": 1,
+      "text": "Page 2\n",
+      "sha256": "c6d65cc1155e97d2ed5c63e2eb3af1bbeab047ca34bcf30cb29c7f7ddda548c3",
+      "error": null
+    },
+    {
+      "index": 2,
+      "text": "Page 3\n",
+      "sha256": "58e65826fdb80d61882ceda137ad788788cc478e40544b0d48ee5f65f7481a04",
+      "error": null
+    }
+  ]
+}

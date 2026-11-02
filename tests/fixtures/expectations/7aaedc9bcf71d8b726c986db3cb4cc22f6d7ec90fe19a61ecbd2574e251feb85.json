@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "7aaedc9bcf71d8b726c986db3cb4cc22f6d7ec90fe19a61ecbd2574e251feb85",
+  "size": 1463,
+  "source": "corpus-b/pdfbox/PDFBOX-3195.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "A\n123\n",
+      "sha256": "905af14eb6027228499c6659dcc26ff1646333eeaf52e74db15d9d153dbf66ab",
+      "error": null
+    }
+  ]
+}

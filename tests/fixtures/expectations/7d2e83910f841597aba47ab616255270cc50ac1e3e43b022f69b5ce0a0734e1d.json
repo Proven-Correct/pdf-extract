@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "7d2e83910f841597aba47ab616255270cc50ac1e3e43b022f69b5ce0a0734e1d",
+  "size": 1080,
+  "source": "corpus-c/many_ops_200k.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Start\nEnd\n",
+      "sha256": "105cdc9fd76c0422f7d58becd953ab7671f486d43bab2317d31af3f45f0fed83",
+      "error": null
+    }
+  ]
+}

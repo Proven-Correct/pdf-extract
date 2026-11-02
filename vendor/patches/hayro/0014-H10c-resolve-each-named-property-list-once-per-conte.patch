@@ -1,0 +1,177 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Thu, 1 Oct 2026 23:25:29 -0400
+Subject: [PATCH 14/22] H10c: resolve each named property list once per context
+
+A `BDC` whose property list is a name refers to an entry of the
+resources' `/Properties` dictionary. The interpreter resolved that
+entry twice for every such `BDC` (once for optional content, once for
+the device), parsing the referenced object each time. A large property
+list, such as one with a long `/ActualText`, referenced from many `BDC`s
+therefore cost its full size per operator: a 4 MB entry named 2,000
+times took several seconds.
+
+`Context` now caches the resolved entries, keyed by the `/Properties`
+dictionary they were looked up in (the address and length of its data,
+which is borrowed for the context's lifetime and so cannot be reused by
+another dictionary meanwhile) and by name. Each entry is resolved once
+per context; a page and a form that use the same name in different
+`/Properties` dictionaries are kept apart. Inline property lists are
+unchanged.
+
+`property_hooks::resolutions()` (hidden, per thread) counts the
+resolutions that missed the cache, for tests.
+---
+ hayro-interpret/src/context.rs       | 60 ++++++++++++++++++++++++++++
+ hayro-interpret/src/interpret/mod.rs | 36 ++++++++---------
+ 2 files changed, 77 insertions(+), 19 deletions(-)
+
+diff --git a/hayro-interpret/src/context.rs b/hayro-interpret/src/context.rs
+index e3e8503..9964b42 100644
+--- a/hayro-interpret/src/context.rs
++++ b/hayro-interpret/src/context.rs
+@@ -46,6 +46,10 @@ impl<'a> InterpreterCache<'a> {
+     }
+ }
+ 
++/// Resolved named property lists: `/Properties` dictionary (data address, length) → name →
++/// the entry, if it resolved to a dictionary.
++type PropertyCache<'a> = HashMap<(usize, usize), HashMap<Box<[u8]>, Option<Dict<'a>>>>;
++
+ /// A per-page interpretation context that borrows shared data from an [`InterpreterCache`].
+ pub struct Context<'a> {
+     states: Vec<State<'a>>,
+@@ -64,6 +68,13 @@ pub struct Context<'a> {
+     // objects, so the identifier tells a form that draws itself (directly or through other
+     // forms) from one that is merely drawn several times.
+     form_stack: Vec<ObjectIdentifier>,
++    // Named property lists (`/Name BDC`) already resolved, keyed by the `/Properties`
++    // dictionary they were looked up in (its data's address and length) and then by name.
++    // Resolving an entry parses the referenced object, which can be large (a long
++    // `/ActualText`), and a content stream can refer to the same entry with every `BDC`.
++    // The data is borrowed for `'a`, so its address cannot be reused by a different
++    // dictionary while this context exists.
++    property_cache: PropertyCache<'a>,
+ }
+ 
+ impl<'a> Context<'a> {
+@@ -110,9 +121,38 @@ impl<'a> Context<'a> {
+             ocg_state,
+             nesting_depth,
+             form_stack: Vec::new(),
++            property_cache: HashMap::new(),
+         }
+     }
+ 
++    /// The dictionary that `name` refers to in the `/Properties` resource dictionary
++    /// `properties`, resolved once per context (see `property_cache`).
++    pub(crate) fn named_property(
++        &mut self,
++        properties: &Dict<'a>,
++        name: &Name<'_>,
++    ) -> Option<Dict<'a>> {
++        if properties.is_empty() {
++            return None;
++        }
++
++        let data = properties.data();
++        let by_name = self
++            .property_cache
++            .entry((data.as_ptr() as usize, data.len()))
++            .or_default();
++
++        if let Some(cached) = by_name.get(name.as_ref()) {
++            return cached.clone();
++        }
++
++        property_hooks::note_resolution();
++        let resolved = properties.get::<Dict<'_>>(name.as_ref());
++        by_name.insert(name.as_ref().into(), resolved.clone());
++
++        resolved
++    }
++
+     pub(crate) fn save_state(&mut self) {
+         let Some(cur) = self.states.last().cloned() else {
+             warn!("attempted to save state without existing state");
+@@ -410,3 +450,23 @@ pub(crate) fn path_as_rect(path: &BezPath) -> Option<Rect> {
+         None
+     }
+ }
++
++#[doc(hidden)]
++/// Instrumentation for tests: how often a named property list was resolved rather than
++/// taken from a context's cache. Not part of the supported API.
++pub mod property_hooks {
++    use std::cell::Cell;
++
++    std::thread_local! {
++        static RESOLUTIONS: Cell<u64> = const { Cell::new(0) };
++    }
++
++    /// Named property lists resolved on this thread so far.
++    pub fn resolutions() -> u64 {
++        RESOLUTIONS.with(Cell::get)
++    }
++
++    pub(crate) fn note_resolution() {
++        RESOLUTIONS.with(|n| n.set(n.get().saturating_add(1)));
++    }
++}
+diff --git a/hayro-interpret/src/interpret/mod.rs b/hayro-interpret/src/interpret/mod.rs
+index 3cefedd..598d1dc 100644
+--- a/hayro-interpret/src/interpret/mod.rs
++++ b/hayro-interpret/src/interpret/mod.rs
+@@ -678,24 +678,23 @@ pub fn interpret<'a>(
+ 
+                 let mcid = dict_or_stream(bdc.1).and_then(|(props, _)| props.get::<i32>(MCID));
+ 
+-                let oc = bdc
+-                    .1
+-                    .clone()
+-                    .into_name()
+-                    .and_then(|name| {
+-                        let r = resources.properties.get_ref(name.as_ref())?;
+-                        let d = resources
+-                            .properties
+-                            .get::<Dict<'_>>(name)
+-                            .unwrap_or_default();
+-                        Some((d, r))
+-                    })
+-                    .or_else(|| {
+-                        let (props, _) = dict_or_stream(bdc.1)?;
++                // A name refers to an entry of the resources' `/Properties` dictionary,
++                // resolved through the context's cache; anything else is used inline.
++                let named = bdc.1.clone().into_name().map(|name| {
++                    (
++                        context.named_property(&resources.properties, &name),
++                        resources.properties.get_ref(name.as_ref()),
++                    )
++                });
++
++                let oc = match &named {
++                    Some((dict, r)) => r.map(|r| (dict.clone().unwrap_or_default(), r)),
++                    None => dict_or_stream(bdc.1).and_then(|(props, _)| {
+                         let r = props.get_ref(OC)?;
+                         let d = props.get::<Dict<'_>>(OC).unwrap_or_default();
+                         Some((d, r))
+-                    });
++                    }),
++                };
+ 
+                 if let Some((dict, oc_ref)) = oc {
+                     context.ocg_state.begin_ocg(&dict, oc_ref.into());
+@@ -703,10 +702,9 @@ pub fn interpret<'a>(
+                     context.ocg_state.begin_marked_content();
+                 }
+ 
+-                // The property list itself, for the device: a name refers to an entry of
+-                // the resources' `/Properties` dictionary, anything else is used inline.
+-                let properties = match bdc.1.clone().into_name() {
+-                    Some(name) => resources.properties.get::<Dict<'_>>(name),
++                // The property list itself, for the device.
++                let properties = match named {
++                    Some((dict, _)) => dict,
+                     None => dict_or_stream(bdc.1).map(|(props, _)| props.clone()),
+                 };
+ 

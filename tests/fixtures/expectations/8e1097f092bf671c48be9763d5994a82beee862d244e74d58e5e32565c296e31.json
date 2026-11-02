@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "sha256": "8e1097f092bf671c48be9763d5994a82beee862d244e74d58e5e32565c296e31",
+  "size": 1600,
+  "source": "corpus-b/hayro/blank_page_without_contents.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 3,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Page 1\n",
+      "sha256": "0044390d820b260b57b6bc1a08daa8de5d4b04e51feb4b191aa38eb8e2438a14",
+      "error": null
+    },
+    {
+      "index": 1,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    },
+    {
+      "index": 2,
+      "text": "Page 3\n",
+      "sha256": "58e65826fdb80d61882ceda137ad788788cc478e40544b0d48ee5f65f7481a04",
+      "error": null
+    }
+  ]
+}

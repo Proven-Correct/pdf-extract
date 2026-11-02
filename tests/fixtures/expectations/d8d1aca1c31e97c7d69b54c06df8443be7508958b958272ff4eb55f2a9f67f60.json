@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "d8d1aca1c31e97c7d69b54c06df8443be7508958b958272ff4eb55f2a9f67f60",
+  "size": 750,
+  "source": "corpus-c/kp15_symbol.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "αβγ\n",
+      "sha256": "970c6d32393f95ef77c2f165740e90aee7a1da8ed83212830e6e8e64ee0e80cf",
+      "error": null
+    }
+  ]
+}

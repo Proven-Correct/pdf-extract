@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "2b4aa9b63f3eed9a5e544b10bc677fcf70e1baaa62651e786a9d22d5dec860b2",
+  "size": 30269,
+  "source": "corpus-b/pdfbox/hello3.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Hello  ﻣﺤﻤﺪWorld. \n",
+      "sha256": "84f0630c1295cab92d7ab017b5e920d26c75737729fa2bce8d1a1a178be4f270",
+      "error": null
+    }
+  ]
+}

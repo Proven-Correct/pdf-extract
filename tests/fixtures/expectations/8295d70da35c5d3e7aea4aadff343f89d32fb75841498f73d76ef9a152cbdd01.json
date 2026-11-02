@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "8295d70da35c5d3e7aea4aadff343f89d32fb75841498f73d76ef9a152cbdd01",
+  "size": 662,
+  "source": "corpus-c/zero_size_font.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Zero\n",
+      "sha256": "e73b2c5028349ca9f015bfa3c9b9d29e4ae7c57e7ba8581884f4d0e62b585468",
+      "error": null
+    }
+  ]
+}

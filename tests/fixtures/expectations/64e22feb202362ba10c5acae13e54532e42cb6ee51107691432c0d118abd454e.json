@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "64e22feb202362ba10c5acae13e54532e42cb6ee51107691432c0d118abd454e",
+  "size": 24841,
+  "source": "corpus-c/deep_type4_2k.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Fn\n",
+      "sha256": "7ed217e2f0e33efa3f3a72300efa627041289b329b7a5d4790c3e8d2f15dc815",
+      "error": null
+    }
+  ]
+}

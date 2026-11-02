@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "3c9dc432bea96d01fd16a0f16b234d915c1aee7fe1add5ac5ae105d59eb5e91b",
+  "size": 1191,
+  "source": "corpus-c/kp12_identity_v.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "A\nB\nC\n",
+      "sha256": "706204f15ce1834ad298c8e8d270315652bbd6e40cec489f65802db2fdd03167",
+      "error": null
+    }
+  ]
+}

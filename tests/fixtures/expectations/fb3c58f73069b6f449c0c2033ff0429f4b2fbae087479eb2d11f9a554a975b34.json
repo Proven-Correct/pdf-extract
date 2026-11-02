@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "fb3c58f73069b6f449c0c2033ff0429f4b2fbae087479eb2d11f9a554a975b34",
+  "size": 4631,
+  "source": "corpus-b/pdfbox/yaddatest.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "PDF test that contains the word yadda\n",
+      "sha256": "fe6152be3c7a132d2cf6668d5977956c06113dcb813ee8ed98dbdc4a4e75d5e1",
+      "error": null
+    }
+  ]
+}

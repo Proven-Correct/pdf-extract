@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "b69b9b76e2c1cba2a203dfb875a7baa0a5c4a09b22a58cbc374ee3facfec308f",
+  "size": 19068,
+  "source": "corpus-b/pdfbox/embedded_zip.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "pdf_haystack\n\npdf_haystack\n\npdf_haystack\n\npdf_haystack\n\npdf_haystack\n\npdf_haystack\n\npd\n",
+      "sha256": "3e9f6e3baa9a6236b08fd2784fdad061742e195b10b2a46e1d57069f8fb20ec7",
+      "error": null
+    }
+  ]
+}

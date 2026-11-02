@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "ca11699c54f9f3b019f898a21d9b00b267185217acec60e5df3435f033cbf632",
+  "size": 1036167,
+  "source": "corpus-d/clean_body_09pt_skew.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "Wen in he Course of human events, itbecomes necessary for one people dstave the poical bande which\nrene connect\ntem th acter, andio assume amang thepowers\nof he earth tho separate and eal\nsave manic te Uns of Nature and ot Nate's God ene them, a decent respect tthe opis of mankind\noe they shoud caro te causes which impel bm othe separation, We hol thse wus o be\neevon\ntas al men arecrosi exua,that they are erdowed by tir Creator wih certain unalienable\nFay atamongnese\nare ile,Ubety andthe prsito Happiness. That to wecur thse hts,\naon wenetnsted\namong Men. dering the justpowers fromthe cansetofthe governed That\neer ay Fem of Govermert becomes cearcve of tese ends,tthe ht ote People oat or\nareca ad tnettte\nmew Government, yng ts oundaion on sch princes and xgarzing ts powers it\nsaat stes totem sal seem moet tay tlc the Salty and Happiness, Prudence indeed,\nwi cate\nA Genenmorts ong established shoud ntbe changed or ight an rarsient causes; aeaccoringly\nweaSeree hah shown. at mankind are more csposed ost, whe ovisare suterabo, han oh\naaa\nby aouchng theforms to which hey areaccustomed. Butwhen along rain of abuses and\nvrartes.famuingivarabl\ntne sume Object ovnces adesign 1 reduce them under absate Despossr, t\nrrgh hs te aty to tow of sochGovermert ndtoprovide new Guard oth ture sent.\nean\npane part sulterance ofthese Colories: and schsowhenecessity\nwhich constains fam 0\nAe na former Sym of Goverment.Te history ol he present King of Great Bin is ator of epeated\n‘tiae\nand unspatone, al having\ndrect jecttheestablishment\nfan absoluteTyranny\nove’ hase Sales,\n‘rerswve Pa, t Face be submined ta cand wad. He has retued his Asset io Laws, he os wheiesome\nFaeyr hepe good He has fordden his Governor\nio pass Laws of neseat an pressing\nArea, tees veponée nth eperaon iia Assen shouldbe obtained: and when so suspended he\nrere nopected toand o fem. Hehas rtused to pass abe Laws the accommodation tage\nenc poco, unless tose people woud einguth the ghtof Representation ne Logate, h\nPerehatle tomem and fomidate fo rans only. He hs cles togeter leave basis & places unval\nvreablo, and daar tom the depostory ole pubic Records, fore solepurpose ofatguing\nter to\namare wit is measures. He has Sszoved Representative Housesrepectady,\nfx oppasingwh arly\nFare cic invasions\non tre rights of te peopl. He has refused for along tine ater such asoksions. 0\naero raretobe onctes whereby the Lepelave powers, Incapable\nof Anniston, havetunes\n0 he\nPesca rgetor hw oxrcie: he Staleremain inthe mean ee exposed al he dangers of invasion\nPea al and comuisens\nwit, He has endeavoured o preventfhe population of hese States for Hat\npose sosivcting ne Laws forNarazasn of Folger reuting to pans cer fo encourageth\nrepatons ier are rag\nthe condions\nof ew Appropriations\no Lands, He as obstructedhe\nPa\nvelsuaica, by reusing his Assent toLaws for establishing asciry powers, He has made Judes\n‘eengonton\nie Wa lon fore tenure oftheir fics, andthe amount and payment of tir sais. He as\neee ratte ot New Offices, and eet her swarms of Ofer to harass our people, andl et out eit\neeeae has hapt amongus, nes of pace, Standing Armies wihoutthe Consentof our legates.\ncaaretottes to render ne Nitayindependert ol and super tthe ii power He has combinedwith\ncar tect ust ajatedeson foreign ou carstuon, and unacknowledged by ou ws: ing is\ncee set act of pretended Lepsiation When te Couse of human avers tbecomes necessary oF\nceca te poten ands wich Rave connected them wih acter, ado assume among the\n",
+        "sha256": "ee0492c0644f078f9bc84e69c085ab73f230adc54d3ce3a6aa345e1fb3cc5bee"
+      }
+    ]
+  }
+}

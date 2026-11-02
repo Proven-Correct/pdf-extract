@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "sha256": "e4563ad63fb5bae38cba085da0f824ec5ee1ebb20d2ce7a90b340d9e450178a5",
+  "size": 2239,
+  "source": "corpus-c/garbage_after_header.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": false,
+    "exception": "FileDataError",
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 0,
+  "pages": []
+}

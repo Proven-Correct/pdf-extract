@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "a906818bfa757c938ea1d022de26486ce32945da27fc5f0e829919a08e5b4883",
+  "size": 757,
+  "source": "corpus-c/kp19_rect_clip.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "St\nab\n",
+      "sha256": "2f939b8b5a6b600b0852cd78bc851f7cb75ced10c8ae0dc78be6acd7b067b0b9",
+      "error": null
+    }
+  ]
+}

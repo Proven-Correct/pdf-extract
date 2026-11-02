@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "e4ad3a06647d218daa95735d71a23ab44bacefcf0a7f8287e199a927a8e746e6",
+  "size": 10614,
+  "source": "corpus-b/hayro/pattern_shading_on_text.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Some nice text with a gradient.\n",
+      "sha256": "0fabd091f89f4ab2541a0350afeb4e4844abd03f84f68b1017e276dc60a9c1b7",
+      "error": null
+    }
+  ]
+}

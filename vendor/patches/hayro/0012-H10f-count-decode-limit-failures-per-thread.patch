@@ -1,0 +1,83 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Thu, 1 Oct 2026 23:21:27 -0400
+Subject: [PATCH 12/22] H10f: count decode-limit failures per thread
+
+`Pdf::decode_stats()` counts the stream decodes that failed with
+`DecodeFailure::LimitExceeded` for the whole document. When several
+threads work on one document (for example on different pages), none of
+them can tell from it which of those failures were its own.
+
+Every such failure now also bumps a thread-local counter, read with
+`stream_decode_limit_hits()` (only with the `std` feature). A caller
+samples it before and after an operation on the same thread; decodes on
+other threads do not move it. The document-wide statistics are
+unchanged.
+---
+ hayro-syntax/src/filter/mod.rs    | 34 +++++++++++++++++++++++++++++++
+ hayro-syntax/src/object/stream.rs |  7 +++++--
+ 2 files changed, 39 insertions(+), 2 deletions(-)
+
+diff --git a/hayro-syntax/src/filter/mod.rs b/hayro-syntax/src/filter/mod.rs
+index 3349c31..2d474bc 100644
+--- a/hayro-syntax/src/filter/mod.rs
++++ b/hayro-syntax/src/filter/mod.rs
+@@ -88,6 +88,40 @@ impl DecodeBudget {
+     }
+ }
+ 
++#[cfg(feature = "std")]
++std::thread_local! {
++    // Per thread rather than per document: [`DecodeStats`] belong to the document, so
++    // two threads working on different pages of one document cannot tell their own
++    // events apart in them. A caller samples this before and after an operation on the
++    // same thread instead.
++    static STREAM_DECODE_LIMIT_HITS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
++}
++
++/// Return how many stream decodes on the current thread failed with
++/// [`DecodeFailure::LimitExceeded`](crate::object::stream::DecodeFailure::LimitExceeded).
++///
++/// The same events are counted per document in [`DecodeStats`]; this counter tells
++/// them apart by thread, so that an operation can learn about its own decodes while
++/// other threads decode streams of the same document. It only ever increases: read it
++/// before and after the operation, on the same thread. Without the `std` feature
++/// nothing is counted and this always returns 0.
++pub fn stream_decode_limit_hits() -> u64 {
++    #[cfg(feature = "std")]
++    {
++        STREAM_DECODE_LIMIT_HITS.with(core::cell::Cell::get)
++    }
++
++    #[cfg(not(feature = "std"))]
++    {
++        0
++    }
++}
++
++pub(crate) fn note_stream_decode_limit_hit() {
++    #[cfg(feature = "std")]
++    STREAM_DECODE_LIMIT_HITS.with(|n| n.set(n.get().saturating_add(1)));
++}
++
+ /// A data filter.
+ #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+ pub enum Filter {
+diff --git a/hayro-syntax/src/object/stream.rs b/hayro-syntax/src/object/stream.rs
+index 476cd7a..ec7ab5a 100644
+--- a/hayro-syntax/src/object/stream.rs
++++ b/hayro-syntax/src/object/stream.rs
+@@ -207,8 +207,11 @@ impl<'a> Stream<'a> {
+                     limit,
+                 )
+                 .inspect_err(|e| {
+-                    if let (DecodeFailure::LimitExceeded, Some(budget)) = (e, budget) {
+-                        budget.note_over_limit();
++                    if let DecodeFailure::LimitExceeded = e {
++                        crate::filter::note_stream_decode_limit_hit();
++                        if let Some(budget) = budget {
++                            budget.note_over_limit();
++                        }
+                     }
+                 })?;
+             current = Some(new);

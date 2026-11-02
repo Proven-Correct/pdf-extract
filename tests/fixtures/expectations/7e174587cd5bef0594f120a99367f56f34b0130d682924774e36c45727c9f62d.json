@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "7e174587cd5bef0594f120a99367f56f34b0130d682924774e36c45727c9f62d",
+  "size": 1103,
+  "source": "corpus-c/kp11_hidden_ocg_form.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Before\nAfter\n",
+      "sha256": "fde83f2dc216c70f7c3947f2edf62cf9613854695a180aa976616bbab8ccc371",
+      "error": null
+    }
+  ]
+}

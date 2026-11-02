@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "e168c933e4cdc06a97159b6ace088d2de8df683150ef17ecc372b06bbcae804e",
+  "size": 741,
+  "source": "corpus-c/kp04_fakebold_overprint.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Bold\nBold\n",
+      "sha256": "998cd61993c4b9125539df3ba63b787fa85091d7e652eb8eebe47c7a3f0d4eb1",
+      "error": null
+    }
+  ]
+}

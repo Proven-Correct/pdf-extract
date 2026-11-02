@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "6d9b18266db5df7b9513b12cf1a457f14a148c601a0b91061b16a268c3740387",
+  "size": 8702993,
+  "source": "built/sparse_below_min_chars_noise.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "Exhibit12: Notice of Filings.\n",
+        "sha256": "5d06c07dceb72ff38ff772e3d43ee85341d9dac6e5ebf1e98a2f5b378b703a80"
+      }
+    ]
+  }
+}

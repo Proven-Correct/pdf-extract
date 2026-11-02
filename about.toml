@@ -1,0 +1,72 @@
+# cargo-about configuration. Role: drives the crate-licence section of
+# THIRD_PARTY_NOTICES, which tools/license/gen-notices.sh writes from the
+# dependency graph of the extension module (crates/python) and the CI `deny`
+# job keeps in sync. cargo-about is a build tool only; it is never linked.
+
+# Same allow-list, in the same order, as deny.toml's [licenses] allow. For a
+# dual-licensed crate ("Apache-2.0 OR MIT") cargo-about reproduces the first
+# accepted licence that satisfies the expression, so the order here decides
+# which text ships: MIT, whose file carries the crate's copyright line.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unlicense",
+    "0BSD",
+    "BSL-1.0",
+    "OFL-1.1",
+]
+
+# Only what can end up in the wheel: dev-dependencies (test kit fixtures,
+# hashing) and build-dependencies (pyo3-build-config) are not shipped.
+ignore-dev-dependencies = true
+ignore-build-dependencies = true
+
+# The platforms CI builds and tests (ubuntu-24.04, macos-14, both
+# architectures). Naming them makes cargo-about evaluate `cfg(...)`
+# dependencies against real targets, so `[target.'cfg(loom)'.dependencies]`
+# (loom, only in the model-checking build, never in the wheel) and its own
+# platform crates stay out of the notices. Add a triple here before shipping
+# a wheel for another platform.
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-unknown-linux-gnu",
+]
+
+# Our own crates are GPL-3.0-or-later and `publish = false`; their licence is
+# LICENSE, not a third-party notice (mirrors deny.toml's [licenses.private]).
+private = { ignore = true }
+
+# Clarifications. Without a licence file for the licence cargo-about picks, it
+# falls back to the SPDX template, whose copyright line is unfilled
+# (`<year> <owner>`); license.rs rejects any such placeholder in the notices.
+
+# Declared "BSD-3-Clause/MIT", but the crate ships only its BSD-3 LICENSE
+# (Dropbox). Ship that file, under the licence it actually states.
+[brotli-decompressor.clarify]
+license = "BSD-3-Clause"
+[[brotli-decompressor.clarify.files]]
+path = "LICENSE"
+license = "BSD-3-Clause"
+checksum = "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae"
+
+# BSD-3-Clause, but the published crate has no licence file. It lives in the
+# alloc-stdlib/ subdirectory of github.com/dropbox/rust-alloc-no-stdlib, whose
+# root LICENSE is the one alloc-no-stdlib publishes. alloc-no-stdlib is a
+# dependency of alloc-stdlib, so its locked copy is always unpacked beside it
+# in the registry; read the file from there (a git clarification would need
+# the network, and gen-notices.sh runs cargo-about offline). The checksum pins
+# the exact text; a different layout (e.g. `cargo vendor`) fails loudly.
+[alloc-stdlib.clarify]
+license = "BSD-3-Clause"
+[[alloc-stdlib.clarify.files]]
+path = "../alloc-no-stdlib-2.0.4/LICENSE"
+license = "BSD-3-Clause"
+checksum = "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae"

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "06a76a77a7fb496e744c9b8ec837c8946b6599832a4d739285bf8682f165f789",
+  "size": 760,
+  "source": "corpus-c/kp15_standard.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "a b›c\n",
+      "sha256": "fcb133375fe930323430bd89c3e71afd28519d400795cfcf92fb644be35aa043",
+      "error": null
+    }
+  ]
+}

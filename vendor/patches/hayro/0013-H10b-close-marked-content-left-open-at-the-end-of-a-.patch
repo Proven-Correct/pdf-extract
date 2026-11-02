@@ -1,0 +1,79 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Thu, 1 Oct 2026 23:24:10 -0400
+Subject: [PATCH 13/22] H10b: close marked content left open at the end of a
+ content stream
+
+A content stream (a page's or a Form XObject's) that opens marked
+content with `BMC`/`BDC` and ends without the matching `EMC` left the
+sequence open for whatever was interpreted next. In a Form XObject this
+leaked past the form: an optional-content `BDC` over a hidden group hid
+the rest of the page, the form's own `/OC` entry was popped in place of
+the leaked level, and devices saw the sequence continue over content
+that does not belong to it.
+
+`interpret()` now counts the sequences opened by the stream it runs and
+not closed by that stream's own `EMC`s, and before returning closes
+them, innermost first, both in the optional-content state and on the
+device, as if the stream had ended with the missing `EMC`s. This also
+happens when the interpretation budget cut the stream short. Balanced
+streams see no change; an `EMC` without a matching opener in the same
+stream still closes the enclosing stream's sequence, as before.
+---
+ hayro-interpret/src/interpret/mod.rs | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/hayro-interpret/src/interpret/mod.rs b/hayro-interpret/src/interpret/mod.rs
+index 0830670..3cefedd 100644
+--- a/hayro-interpret/src/interpret/mod.rs
++++ b/hayro-interpret/src/interpret/mod.rs
+@@ -413,6 +413,9 @@ pub fn interpret<'a>(
+     device: &mut impl Device<'a>,
+ ) {
+     let num_states = context.num_states();
++    // Marked-content sequences (`BMC`/`BDC`) opened by this content stream and not yet
++    // closed by an `EMC` of the same stream; see the cleanup after the loop.
++    let mut open_marked_content = 0_usize;
+ 
+     context.save_state();
+ 
+@@ -708,16 +711,21 @@ pub fn interpret<'a>(
+                 };
+ 
+                 device.begin_marked_content(bdc.0, mcid, properties.as_ref());
++                open_marked_content += 1;
+             }
+             TypedInstruction::MarkedContentPointWithProperties(_) => {}
+             TypedInstruction::EndMarkedContent(_) => {
+                 context.ocg_state.end_marked_content();
+                 device.end_marked_content();
++                // An `EMC` without a matching `BMC`/`BDC` in this stream closes a sequence
++                // of an enclosing stream, as before; it is not this stream's to account for.
++                open_marked_content = open_marked_content.saturating_sub(1);
+             }
+             TypedInstruction::MarkedContentPoint(_) => {}
+             TypedInstruction::BeginMarkedContent(bmc) => {
+                 context.ocg_state.begin_marked_content();
+                 device.begin_marked_content(bmc.0, None, None);
++                open_marked_content += 1;
+             }
+             TypedInstruction::BeginText(_) => {
+                 context.get_mut().text_state.text_matrix = Affine::IDENTITY;
+@@ -943,6 +951,17 @@ pub fn interpret<'a>(
+         }
+     }
+ 
++    // Close the marked-content sequences this stream left open, innermost first, as if
++    // the stream had ended with the missing `EMC`s. Otherwise an unbalanced `BDC` in a
++    // Form XObject would stay open after the form: a hidden optional-content span would
++    // hide the rest of the page, the form's own `/OC` entry would be popped in its place,
++    // and the device would see the sequence swallow content it does not belong to. This
++    // also runs when the budget cut the stream short.
++    for _ in 0..open_marked_content {
++        context.ocg_state.end_marked_content();
++        device.end_marked_content();
++    }
++
+     while context.num_states() > num_states {
+         context.restore_state(device);
+     }

@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "sha256": "7c0c3717cf2372a8594c19b37b19c3e6f1ddb0878e1fdc1c23fe71aa3a7df541",
+  "size": 120721,
+  "source": "corpus-b/hayro/color_space_lab.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 4,
+  "pages": [
+    {
+      "index": 0,
+      "text": "WhitePoint = (1.0, 1.0, 1.0)\nBlackPoint = (0.0, 0.0, 0.0)\nRange = (-100, 100, −100, 100)\n",
+      "sha256": "01763bde8bbabff0b676aec04f23da6a7a191e06c1c074353fcfa148d6149ca9",
+      "error": null
+    },
+    {
+      "index": 1,
+      "text": "WhitePoint = (1.0, 1.0, 1.0)\nBlackPoint = (0.4, 0.6, 0.3)\nRange = (-100, 100, −100, 100)\n",
+      "sha256": "3fc6c65233e0380ce0dcb5494764946c20a5667c07ef2862b7ba4c123403a8b5",
+      "error": null
+    },
+    {
+      "index": 2,
+      "text": "WhitePoint = (2.0 1.0 2.3)\nBlackPoint = (0.0, 0.0, 0.0)\nRange = (-100, 100, −100, 100)\n",
+      "sha256": "49f10ed163b03321c1268f2efbac7b44fc6798715596be3ffb72dab0aa988a32",
+      "error": null
+    },
+    {
+      "index": 3,
+      "text": "WhitePoint = (1.0, 1.0, 1.0)\nBlackPoint = (0.0, 0.0, 0.0)\nRange = (-200, 250, −150, 150)\n",
+      "sha256": "23ec24e761539dad00eb76dba5195c51d90b8b2192bf2068c59c5747900afbd9",
+      "error": null
+    }
+  ]
+}

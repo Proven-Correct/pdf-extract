@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "recorded": {
+    "date": "2026-10-01",
+    "platform": "macOS-14.8.7-arm64-arm-64bit",
+    "machine": "arm64",
+    "runner": "local"
+  },
+  "benches": {
+    "p1/open_max_pages_10/1m": {
+      "mean_ns": 47664272,
+      "peak_rss_bytes": 215334912,
+      "file_bytes": 108328816
+    },
+    "p1/open_page_count/100k": {
+      "mean_ns": 32592374,
+      "peak_rss_bytes": 22102016,
+      "file_bytes": 10523871
+    },
+    "p1/open_page_count/1m": {
+      "mean_ns": 449795056,
+      "peak_rss_bytes": 234913792,
+      "file_bytes": 108328816
+    }
+  }
+}

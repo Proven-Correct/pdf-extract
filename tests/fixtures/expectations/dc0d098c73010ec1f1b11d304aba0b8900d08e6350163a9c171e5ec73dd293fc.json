@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "dc0d098c73010ec1f1b11d304aba0b8900d08e6350163a9c171e5ec73dd293fc",
+  "size": 949,
+  "source": "corpus-c/kp11_hidden_ocg_ocmd.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Plain\n",
+      "sha256": "987f0b80305fa21ef66b9d485f4388385503e5f6ceccc49551c10582cd18b6e4",
+      "error": null
+    }
+  ]
+}

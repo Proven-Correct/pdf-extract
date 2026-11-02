@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "85e84837601e3c21899bd4b89237fb83771179c69be4565f3f0d7248bd76c74b",
+  "size": 15023,
+  "source": "corpus-b/pdfbox/simple-openoffice.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "I am a simple pdf.\n",
+      "sha256": "51e20aaf2b681226607b63c9aec6b93cbc17d17f35aaf574f8e5baed6d0dd909",
+      "error": null
+    }
+  ]
+}

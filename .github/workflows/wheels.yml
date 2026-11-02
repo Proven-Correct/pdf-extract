@@ -1,0 +1,295 @@
+# Release wheels (Phase 3 change 2, design D8; ADR 0091; packaging spec).
+#
+# Runs ONLY on a `v*` tag push or a manual dispatch: never on a schedule, a
+# branch push or a pull request. The repository is internal and Actions
+# minutes are billed (ADR 0087); one run is about 3-5 runner-hours. Per push,
+# ci.yml's `wheel` job builds and checks one wheel (manylinux x86_64 abi3).
+#
+#   version     docs/releases/v<workspace version>.md must exist; on a tag,
+#               the tag must be v<workspace version>
+#   license     the licence checks of ci.yml's `deny` job (the reusable
+#               license.yml) on this exact commit, so stale notices or a
+#               disallowed licence cannot be released (licensing spec
+#               "License checks rerun on release")
+#   sdist       maturin sdist; must carry the vendored trees and the build
+#               scripts (a wheel must be buildable from it)
+#   build       {linux x86_64, linux aarch64, macOS arm64} x {abi3, ft}, each
+#               built with tools/build/build-wheel.sh on a native runner,
+#               checked by verify_wheel.py and smoke-tested from a fresh venv
+#   sdist-wheel a wheel built from the sdist alone (no checkout), checked
+#   prod-image  each Linux abi3 wheel in stock ubuntu:24.04 with a
+#               uv-managed CPython 3.13 (the Phase 3 exit criterion) and in
+#               stock ubuntu:26.04 with its own Python 3.14, both with
+#               tesseract-ocr-eng
+#   files       collects the six wheels and the sdist, checks the count and
+#               writes SHA256SUMS (also on dispatch); needs `license`
+#   release     on a tag push only: those files on a GitHub Release, with
+#               docs/releases/<tag>.md as its notes. Nothing is published to
+#               a package index (design spec §17.2 Q1).
+#
+# Dispatch: `gh workflow run wheels.yml --ref <branch>`; the files are then
+# workflow artifacts and no release or tag is created.
+name: Wheels
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+concurrency:
+  group: wheels-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      # The release notes for the workspace version must exist on every run
+      # (a dispatch rehearsal catches a missing file); on a tag, the tag must
+      # also be v<version>. tools/build/release-version.sh does both.
+      - name: tag and release notes match the workspace version
+        shell: bash
+        run: |
+          if [[ $GITHUB_REF == refs/tags/v* ]]; then
+            bash tools/build/release-version.sh "$GITHUB_REF_NAME"
+          else
+            bash tools/build/release-version.sh
+          fi
+
+  sdist:
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      # maturin sdist runs cargo metadata under rust-toolchain.toml's pin.
+      - run: rustup toolchain install
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: uv sync --locked --python 3.13
+      - run: uv run --no-sync maturin sdist --out dist
+      - name: the sdist carries what a wheel build needs
+        shell: bash
+        run: |
+          listing="$(tar -tzf dist/pdf_extract-*.tar.gz)"
+          for need in vendor/tesseract/CMakeLists.txt vendor/leptonica/CMakeLists.txt \
+              vendor/hayro-syntax/Cargo.toml vendor/PROVENANCE.md \
+              tools/build/build-wheel.sh tools/build/stage-helper.sh tools/license/sbom.py \
+              tools/license/rust_std.py rust-toolchain.toml uv.lock about.toml LICENSE \
+              THIRD_PARTY_NOTICES tools/license/rust-std-COPYRIGHT.html; do
+            grep -q "^pdf_extract-[^/]*/$need\$" <<<"$listing" || { echo "sdist lacks $need" >&2; exit 1; }
+          done
+          if grep -q "pdf-extract-ocr-helper\$" <<<"$listing"; then
+            echo "sdist contains a staged helper binary" >&2
+            exit 1
+          fi
+          # The licence files, byte-identical to the repository's.
+          mkdir "$RUNNER_TEMP/sd"
+          tar -xzf dist/pdf_extract-*.tar.gz -C "$RUNNER_TEMP/sd"
+          for f in LICENSE THIRD_PARTY_NOTICES crates/testkit/data/README-AFM.txt \
+              tools/license/rust-std-COPYRIGHT.html; do
+            cmp "$f" "$RUNNER_TEMP"/sd/pdf_extract-*/"$f"
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  build:
+    needs: version
+    name: build (${{ matrix.platform }}, ${{ matrix.abi }})
+    runs-on: ${{ matrix.runner }}
+    # A tag's caches are scoped to the tag, so a release builds cold
+    # (Tesseract, Leptonica, thin LTO).
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-x86_64, runner: ubuntu-24.04, docker: x86_64, abi: abi3, python: "3.13" }
+          - { platform: linux-x86_64, runner: ubuntu-24.04, docker: x86_64, abi: ft, python: "3.14t" }
+          - { platform: linux-aarch64, runner: ubuntu-24.04-arm, docker: aarch64, abi: abi3, python: "3.13" }
+          - { platform: linux-aarch64, runner: ubuntu-24.04-arm, docker: aarch64, abi: ft, python: "3.14t" }
+          - { platform: macos-arm64, runner: macos-14, docker: "", abi: abi3, python: "3.13" }
+          - { platform: macos-arm64, runner: macos-14, docker: "", abi: ft, python: "3.14t" }
+    steps:
+      - uses: actions/checkout@v7
+      # Linux: the container's rustup, registry and build output (under
+      # target/), per architecture and ABI (the two ABIs of one architecture
+      # run at once and would race on one key). Same inputs as ci.yml's
+      # `wheel` key, but a separate cache.
+      - uses: actions/cache@v4
+        if: matrix.docker != ''
+        with:
+          path: |
+            target/docker-${{ matrix.docker }}
+            target/manylinux-${{ matrix.docker }}
+          key: wheel-${{ matrix.docker }}-${{ matrix.abi }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'tools/build/build-wheel.sh', 'vendor/tesseract/**', 'vendor/leptonica/**', 'crates/tesseract-sys/**') }}
+      # The host toolchain: the macOS build itself, and cargo tree for the
+      # verifier everywhere.
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        if: matrix.docker == ''
+        with:
+          key: wheel-${{ matrix.abi }}-${{ hashFiles('vendor/tesseract/**', 'vendor/leptonica/**', 'crates/tesseract-sys/**') }}
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: build
+        shell: bash
+        run: |
+          if [ -n "${{ matrix.docker }}" ]; then
+            tools/build/build-wheel.sh --docker "${{ matrix.docker }}" "${{ matrix.abi }}"
+          else
+            tools/build/build-wheel.sh "${{ matrix.abi }}"
+          fi
+      - run: uv sync --locked --python 3.13
+      - run: >-
+          uv run --no-sync python tools/build/verify_wheel.py
+          --platform ${{ matrix.platform }} --abi ${{ matrix.abi }} target/wheels/pdf_extract-*.whl
+      - uses: ./.github/actions/tessdata
+      - name: smoke test from a fresh venv outside the checkout
+        shell: bash
+        run: |
+          uv venv --python "${{ matrix.python }}" "$RUNNER_TEMP/smoke"
+          VIRTUAL_ENV="$RUNNER_TEMP/smoke" uv pip install --no-index target/wheels/pdf_extract-*.whl
+          cd "$RUNNER_TEMP"
+          if [ "${{ matrix.abi }}" = ft ]; then
+            PYTHON_GIL=0 "$RUNNER_TEMP/smoke/bin/python" -I "$GITHUB_WORKSPACE/tools/build/smoke.py" --gil-off-check
+          else
+            "$RUNNER_TEMP/smoke/bin/python" -I "$GITHUB_WORKSPACE/tools/build/smoke.py"
+            # The stable ABI: the same wheel on a later CPython too.
+            uv venv --python 3.14 "$RUNNER_TEMP/smoke314"
+            # After the cd above: the wheel path must be absolute.
+            VIRTUAL_ENV="$RUNNER_TEMP/smoke314" uv pip install --no-index "$GITHUB_WORKSPACE"/target/wheels/pdf_extract-*.whl
+            "$RUNNER_TEMP/smoke314/bin/python" -I "$GITHUB_WORKSPACE/tools/build/smoke.py"
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheel-${{ matrix.platform }}-${{ matrix.abi }}
+          path: target/wheels/pdf_extract-*.whl
+          if-no-files-found: error
+
+  # A wheel from the sdist alone: the archive is unpacked outside the
+  # checkout and its own build-wheel.sh runs (in the manylinux image). The
+  # checkout is used only afterwards, for the verifier.
+  sdist-wheel:
+    needs: sdist
+    runs-on: ubuntu-24.04
+    # Always a cold build: the sdist tree has its own target/.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: sdist
+          path: ${{ runner.temp }}/sdist
+      - name: build from the unpacked sdist
+        shell: bash
+        run: |
+          mkdir "$RUNNER_TEMP/src"
+          tar -xzf "$RUNNER_TEMP"/sdist/pdf_extract-*.tar.gz -C "$RUNNER_TEMP/src"
+          src="$(echo "$RUNNER_TEMP"/src/pdf_extract-*)"
+          # bash: maturin's sdist stores every file without its execute bit.
+          bash "$src/tools/build/build-wheel.sh" --docker x86_64 abi3
+          mkdir -p target/wheels
+          cp "$src"/target/wheels/pdf_extract-*.whl target/wheels/
+      - run: rustup toolchain install
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: uv sync --locked --python 3.13
+      - run: >-
+          uv run --no-sync python tools/build/verify_wheel.py
+          --platform linux-x86_64 --abi abi3 target/wheels/pdf_extract-*.whl
+      - uses: ./.github/actions/tessdata
+      - name: smoke test
+        shell: bash
+        run: |
+          uv venv --python 3.13 "$RUNNER_TEMP/smoke"
+          VIRTUAL_ENV="$RUNNER_TEMP/smoke" uv pip install --no-index target/wheels/pdf_extract-*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/smoke/bin/python" -I "$GITHUB_WORKSPACE/tools/build/smoke.py"
+
+  prod-image:
+    needs: build
+    name: prod-image (${{ matrix.image }}, ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    # 24.04 with a uv-managed CPython 3.13 is the Phase 3 exit criterion;
+    # 26.04 with the distribution's own Python 3.14 is the first consumer's
+    # platform (packaging spec "Wheels install on the production OS image").
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["24.04", "26.04"]
+        arch: [x86_64, aarch64]
+        include:
+          - { arch: x86_64, runner: ubuntu-24.04 }
+          - { arch: aarch64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: wheel-linux-${{ matrix.arch }}-abi3
+          path: dist
+      - run: >-
+          bash tools/build/prod-image-test.sh --image "${{ matrix.image }}"
+          dist/pdf_extract-*-cp313-abi3-manylinux_2_28_${{ matrix.arch }}.whl
+
+  license:
+    uses: ./.github/workflows/license.yml
+
+  # The release files, on dispatch too (as one artifact): six wheels, one
+  # sdist, and their SHA256SUMS. Gated on `license` as well as the builds.
+  files:
+    needs: [license, sdist, build, sdist-wheel, prod-image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          path: dist
+          merge-multiple: true
+      - name: count and checksum
+        shell: bash
+        run: |
+          cd dist
+          ls -1
+          [ "$(ls -1 pdf_extract-*.whl | wc -l)" -eq 6 ] || { echo "expected six wheels" >&2; exit 1; }
+          [ "$(ls -1 pdf_extract-*.tar.gz | wc -l)" -eq 1 ] || { echo "expected one sdist" >&2; exit 1; }
+          sha256sum pdf_extract-* > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-files
+          path: dist/*
+
+  # A tag push only: a dispatch on a tag ref (github.ref is then the tag
+  # too) must not release.
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: files
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      # Only for the release notes (docs/releases/<tag>.md, checked by the
+      # `version` job).
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-files
+          path: dist
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" dist/*
+          --repo "$GITHUB_REPOSITORY" --verify-tag
+          --title "pdf-extract $GITHUB_REF_NAME"
+          --notes-file "docs/releases/$GITHUB_REF_NAME.md"

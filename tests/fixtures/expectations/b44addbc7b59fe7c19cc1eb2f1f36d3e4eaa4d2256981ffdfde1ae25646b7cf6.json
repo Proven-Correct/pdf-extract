@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "b44addbc7b59fe7c19cc1eb2f1f36d3e4eaa4d2256981ffdfde1ae25646b7cf6",
+  "size": 847,
+  "source": "corpus-c/kp15_differences_nbspace.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "a b\n",
+      "sha256": "501a66a6551474763baf6b7d95e12654f40d85848f44aeb6fa20bd619bc34141",
+      "error": null
+    }
+  ]
+}

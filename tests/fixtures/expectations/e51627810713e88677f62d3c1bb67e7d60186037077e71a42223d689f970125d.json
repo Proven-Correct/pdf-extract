@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "e51627810713e88677f62d3c1bb67e7d60186037077e71a42223d689f970125d",
+  "size": 837,
+  "source": "corpus-c/kp20_form_self_recursion.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Rec\n",
+      "sha256": "03f876c7fd8aab421ad77a0d6b48ccd530877da556b731a023800bb96857dd94",
+      "error": null
+    }
+  ]
+}

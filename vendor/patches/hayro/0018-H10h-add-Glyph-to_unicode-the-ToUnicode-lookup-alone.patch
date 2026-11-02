@@ -1,0 +1,167 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Thu, 1 Oct 2026 23:31:24 -0400
+Subject: [PATCH 18/22] H10h: add Glyph::to_unicode, the ToUnicode lookup alone
+
+`Glyph::as_unicode()` is a fallback chain: the font's `ToUnicode` map,
+then, depending on the font, the glyph name through hayro's glyph-name
+table, or a substitute UCS2 `CMap` for CID fonts of a known character
+collection, or the embedded program's `cmap`. For Type1 fonts it also
+skips a map entry that maps to U+0000 in favour of the glyph name. A
+caller with its own fallback chain (for example its own glyph-name
+table) cannot tell from the result which step answered.
+
+`Glyph::to_unicode()` (and the same method on `OutlineGlyph` and
+`Type3Glyph`) returns the `ToUnicode` entry for the glyph's character
+code and nothing else: `None` when the font has no `ToUnicode` map or
+the map lacks the code, the entry as is otherwise, U+0000 included. A
+UCS2 `CMap` substituted for a missing map does not count. `as_unicode()`
+is unchanged.
+---
+ hayro-interpret/src/font/cid.rs       | 10 ++++++++++
+ hayro-interpret/src/font/mod.rs       | 25 +++++++++++++++++++++++++
+ hayro-interpret/src/font/outline.rs   |  9 +++++++++
+ hayro-interpret/src/font/true_type.rs |  5 +++++
+ hayro-interpret/src/font/type1.rs     |  5 +++++
+ hayro-interpret/src/font/type3.rs     |  5 +++++
+ 6 files changed, 59 insertions(+)
+
+diff --git a/hayro-interpret/src/font/cid.rs b/hayro-interpret/src/font/cid.rs
+index 1cce82d..80fa5ec 100644
+--- a/hayro-interpret/src/font/cid.rs
++++ b/hayro-interpret/src/font/cid.rs
+@@ -429,6 +429,16 @@ impl Type0Font {
+         }
+     }
+ 
++    /// The `ToUnicode` entry for `code` alone. A UCS2 `CMap` that stands in for a missing
++    /// `ToUnicode` map (indexed by CID) does not count.
++    pub(crate) fn to_unicode(&self, code: u32) -> Option<BfString> {
++        if self.to_unicode_is_cid_indexed {
++            return None;
++        }
++
++        self.to_unicode.as_ref()?.lookup_bf_string(code)
++    }
++
+     pub(crate) fn char_code_to_unicode(&self, code: u32) -> Option<BfString> {
+         if let Some(to_unicode) = &self.to_unicode {
+             let key = if self.to_unicode_is_cid_indexed {
+diff --git a/hayro-interpret/src/font/mod.rs b/hayro-interpret/src/font/mod.rs
+index 0c19575..0e7113e 100644
+--- a/hayro-interpret/src/font/mod.rs
++++ b/hayro-interpret/src/font/mod.rs
+@@ -106,6 +106,21 @@ impl Glyph<'_> {
+         }
+     }
+ 
++    /// Returns the entry of the font's `ToUnicode` `CMap` for this glyph's
++    /// character code, and nothing else.
++    ///
++    /// Unlike [`as_unicode`](Glyph::as_unicode), this never falls back to the
++    /// glyph name or to a substitute `CMap`, and returns an entry that maps to
++    /// U+0000 as it is. `None` when the font has no `ToUnicode` `CMap` or the
++    /// map has no entry for the code. Callers that want their own fallback chain
++    /// (for example their own glyph-name table) start from this.
++    pub fn to_unicode(&self) -> Option<BfString> {
++        match self {
++            Glyph::Outline(g) => g.to_unicode(),
++            Glyph::Type3(g) => g.to_unicode(),
++        }
++    }
++
+     /// Returns the character code that selected this glyph, as read from the
+     /// shown string (one byte for simple fonts, one to four for Type0 fonts).
+     pub fn char_code(&self) -> u32 {
+@@ -277,6 +292,11 @@ impl OutlineGlyph {
+         self.font.char_code_to_unicode(self.char_code)
+     }
+ 
++    /// See [`Glyph::to_unicode`].
++    pub fn to_unicode(&self) -> Option<BfString> {
++        self.font.to_unicode(self.char_code)
++    }
++
+     /// Get raw font bytes and metadata for downstream use.
+     ///
+     /// Returns `None` for Type1 fonts.
+@@ -421,6 +441,11 @@ impl<'a> Type3Glyph<'a> {
+         self.font.char_code_to_unicode(self.char_code)
+     }
+ 
++    /// See [`Glyph::to_unicode`].
++    pub fn to_unicode(&self) -> Option<BfString> {
++        self.font.to_unicode(self.char_code)
++    }
++
+     /// See [`Glyph::char_code`].
+     pub fn char_code(&self) -> u32 {
+         self.char_code
+diff --git a/hayro-interpret/src/font/outline.rs b/hayro-interpret/src/font/outline.rs
+index 0d7161a..35a439b 100644
+--- a/hayro-interpret/src/font/outline.rs
++++ b/hayro-interpret/src/font/outline.rs
+@@ -108,6 +108,15 @@ impl OutlineFont {
+         }
+     }
+ 
++    /// The entry of the font's `ToUnicode` `CMap` for `char_code`, and nothing else.
++    pub(crate) fn to_unicode(&self, char_code: u32) -> Option<BfString> {
++        match self {
++            Self::Type1(t) => t.to_unicode(char_code),
++            Self::TrueType(t) => t.to_unicode(char_code),
++            Self::Type0(t) => t.to_unicode(char_code),
++        }
++    }
++
+     /// Get the advance for a character code in text space units times 1000,
+     /// as the interpreter applies it (zero where no width is known).
+     pub(crate) fn code_advance(&self, char_code: u32) -> Vec2 {
+diff --git a/hayro-interpret/src/font/true_type.rs b/hayro-interpret/src/font/true_type.rs
+index 6159b4f..cf6f35a 100644
+--- a/hayro-interpret/src/font/true_type.rs
++++ b/hayro-interpret/src/font/true_type.rs
+@@ -223,6 +223,11 @@ impl TrueTypeFont {
+         self.ascent_descent
+     }
+ 
++    /// The `ToUnicode` entry for `code` alone.
++    pub(crate) fn to_unicode(&self, code: u32) -> Option<BfString> {
++        self.to_unicode.as_ref()?.lookup_bf_string(code)
++    }
++
+     pub(crate) fn char_code_to_unicode(&self, code: u32) -> Option<BfString> {
+         if let Some(to_unicode) = &self.to_unicode
+             && let Some(c) = to_unicode.lookup_bf_string(code)
+diff --git a/hayro-interpret/src/font/type1.rs b/hayro-interpret/src/font/type1.rs
+index 6c0c271..c825c58 100644
+--- a/hayro-interpret/src/font/type1.rs
++++ b/hayro-interpret/src/font/type1.rs
+@@ -148,6 +148,11 @@ impl Type1Font {
+         self.3
+     }
+ 
++    /// The `ToUnicode` entry for `char_code` alone, an entry for U+0000 included.
++    pub(crate) fn to_unicode(&self, char_code: u32) -> Option<BfString> {
++        self.2.as_ref()?.lookup_bf_string(char_code)
++    }
++
+     pub(crate) fn char_code_to_unicode(&self, char_code: u32) -> Option<BfString> {
+         if let Some(to_unicode) = &self.2
+             && let Some(c) = to_unicode.lookup_bf_string(char_code)
+diff --git a/hayro-interpret/src/font/type3.rs b/hayro-interpret/src/font/type3.rs
+index 6eac9e4..5d1d557 100644
+--- a/hayro-interpret/src/font/type3.rs
++++ b/hayro-interpret/src/font/type3.rs
+@@ -121,6 +121,11 @@ impl<'a> Type3<'a> {
+         self.ascent_descent
+     }
+ 
++    /// The `ToUnicode` entry for `char_code` (the only source Type3 fonts have).
++    pub(crate) fn to_unicode(&self, char_code: u32) -> Option<BfString> {
++        self.char_code_to_unicode(char_code)
++    }
++
+     pub(crate) fn char_code_to_unicode(&self, char_code: u32) -> Option<BfString> {
+         // Type3 fonts can only provide Unicode via ToUnicode CMap.
+         self.to_unicode

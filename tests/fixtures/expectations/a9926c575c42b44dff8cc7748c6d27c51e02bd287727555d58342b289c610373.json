@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "a9926c575c42b44dff8cc7748c6d27c51e02bd287727555d58342b289c610373",
+  "size": 833,
+  "source": "corpus-c/two_blocks.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Line one.\nline two.\nBlock two.\n",
+      "sha256": "ae7f7dbc4a9cdb9d2c1cc88dccdcf203d400a4335f52d576b955491329e0bfb0",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "3b4502a5140b00e76d4bf990cead03afe4e03c37c6afafeab4c3eb5c6378f1be",
+  "size": 1078691,
+  "source": "corpus-d/clean_body_10pt_skew.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "When inthe Course of human evens. becomes necessary for one people to dissolve the polical\nbands which have eannected them wih another, and to assume among the powers of he earth, the\nseparate and equal station to wrich tho Laws of Nalue and of Nature's Go enti thom, 2 decent\nsormecto te opinions of mankind requires that they shoud decare the causes which impel them fo\n‘heaopartion We hold theso truth to be sel-evidet, that al men are created equa. that they are\ndomed by ter Creator with certain unalienable Right, that among these are Life, Lbery and the\nurl of Happiness. That to secure those rigs, Governments are insted amang Men, deriving\n{hr just powers from the consent of the governed, Thal whenever any Farm of Government\nCrea nes destructive ofthese ends, tis the Right of the People to alter orto abolih t, and to institute\npew Government, laying ts foundation on such principles and organizing its powers in such form, as\nTeirem shall soem most keyo effect ther Safety and Happiness. Prudence, indeed, wit citate that\n{Governments ong estabished shoud not be changed fright and transient causes: and accor\nSrrexparence hath shewn, that mankind are more Bsposed to sul, whe ovis ae sfterabe, han\nto roht emaolves by abolishing the forms to whic they aro accustomed. But when a tong train of\nfabuses and usurpatons, pursuing avarably the same Object evinces a design to reduce them under\napesete Despottm,\nstot right, tis their duty 10 throw off such Goverment, and to provide new\nGuns for ther future security. Such has been the patient sutferance of trese Colones; and such is\ncoat\nnecessity which constrains them to alter their former Systems of Goverment. The history of\nthe provent King of Great Bian is a history of repeatod injuries and usurpation, all having in rect\nojct the estabishment ofan absolute Tyranny over these Sates, To prove ths, let Facts be\ncred toacand word. He has refused his Assent to Laws, the most wholesome and necessary\nfor tho public good. He has forbidden hisGovernors to pass Laws ot immediate and pressing\nImportance, unless suspended in their operation tits Assent shoud be abtanad and when £0\nreponded, he has ity neglected to attend to them. He has reused to pass aher Laws forthe\naeeetrmnodaton of large dstrets of people, unless those people would relingush the right of\n‘Representation inthe Legislature, arightinestmabe to them andformidable\nto yrants only, He Nas\ncated together logslative bodies atpaces unusual, uncomforable, and distant from thedepository of\nther puble Records, forthe sole purpose of fatiguing them ino compliance wi his measures, He\nfn dissolved Ropresentative Houses repeatedly. for opposing with maniyfraness his invasions on\nthe rigits ofthe people. He has retusedfor along time, ater such dissolutions to cause oers 1 be\n‘lectee whereby the Legislative powers, ncapable of Annihilation, have retumed tothe People at\nlage for ei exercise the State remaining inthe meantime exposed\nall th dangers of asion\nfom wihout. and convulsions\nwithin,He has endeavoured to prevent the population ofthese States;\ntocthot purpose obstructing the Laws for Naturalization of Foreigners reusing to pass ottersto\nfercourage their migrations hither, and raising the condttons of new Appropriations of Lands, He fs\n‘Soatructed the Administration of Justice, by refusing his Assent fo Laws for establishing Judiciary\nfoes. He has made Judges dependent on is Wil alone, forthe tenure ofthe offeas, and Ne\npout and payment oftheir salares, He has erected a mulitude of New Offices, and sent hither\ncarsof Oioes to harass our people, and ea out their substance. He has Kept among us, in ines\nSrpeace, Standing Armies without the Consent of ouisa. He has atected to render the\n",
+        "sha256": "3990d451d018933599b69ca99a3c12beaefead1c3fed04ed2602a233587294d6"
+      }
+    ]
+  }
+}

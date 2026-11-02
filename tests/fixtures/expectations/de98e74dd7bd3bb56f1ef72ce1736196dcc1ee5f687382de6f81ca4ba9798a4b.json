@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "de98e74dd7bd3bb56f1ef72ce1736196dcc1ee5f687382de6f81ca4ba9798a4b",
+  "size": 1249,
+  "source": "corpus-c/kp16_identity_nonembedded_macorder.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Hello, World 2026.\n",
+      "sha256": "b7b571de8d708818598b6cb63752347be86961828c929f6468f4ae3e1af7420e",
+      "error": null
+    }
+  ]
+}

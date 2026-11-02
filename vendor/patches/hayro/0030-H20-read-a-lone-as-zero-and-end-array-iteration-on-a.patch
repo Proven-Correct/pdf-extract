@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Mon, 19 Oct 2026 14:47:10 +0100
+Subject: [PATCH 30/35] H20: read a lone + as zero, and end array iteration on
+ a failed re-read
+
+Number::skip accepts a sign followed by white space as a zero, and
+read_inner documents that lone "-", "+" and "-." read as zero, but only the
+minus and the dot were recorded, so a lone "+" returned None. An array such
+as "[+ ]" therefore passed validation, and ArrayIter::next unwrapped the
+failed re-read and panicked. The page-tree walk in open reaches this through
+a /Kids array containing a stray "+".
+
+Record that a sign was seen so a lone "+" reads as zero like a lone "-",
+which makes read agree with skip. As defence in depth, ArrayIter::next now
+ends the iteration when the re-read fails instead of unwrapping, so any
+other disagreement between the two parsers cannot panic at open.
+
+A small hand-made document with /Kids [3 0 R + ] is committed as a
+regression.
+
+Fixes internal #120
+---
+ hayro-syntax/src/object/array.rs  | 11 ++++++-----
+ hayro-syntax/src/object/number.rs | 12 +++++++-----
+ 2 files changed, 13 insertions(+), 10 deletions(-)
+
+diff --git a/hayro-syntax/src/object/array.rs b/hayro-syntax/src/object/array.rs
+index 20b84e1..6f81af4 100644
+--- a/hayro-syntax/src/object/array.rs
++++ b/hayro-syntax/src/object/array.rs
+@@ -134,12 +134,13 @@ impl<'a> Iterator for ArrayIter<'a> {
+         self.reader.skip_white_spaces_and_comments();
+ 
+         if !self.reader.at_end() {
+-            // Objects are already guaranteed to be valid.
+-            let item = self
++            // Validation (`skip`) and this re-read are separate parsers, and a
++            // disagreement used to panic here (a lone `+`, #120). End the
++            // iteration on a failed read instead: malformed input must not
++            // panic, and a short array is how hayro treats other bad entries.
++            return self
+                 .reader
+-                .read_with_context::<MaybeRef<Object<'_>>>(&self.ctx)
+-                .unwrap();
+-            return Some(item);
++                .read_with_context::<MaybeRef<Object<'_>>>(&self.ctx);
+         }
+ 
+         None
+diff --git a/hayro-syntax/src/object/number.rs b/hayro-syntax/src/object/number.rs
+index a2847cd..0b0c5a5 100644
+--- a/hayro-syntax/src/object/number.rs
++++ b/hayro-syntax/src/object/number.rs
+@@ -113,16 +113,16 @@ impl Readable<'_> for Number {
+ 
+ #[inline(always)]
+ fn read_inner(r: &mut Reader<'_>) -> Option<Number> {
+-    let negative = match r.peek_byte()? {
++    let (negative, has_sign) = match r.peek_byte()? {
+         b'-' => {
+             r.forward();
+-            true
++            (true, true)
+         }
+         b'+' => {
+             r.forward();
+-            false
++            (false, true)
+         }
+-        _ => false,
++        _ => (false, false),
+     };
+ 
+     let mut mantissa: u64 = 0;
+@@ -161,7 +161,9 @@ fn read_inner(r: &mut Reader<'_>) -> Option<Number> {
+     }
+ 
+     if !has_digits {
+-        if negative || has_dot {
++        // `skip` accepts a lone sign as a number, so `read` must too, or a
++        // validated array (`[+ ]`) fails to re-read when it is iterated.
++        if has_sign || has_dot {
+             // Treat numbers like just `-`, `+` or `-.` as zero.
+             return Some(Number(InternalNumber::Integer(0)));
+         }

@@ -1,0 +1,84 @@
+# pdf-extract-ocr: the OCR engine (spec 0002 §1.2, §1.3, §3.3). Resolves the
+# model directory, pools Tesseract instances, renders a page with
+# pdf-extract-render and turns the recognised words into a TextPage, in this
+# process or in helper processes (src/bin/pdf-extract-ocr-helper.rs). The
+# Tesseract build itself lives in pdf-extract-tesseract-sys; this crate has no
+# unsafe code of its own.
+[package]
+name = "pdf-extract-ocr"
+description = "Tesseract OCR engine and instance pool for pdf-extract"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Workspace lints, including the `cfg(coverage)` the helper binary reads
+# under `cargo llvm-cov`.
+[lints]
+workspace = true
+
+[features]
+default = ["vendored"]
+# Forwarded to the sys crate (spec §3.7 "Cargo features"); exactly one of the
+# two must be on, which the sys crate's build script enforces.
+vendored = ["pdf-extract-tesseract-sys/vendored"]
+system-tesseract = ["pdf-extract-tesseract-sys/system-tesseract"]
+
+[dependencies]
+# OCR vocabulary (errors, TextPage, PageRecognizer) and the hidden
+# `ocr_support::TextPageBuilder`.
+pdf-extract-core = { path = "../core", features = ["render-support"] }
+pdf-extract-render = { path = "../render" }
+# No default features: the feature choice is forwarded above.
+pdf-extract-tesseract-sys = { path = "../tesseract-sys", default-features = false }
+# `info().model_sha256` (O13). Already in the graph (core's dev-dependencies,
+# the oracle tests); MIT OR Apache-2.0.
+sha2 = "0.10"
+# `OcrEngine: Send + Sync` and friends (spec §3.3). Already in the graph.
+static_assertions = "1.1.0"
+
+# The model checker behind src/sync.rs, present only in the `--cfg loom`
+# build that runs tests/loom_pool.rs (MIT). A target-cfg dependency rather
+# than a feature, so `--all-features` builds never pull it in or swap the
+# shim.
+[target.'cfg(loom)'.dependencies]
+loom = "0.7.2"
+
+[dev-dependencies]
+# `ScriptedBackend` (pool and classification tests without Tesseract) and the
+# PDF builder for test pages.
+pdf-extract-testkit = { path = "../testkit", features = ["ocr"] }
+# `fork()` and `_exit()` in the fork-safety test (O11), and peak RSS in the
+# quality report. Already in the graph.
+libc = "0.2"
+# The corpus-D quality gate (tests/quality.rs, spec 0002 §3.8): NFC for the
+# O34 metrics (D-10; MIT OR Apache-2.0), the manifest's `[[built]]` pins and
+# the oracle's expectation JSON. toml and serde_json are already in the graph.
+unicode-normalization = "0.1.25"
+toml = "0.9"
+serde_json = "1"
+
+# The silence test re-runs itself as a child whose fds 1 and 2 are captured,
+# so the child must print nothing, not even libtest's banner: its own `main`.
+[[test]]
+name = "silence"
+harness = false
+
+# The fork test forks the test process; libtest's worker threads would be
+# copied into the child only as memory, but a single-test binary with its own
+# `main` keeps the child's state obvious.
+[[test]]
+name = "fork"
+harness = false
+
+# Forks from its own `main` while one known thread has a page in flight.
+[[test]]
+name = "process_fork"
+harness = false
+
+# Changes PDF_EXTRACT_OCR_HELPER and PATH, which only a single-threaded
+# process may do safely.
+[[test]]
+name = "process_discovery"
+harness = false

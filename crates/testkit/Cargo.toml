@@ -1,0 +1,50 @@
+# pdf-extract-testkit: builds PDFs for tests (well-formed builder pages and
+# deliberately hostile files). The Rust library never depends on it; the
+# Python extension does, to expose the builder as `pdf_extract.testing`.
+[package]
+name = "pdf-extract-testkit"
+description = "PDF builders and hostile-file generators for pdf-extract tests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+# data/Helvetica.afm is Adobe's Core14 metrics file; its notice
+# (data/README-AFM.txt) must travel with it.
+include = ["src/**", "data/**", "examples/**", "tests/**", "Cargo.toml"]
+
+[lints]
+workspace = true
+
+[features]
+# `ScriptedBackend` (src/ocr.rs), a stand-in OCR backend for tests. Off by
+# default so a user of the builder alone (core's tests) does not pull in the
+# Tesseract build; pdf-extract-ocr's tests and the Python extension (which
+# links pdf-extract-ocr anyway, for `_native._scripted_engine`) turn it on.
+ocr = ["dep:pdf-extract-ocr", "dep:pdf-extract-core"]
+
+[dependencies]
+# No default features: the linkage choice belongs to whoever builds the
+# engine (pdf-extract-ocr's own tests, or a `system-tesseract` build).
+pdf-extract-ocr = { path = "../ocr", optional = true, default-features = false }
+# The OCR error vocabulary the scripted backend returns.
+pdf-extract-core = { path = "../core", optional = true }
+# Flate compression for flate bombs and operator floods (both would otherwise
+# be tens of megabytes). Already in the graph through hayro-syntax.
+flate2 = "1"
+thiserror = "2"
+# Corpus D's noise builder (src/corpus_d/noise.rs, run 0002 §3.8) decodes the
+# committed clean files with the fork and hashes what it builds. Both were
+# dev-dependencies before (the generated-file checks and the fixture
+# manifest test still use them) and are in every build that links core.
+hayro-syntax = "=0.7.2"
+sha2 = "0.10"
+
+[dev-dependencies]
+# Fixture manifest TOML parsing.
+toml = "0.9"
+# `cargo metadata` output in the license test.
+serde_json = "1"
+# Parses crates/python/src/*.rs in the panic-guard scan (tests/panic_guard.rs).
+# Already in the lock file through pyo3-macros; MIT OR Apache-2.0.
+syn = { version = "2", features = ["full"] }

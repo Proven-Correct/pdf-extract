@@ -1,0 +1,11 @@
+# Pins the compiler so local builds, CI and the lint set agree. rustup (and CI,
+# via `rustup toolchain install`) read this file; bump it deliberately, in its
+# own commit, because new releases add clippy lints that can turn CI red.
+# rust-src: tools/license/rust_std.py reads the standard library's crate graph
+# from it (for THIRD_PARTY_NOTICES Part 5 and, via sbom.py, the wheel SBOM)
+# and the vendored crates' licence files (for Part 5), so a bump needs
+# gen-notices.sh rerun; the `deny` job fails on drift.
+[toolchain]
+channel = "1.98.0"
+components = ["rustfmt", "clippy", "llvm-tools-preview", "rust-src"]
+profile = "minimal"

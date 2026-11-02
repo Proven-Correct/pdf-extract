@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "sha256": "2d0ea82c2219cb6d3c2034cfc389f73e68279dcad297a6553debac7354c7d2ef",
+  "size": 804,
+  "source": "corpus-c/kp10_typeless_leaf.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 2,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Page 1\n",
+      "sha256": "0044390d820b260b57b6bc1a08daa8de5d4b04e51feb4b191aa38eb8e2438a14",
+      "error": null
+    },
+    {
+      "index": 1,
+      "text": "Page 2\n",
+      "sha256": "c6d65cc1155e97d2ed5c63e2eb3af1bbeab047ca34bcf30cb29c7f7ddda548c3",
+      "error": null
+    }
+  ]
+}

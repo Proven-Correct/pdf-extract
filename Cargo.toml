@@ -1,0 +1,122 @@
+# Workspace root. Role: declares the member crates, shared package metadata and
+# the build profiles. Crates live under crates/ and are all `publish = false`
+# (the crates.io name `pdf-extract` is taken; the Python distribution is what
+# ships).
+[workspace]
+members = ["crates/*"]
+# The vendored hayro crates are path dependencies (via [patch.crates-io]
+# below) that live inside the workspace root, so cargo would otherwise adopt
+# them as implicit members. Excluding them keeps them out of `--workspace`
+# fmt/clippy/test: they are upstream code we patch minimally and diff against
+# upstream, not code we restyle, and their own tests read fixtures
+# (`../hayro-tests/...`) that are not vendored. Fork behaviour is tested from
+# crates/core instead.
+exclude = ["vendor"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.1"
+edition = "2024"
+rust-version = "1.98"
+license = "GPL-3.0-or-later"
+publish = false
+
+# Custom cfgs the workspace uses, declared once so `unexpected_cfgs` stays a
+# useful typo check. Every member opts in with `[lints] workspace = true`.
+# - `loom`: the model-checking build (`RUSTFLAGS="--cfg loom"`), which swaps
+#   each crate's private `sync` shim onto loom's types (crates/*/src/sync.rs).
+# - `fuzzing`: set by cargo-fuzz for the fuzz workspace's builds.
+# - `coverage`: set by cargo-llvm-cov (the OCR helper binary reads it).
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)", "cfg(fuzzing)", "cfg(coverage)"] }
+
+# `panic = "unwind"` is mandatory in every profile, not a tuning choice: the
+# Python binding wraps each call in `catch_unwind` so a bug in Rust (or in the
+# vendored parser) surfaces as a Python exception instead of aborting the host
+# process. With `panic = "abort"` that guarantee silently disappears.
+[profile.release]
+panic = "unwind"
+lto = "thin"
+codegen-units = 1
+# Line tables keep panic backtraces and profiles symbolised without the size of
+# full DWARF. `split-debuginfo` is deliberately left at the platform default.
+debug = "line-tables-only"
+
+[profile.dev]
+panic = "unwind"
+
+# hayro interprets about 60k operators/s unoptimised against 0.9M/s in release,
+# which makes `cargo test` on the hostile fixtures (budgets, deep nesting) far
+# too slow. Optimise the PDF and font crates (spec §4.1).
+#
+# pdf-extract-core gets opt-level 1 for a different reason: hayro's interpreter
+# is generic over the `Device`, so `interpret` and the form/glyph/pattern
+# recursion around it are compiled in the crate that supplies the device, at
+# that crate's opt-level. Unoptimised, one nesting level costs ~14 KiB of
+# stack and hayro's 50 levels overflow the 512 KiB stack the hostile-fixture
+# tests run on (spec §2.3); at opt-level 1 a level costs ~2 KiB, close to
+# release. Level 1 keeps debug info and most variables observable.
+[profile.dev.package.pdf-extract-core]
+opt-level = 1
+[profile.dev.package.hayro-interpret]
+opt-level = 2
+[profile.dev.package.hayro-syntax]
+opt-level = 2
+[profile.dev.package.hayro-cmap]
+opt-level = 2
+[profile.dev.package.hayro-postscript]
+opt-level = 2
+[profile.dev.package.skrifa]
+opt-level = 2
+[profile.dev.package.read-fonts]
+opt-level = 2
+# The renderer (run 0002): hayro's `render` is not generic, so the
+# interpreter, and the Type 3 / pattern / soft-mask recursion it runs, is
+# monomorphised in the hayro crate at hayro's opt-level; unoptimised it does
+# not fit the 512 KiB stack the hostile renders run on. vello_cpu and
+# vello_common rasterise every path and image, which is too slow unoptimised
+# for the 300 dpi and hostile tests.
+[profile.dev.package.hayro]
+opt-level = 2
+[profile.dev.package.vello_cpu]
+opt-level = 2
+[profile.dev.package.vello_common]
+opt-level = 2
+# Corpus D's noise variants (run 0002 §3.8): twelve 8.7 MB fields of
+# Irwin-Hall deviates (104 million SplitMix64 draws each) and their SHA-256s
+# are built in every `cargo test` of the test kit and the OCR crate.
+[profile.dev.package.pdf-extract-testkit]
+opt-level = 2
+[profile.dev.package.sha2]
+opt-level = 2
+# Rendering corpus D's 2480 x 3509 scans: Flate-decoding the image
+# (miniz_oxide via flate2), its colour conversion (moxcms) and resampling to
+# the render resolution (pic-scale) are a large share of the OCR tests' run
+# time when unoptimised (the process-parity test over the clean scans: 106 s
+# to 81 s on the development machine).
+[profile.dev.package.miniz_oxide]
+opt-level = 2
+[profile.dev.package.moxcms]
+opt-level = 2
+[profile.dev.package.pic-scale]
+opt-level = 2
+[profile.dev.package.zune-jpeg]
+opt-level = 2
+
+# Route the hayro crates we patch to the in-tree fork. The vendored Cargo.toml
+# files keep upstream's names and versions, so these entries satisfy the exact
+# `=` requirements in crates/core and every transitive requirement (hayro-cmap
+# -> hayro-postscript, hayro-syntax -> the two image codecs) without a second
+# copy in the graph. The codecs hayro-jbig2 and hayro-jpeg2000 joined the fork
+# later (second pristine tag) so their decoders can be patched. The remaining
+# hayro crates come from crates.io, exactly pinned in crates/core. Provenance
+# and the patch series: vendor/PROVENANCE.md. Vendoring another dependency of
+# hayro-syntax (even an optional one) means adding it to the standalone
+# harness manifest in crates/core/tests/h9_pre_fix.rs as well, which builds
+# offline outside this workspace.
+[patch.crates-io]
+hayro-syntax = { path = "vendor/hayro-syntax" }
+hayro-interpret = { path = "vendor/hayro-interpret" }
+hayro-postscript = { path = "vendor/hayro-postscript" }
+hayro-jbig2 = { path = "vendor/hayro-jbig2" }
+hayro-jpeg2000 = { path = "vendor/hayro-jpeg2000" }

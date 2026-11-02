@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "992c51241498b54891acb24aa0db9a8011b09107f42331c4adbe8734b38b6bce",
+  "size": 787,
+  "source": "corpus-c/kp15_winansi.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "a b-c\n",
+      "sha256": "7986db07fc354b89d4917223679cc9c156a9a28eec42d5ad4b3cde3080bdb7c0",
+      "error": null
+    }
+  ]
+}

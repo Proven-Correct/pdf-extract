@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "b3e7c890435a4e4a06701aa619b95ca04bfedb563bb34c2dc857124ac97315e7",
+  "size": 743,
+  "source": "corpus-c/perp_low_4.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Basesup\n",
+      "sha256": "89b3bb9eb6c10b6ca3c45f325c099adf6d8b1b9f12481549385e3de9f7f3b5d9",
+      "error": null
+    }
+  ]
+}

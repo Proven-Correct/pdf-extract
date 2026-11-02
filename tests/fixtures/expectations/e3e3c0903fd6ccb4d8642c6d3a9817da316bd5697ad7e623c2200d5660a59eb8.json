@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "e3e3c0903fd6ccb4d8642c6d3a9817da316bd5697ad7e623c2200d5660a59eb8",
+  "size": 715,
+  "source": "corpus-c/kp09_cross_line.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "jo\nine d\n",
+      "sha256": "9e306b64b118e58a618f4cca5f59e3e0348bf8dcdd8fd53ce4020435852d1e67",
+      "error": null
+    }
+  ]
+}

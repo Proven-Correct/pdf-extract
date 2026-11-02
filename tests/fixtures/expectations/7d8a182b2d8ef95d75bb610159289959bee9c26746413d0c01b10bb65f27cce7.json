@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "sha256": "7d8a182b2d8ef95d75bb610159289959bee9c26746413d0c01b10bb65f27cce7",
+  "size": 3244,
+  "source": "corpus-b/pdfbox/PDFBOX-2984-rotations.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 6,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Apache PDFBox ®\n90° text matrix\n",
+      "sha256": "5288702e81e6c81a508a0e0c1db3187185cecb6d97812de7e2cb8886de6d4079",
+      "error": null
+    },
+    {
+      "index": 1,
+      "text": "Apache PDFBox ®\n90° ctm\n",
+      "sha256": "c51cee783ce90253b819cfb89e50024937df7efd6f4536f66a72ea043f8d0c24",
+      "error": null
+    },
+    {
+      "index": 2,
+      "text": "Apache PDFBox ®\n180° text matrix\n",
+      "sha256": "16e3443e0d8925201c51b1f7c6fd384bd401e1f683fc3db0af5a7c69636d6bd1",
+      "error": null
+    },
+    {
+      "index": 3,
+      "text": "Apache PDFBox ®\n180° ctm\n",
+      "sha256": "c8a04c9f0356ab74d682ec48c8f3894c972d15b8da8fdcfc7ef8a42187649b75",
+      "error": null
+    },
+    {
+      "index": 4,
+      "text": "Apache PDFBox ®\n270° text matrix\n",
+      "sha256": "b97a5e8d93858d9252705ff46f87cbf4a6a1346907ea2a30e3c8e64f8b5e46b5",
+      "error": null
+    },
+    {
+      "index": 5,
+      "text": "Apache PDFBox ®\n270° ctm\n",
+      "sha256": "5f02e9106d09613bdb88a46644f6c5370f11461a5a11f20a79129edf7f388c38",
+      "error": null
+    }
+  ]
+}

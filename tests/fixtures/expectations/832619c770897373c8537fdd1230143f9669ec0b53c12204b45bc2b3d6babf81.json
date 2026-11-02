@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "832619c770897373c8537fdd1230143f9669ec0b53c12204b45bc2b3d6babf81",
+  "size": 9021,
+  "source": "corpus-b/pdfbox/DifferentDALevels.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "single annotation\nsame layout\nsame layout\ndifferent layout\ndifferent layout\n",
+      "sha256": "4169ad77411db92c575e88e8f6c5b44db2e9c75f307d91bda07670bbc60b731d",
+      "error": null
+    }
+  ]
+}

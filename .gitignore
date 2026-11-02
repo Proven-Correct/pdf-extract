@@ -1,0 +1,41 @@
+# Build and tooling output that must never be committed.
+/target/
+**/*.rs.bk
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+*.dylib
+/.venv/
+/dist/
+/build/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Coverage / benchmark scratch
+*.profraw
+lcov.info
+/bench.json
+# Written by crates/core/benches/open.rs into the working directory.
+bench-rss.json
+
+.DS_Store
+
+# The OCR helper binary, staged by tools/build/stage-helper.sh before
+# `maturin develop`/`build` (run 0002 §3.7) and shipped by maturin's include.
+/python/pdf_extract/pdf-extract-ocr-helper
+
+# Local fuzzing state (tools/fuzz/run.sh): the persistent corpora, findings,
+# the fuzz workspace's build output and coverage reports. The regression set
+# (fuzz/regressions/), the unicode seeds and the ledger are committed.
+/fuzz/corpus/
+/fuzz/artifacts/
+/fuzz/target/
+/fuzz/coverage/
+

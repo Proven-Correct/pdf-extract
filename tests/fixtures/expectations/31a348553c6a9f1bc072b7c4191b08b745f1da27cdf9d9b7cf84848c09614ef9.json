@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "sha256": "31a348553c6a9f1bc072b7c4191b08b745f1da27cdf9d9b7cf84848c09614ef9",
+  "size": 2346,
+  "source": "corpus-b/pdfbox/page_tree_multiple_levels.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 4,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Page1\n",
+      "sha256": "7e2a7c7ebd8382f0166cd785f31547b12ba6da364f23552ffa42c8d2686e70e6",
+      "error": null
+    },
+    {
+      "index": 1,
+      "text": "Page2\n",
+      "sha256": "4b16aa8499a3a3a821de5c3066fd2d06efda7ac54ebc7bb0079f791390c23327",
+      "error": null
+    },
+    {
+      "index": 2,
+      "text": "Page3\n",
+      "sha256": "341df18d2312edaa01cbb56bf42410e1b120fdb3506dd4621acebfb708575efe",
+      "error": null
+    },
+    {
+      "index": 3,
+      "text": "Page4\n",
+      "sha256": "fd43139c984a29b5308377048a2c14978d1d3d37e53b78f12a8374440b184a03",
+      "error": null
+    }
+  ]
+}

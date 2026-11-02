@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "0f899995bd008a1b3280db819df9d40fef59708cdd7492e08062dd3805544605",
+  "size": 41053,
+  "source": "corpus-b/hayro/font_type3_filled_glyphs.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "red outlined text\nblue outlined text\ngradient text\n😄😁😆\nlonger gradient text with repeat\n",
+      "sha256": "30d5f7c6d7204cedfd54a8813362c287fe19087b86b0218e929fa54d9d8102b3",
+      "error": null
+    }
+  ]
+}

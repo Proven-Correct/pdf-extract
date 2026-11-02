@@ -1,0 +1,88 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Thu, 1 Oct 2026 16:09:18 -0400
+Subject: [PATCH 06/22] H4: pass marked-content property lists to the device
+
+`Device::begin_marked_content` received the tag and an inline `/MCID`
+only, so a device could not see entries such as `/ActualText`, `/Alt`
+or `/Lang`. It now also receives the property list: the inline
+dictionary of a `BDC`, or the `/Properties` resource entry a name
+operand refers to, resolved once by the interpreter. It is `None` for
+`BMC` and for names that do not resolve to a dictionary.
+
+The dictionary is borrowed only for the call, with its own lifetime,
+because an inline dictionary lives in the decoded content stream (a
+Form XObject's content is dropped when the form ends), not in the
+document. The default method still does nothing, so devices that do
+not override it, including hayro's renderer and SVG backend, are
+unaffected; any implementor that overrides it needs the new parameter.
+---
+ hayro-interpret/src/device.rs        | 18 +++++++++++++++++-
+ hayro-interpret/src/interpret/mod.rs | 11 +++++++++--
+ 2 files changed, 26 insertions(+), 3 deletions(-)
+
+diff --git a/hayro-interpret/src/device.rs b/hayro-interpret/src/device.rs
+index 8b511ca..cfa71fc 100644
+--- a/hayro-interpret/src/device.rs
++++ b/hayro-interpret/src/device.rs
+@@ -2,6 +2,7 @@ use crate::font::Glyph;
+ use crate::soft_mask::SoftMask;
+ use crate::{BlendMode, ClipPath, Image};
+ use crate::{GlyphDrawMode, Paint, PathDrawMode};
++use hayro_syntax::object::Dict;
+ use kurbo::{Affine, BezPath, Rect, Shape};
+ 
+ /// A trait for a device that can be used to process PDF drawing instructions.
+@@ -58,7 +59,22 @@ pub trait Device<'a> {
+     ///
+     /// The tag is the marked content tag (e.g. b"P", b"Span"). The mcid is
+     /// the marked content identifier from the properties dict, if present.
+-    fn begin_marked_content(&mut self, _tag: &[u8], _mcid: Option<i32>) {}
++    ///
++    /// `properties` is the property list of a `BDC` operator: the inline
++    /// dictionary, or the entry of the resources' `/Properties` dictionary
++    /// that a name operand refers to. It is `None` for `BMC` and when a name
++    /// does not resolve to a dictionary. Devices use it for entries such as
++    /// `/ActualText`, `/Alt` or `/Lang`. An inline dictionary lives in the
++    /// content stream being interpreted, which may be shorter-lived than the
++    /// document, so the dictionary is only borrowed for the duration of the
++    /// call.
++    fn begin_marked_content(
++        &mut self,
++        _tag: &[u8],
++        _mcid: Option<i32>,
++        _properties: Option<&Dict<'_>>,
++    ) {
++    }
+     /// Called at the end of a marked content sequence (EMC).
+     fn end_marked_content(&mut self) {}
+ }
+diff --git a/hayro-interpret/src/interpret/mod.rs b/hayro-interpret/src/interpret/mod.rs
+index fff4135..81f9cca 100644
+--- a/hayro-interpret/src/interpret/mod.rs
++++ b/hayro-interpret/src/interpret/mod.rs
+@@ -690,7 +690,14 @@ pub fn interpret<'a>(
+                     context.ocg_state.begin_marked_content();
+                 }
+ 
+-                device.begin_marked_content(bdc.0, mcid);
++                // The property list itself, for the device: a name refers to an entry of
++                // the resources' `/Properties` dictionary, anything else is used inline.
++                let properties = match bdc.1.clone().into_name() {
++                    Some(name) => resources.properties.get::<Dict<'_>>(name),
++                    None => dict_or_stream(bdc.1).map(|(props, _)| props.clone()),
++                };
++
++                device.begin_marked_content(bdc.0, mcid, properties.as_ref());
+             }
+             TypedInstruction::MarkedContentPointWithProperties(_) => {}
+             TypedInstruction::EndMarkedContent(_) => {
+@@ -700,7 +707,7 @@ pub fn interpret<'a>(
+             TypedInstruction::MarkedContentPoint(_) => {}
+             TypedInstruction::BeginMarkedContent(bmc) => {
+                 context.ocg_state.begin_marked_content();
+-                device.begin_marked_content(bmc.0, None);
++                device.begin_marked_content(bmc.0, None, None);
+             }
+             TypedInstruction::BeginText(_) => {
+                 context.get_mut().text_state.text_matrix = Affine::IDENTITY;

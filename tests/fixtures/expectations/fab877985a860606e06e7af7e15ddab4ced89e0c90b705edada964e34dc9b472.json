@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "fab877985a860606e06e7af7e15ddab4ced89e0c90b705edada964e34dc9b472",
+  "size": 18159,
+  "source": "corpus-b/pdfbox/sign_me.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Apache PDFBox \nCopyright 2014 The Apache Software Foundation\nApache \nPDFBox \nDigital \nSignature\n",
+      "sha256": "8d703faf5d5612a91b766a266c4b50ac493264f7c4bc2b003e492a2286e11602",
+      "error": null
+    }
+  ]
+}

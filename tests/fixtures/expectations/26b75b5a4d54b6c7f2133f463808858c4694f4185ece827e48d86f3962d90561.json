@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "26b75b5a4d54b6c7f2133f463808858c4694f4185ece827e48d86f3962d90561",
+  "size": 732,
+  "source": "corpus-c/kp07_crop_beyond_media.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Kept\n",
+      "sha256": "d7cab6dd95d658058d423180169b61d6cf501bc3c778e6206a56c6fc77d8c121",
+      "error": null
+    }
+  ]
+}

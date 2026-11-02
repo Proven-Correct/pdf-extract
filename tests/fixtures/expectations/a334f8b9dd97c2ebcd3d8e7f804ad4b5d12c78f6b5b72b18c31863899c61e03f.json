@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "a334f8b9dd97c2ebcd3d8e7f804ad4b5d12c78f6b5b72b18c31863899c61e03f",
+  "size": 935,
+  "source": "corpus-b/hayro/text_rendering_clipping.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "BCDEFG\n",
+      "sha256": "07cfb195f49838b5a6949c86bf5d194c00387a9478eaecc6add7dc752487ba72",
+      "error": null
+    }
+  ]
+}

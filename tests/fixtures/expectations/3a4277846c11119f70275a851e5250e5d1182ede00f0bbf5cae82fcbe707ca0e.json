@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "3a4277846c11119f70275a851e5250e5d1182ede00f0bbf5cae82fcbe707ca0e",
+  "size": 686,
+  "source": "corpus-c/kp05_leading.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "   Lead\n",
+      "sha256": "4d4d8aa04549297b0104768d64167748f1b2cd9b9e800343dc9c3df25cb9e663",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "a380d01c205173c1868a3c1e53d2e628c7eb237db8abd46748769412ee7d5ee2",
+  "size": 1099581,
+  "source": "corpus-d/clean_body_11pt_skew.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "When in the Course of human events, it becomes necessary for one people to dissolve the\npolfical bands which have connected them with another, and to assume among the powers\nofthe earth, the separate and equal station to which the Laws of Nature and of Nature's God\nShiite them, a decent respect to the opinions of mankind requires that they should deciare\nthe causes which impel them to the separation, We hold these truths to be sett-evident that\nfal men are created equal, that they are endowed by their Creator with certain unalienable\nRights, that among these are Lie, Liberty and the pursuitof Happiness. Thao secure these\nrights, Governments are inettuted among Men, deriving ther just powors from the consent\n‘I the governed, That whenever any Form of Government becomes destructive of these\n‘nda, itis the Right ofthe People to alfor ort abolish it, and to institute new Government,\ntaying its foundation on such principles and organizing its powers in such form, as to them\n‘shall seem most likely to effect their Safety and Happiness. Prudence, indeed, will dictate\nthat Governments long established should not be changed for ight and transient causes:\n‘and accordingly all experience hath shewn, that mankind are more disposed to sufer, while\nvis are sufferable, than to right themselvesby abolishing the forms to which they are\nGecustomed. But whena long train of abuses and usurpations, pursuing invariably the same\nGoject evinces a design to reduce them under absolute Despotsm, itis thet ight it\ntheir\nduty, to throw off such Government, and to provide new Guards for their future secur.\n‘Such has been the patient sufferance of these Colonies; and such is now the necessity\nvwihich constrains them to alter ther former Systems of Government. The history of the\npresent King of Great Britain isa history of repeated injures and usurpations, all having in\nErect object the establishment of an absolute Tyranny over these States. To prove this, let\nFacts be submitted to a candid world. He has refused his Assent\nto Laws, the most\n‘vnolesome and necessary forthe public good. He has forbidden his Governors to pass\nLaws of immediate and pressing importance, unless suspended in their operation til his\n‘Assent should be obtained: and when so suspended, he has utterly neglected to attend to\nthem. He has refused to pass other Laws for the accommodation of large districts of people,\nLUnioss those people would relinquish the right of Representation in the Legislature, a right\ninestimable to them and formidable to tyrants only. He has called together legislative bodies:\nat places unusual, uncomfortable, and distant from the depository oftheir public Records, for\nthe sole purpose of fatiguing them into compliance with his measures. He has dissolved\nRepresentative Houses repeatedly, or opposing with manly firmness his invasions onthe\ntights of the poople, Ho has reused fora long time after such dissolutions, to cause others\nto be elected: whereby the Legislative powers, incapable of Annihilation, have returned to\nthe People at large for thei exercise; the State remaining in the mean time exposed to all\ntho dangers of invasion from without, and convulsions within. He has endeavoured to\nprevent the population of these States: for that purpose obstructing the Laws for\nNaturalization of Foreigners; refusing to pass others to encourage their migrations hither,\n‘and raising the conditionsofnew Appropriations of Lands. He has obstructed the\n‘tcministration of Justice, by retusing his Assent to Laws for establishing Judiciary powers,\n",
+        "sha256": "8d51c3f7c48359885fb408300c06bac495229cf4b07d3598ec5a2cf039db683c"
+      }
+    ]
+  }
+}

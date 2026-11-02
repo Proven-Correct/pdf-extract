@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "e662ddd3ba97b0cc5efab2d28f1701a6c083a6036d60ca25d44e9ccfc28203d6",
+  "size": 1289,
+  "source": "corpus-c/ocg_form_no_resources.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "PAGEVIS\nFORMVIS\n",
+      "sha256": "d3cd68c7bdd107f28a1acb756b464bcf06ab99aeec39023d8390ee7f08ea1659",
+      "error": null
+    }
+  ]
+}

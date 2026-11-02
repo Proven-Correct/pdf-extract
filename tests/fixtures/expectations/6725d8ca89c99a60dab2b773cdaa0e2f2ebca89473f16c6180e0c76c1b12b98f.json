@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "6725d8ca89c99a60dab2b773cdaa0e2f2ebca89473f16c6180e0c76c1b12b98f",
+  "size": 909,
+  "source": "corpus-c/kp19_form_bbox.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "InBBox\nPage\n",
+      "sha256": "7050477a56e9ce2e384448190dbbe687c2d7a020416c10c50e952bb75d5a2263",
+      "error": null
+    }
+  ]
+}

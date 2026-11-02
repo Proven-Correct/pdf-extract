@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "1c37c29237d4ba247acbe155f7a1957ffe55b0e2795d25fe0a7c2e4f9158669d",
+  "size": 10381,
+  "source": "corpus-b/pdfbox/test-landscape2.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Upper left red \n \nLower right black \n",
+      "sha256": "b7e6942b0f28780355d90c65d86fff22fa26f8e3f594bbe70a323c1e0ac511cd",
+      "error": null
+    }
+  ]
+}

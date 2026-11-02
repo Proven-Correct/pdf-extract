@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "1352e5bc31d2841fb2a2322630dc28c3add136219207e98a3826d11c6e390693",
+  "size": 936,
+  "source": "corpus-b/pdfbox/OverlayTestBaseRot0.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "A quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\nA quick movement of the enemy will jeopardize six gunboats. Heavy boxes perform quick waltzes and jigs.\n",
+      "sha256": "b9d8226c1b4f5ac3f40bc0e9ecf705bef393a772f5d7ca8ceb12f656ed953bca",
+      "error": null
+    }
+  ]
+}

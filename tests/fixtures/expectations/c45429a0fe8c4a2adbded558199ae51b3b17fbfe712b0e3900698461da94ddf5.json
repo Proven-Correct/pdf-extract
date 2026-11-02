@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "c45429a0fe8c4a2adbded558199ae51b3b17fbfe712b0e3900698461da94ddf5",
+  "size": 988,
+  "source": "corpus-c/kp22_cid_no_descriptor.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "\u0000$\u0000%\u0000&\u0000\u0003\u0000D\n",
+      "sha256": "0c96c8438278dacdee5af01d87100a761ecb89109d3ff0511296aaedfa3f530c",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+ "_comment": "Shared table of the extract() sparse rule (run 0002 O22, D-15, spec 4.10): a page is sparse when its text, trimmed of Unicode whitespace, has fewer than min_chars code points. Asserted by crates/core/src/extract_tests.rs (Rust str::trim) and tests/python/test_extract.py (Python len(text.strip())). Strings exclude C0 controls other than TAB/LF/CR/VT/FF: the text path replaces them (0001 D-10), and Python's str.strip also strips U+001C-U+001F, which Rust does not.",
+ "rows": [
+  {
+   "name": "49 letters between spaces",
+   "text": "                    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                    ",
+   "min_chars": 50,
+   "sparse": true
+  },
+  {
+   "name": "50 letters between spaces",
+   "text": "                    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                    ",
+   "min_chars": 50,
+   "sparse": false
+  },
+  {
+   "name": "NBSP and EM SPACE only",
+   "text": "\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003\u00a0\u2003",
+   "min_chars": 50,
+   "sparse": true
+  },
+  {
+   "name": "interior EM SPACEs count",
+   "text": "x\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003x",
+   "min_chars": 50,
+   "sparse": false
+  },
+  {
+   "name": "code points, not bytes",
+   "text": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+   "min_chars": 50,
+   "sparse": false
+  },
+  {
+   "name": "empty",
+   "text": "",
+   "min_chars": 50,
+   "sparse": true
+  },
+  {
+   "name": "ASCII whitespace incl. VT and FF",
+   "text": "\t\n\r\u000b\fxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "min_chars": 50,
+   "sparse": true
+  },
+  {
+   "name": "IDEOGRAPHIC SPACE trimmed",
+   "text": "\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "min_chars": 50,
+   "sparse": false
+  },
+  {
+   "name": "NEL, LINE and PARAGRAPH SEPARATOR",
+   "text": "\u0085xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\u2028\u2029",
+   "min_chars": 50,
+   "sparse": true
+  },
+  {
+   "name": "ZERO WIDTH SPACE is not whitespace",
+   "text": "\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200b",
+   "min_chars": 50,
+   "sparse": false
+  },
+  {
+   "name": "BOM is not whitespace",
+   "text": "\ufeffxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "min_chars": 50,
+   "sparse": false
+  },
+  {
+   "name": "astral code points count once",
+   "text": "\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00 ",
+   "min_chars": 50,
+   "sparse": true
+  }
+ ]
+}

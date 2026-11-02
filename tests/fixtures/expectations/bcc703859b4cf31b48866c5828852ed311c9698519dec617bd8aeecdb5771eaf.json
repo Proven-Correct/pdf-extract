@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "bcc703859b4cf31b48866c5828852ed311c9698519dec617bd8aeecdb5771eaf",
+  "size": 1057,
+  "source": "corpus-c/tounicode_ctl_tt_00A0.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "A B\n",
+      "sha256": "0ceb1530715f8daab8f3dc47cbc9beb6092df4a089a2e460a0f7c94fb6375b20",
+      "error": null
+    }
+  ]
+}

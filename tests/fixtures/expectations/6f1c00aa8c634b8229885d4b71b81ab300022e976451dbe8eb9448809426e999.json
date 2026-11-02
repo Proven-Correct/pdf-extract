@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "6f1c00aa8c634b8229885d4b71b81ab300022e976451dbe8eb9448809426e999",
+  "size": 40665,
+  "source": "corpus-c/deep_resources_20k.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Res\n",
+      "sha256": "0dbdd67d21b072ea138ceb29719758b428d2f7cc943dbdfe96a2f62982840c28",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "8e5e7de635061430ae1f825597720fddc48393f280af2089fc49fbb7317d6742",
+  "size": 26764,
+  "source": "corpus-b/hayro/font_type3_shape_glyphs.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "\u0000 \u0001 \u0002 \u0003 \u0004 \u0005 \u0006 \u0007 \b \t\n\n \u000b \f \r \u000e \u000f\u0010 \u0011 \u0012 \u0013\n\u0014 \u0015 \u0016 \u0017 \u0018 \u0019 \u001a \u001b \u001c\u001d\n\u001e\n",
+      "sha256": "07f3602df449f0b973783e11c8c9776c6eab1617c6a38996f3302bebb524d507",
+      "error": null
+    }
+  ]
+}

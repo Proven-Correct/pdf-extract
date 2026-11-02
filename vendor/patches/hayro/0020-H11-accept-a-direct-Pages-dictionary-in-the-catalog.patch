@@ -1,0 +1,239 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christophe Pettus <xof@thebuild.com>
+Date: Sat, 3 Oct 2026 00:08:36 -0700
+Subject: [PATCH 20/22] H11: accept a direct /Pages dictionary in the catalog
+
+hayro-syntax records whether the catalog's /Pages is a reference or an
+inline dictionary; Pdf::pages_root() returns PagesRoot { Ref, Inline } and
+the eager page walk starts from either. Core's index walk starts from an
+inline root, which has no identifier: it is not deduplicated, its node is
+flagged and re-read from the catalog when a page is built, and its direct
+kids are found again by position. A catalog without /Pages stays Invalid.
+---
+ hayro-syntax/src/page.rs | 11 +++++---
+ hayro-syntax/src/pdf.rs  | 56 +++++++++++++++++++++++++++++++++-------
+ hayro-syntax/src/xref.rs | 48 +++++++++++++++++++++++++++++-----
+ 3 files changed, 97 insertions(+), 18 deletions(-)
+
+diff --git a/hayro-syntax/src/page.rs b/hayro-syntax/src/page.rs
+index 2f9158e..b5d6ad1 100644
+--- a/hayro-syntax/src/page.rs
++++ b/hayro-syntax/src/page.rs
+@@ -553,9 +553,10 @@ pub const A4: Rect = Rect {
+ };
+ 
+ pub(crate) mod cached {
++    use crate::object::Dict;
+     use crate::page::Pages;
+     use crate::reader::ReaderContext;
+-    use crate::xref::XRef;
++    use crate::xref::{PagesLocation, XRef};
+     use core::ops::Deref;
+ 
+     // Keep in sync with the implementation in `sync`. We duplicate it here
+@@ -591,8 +592,12 @@ pub(crate) mod cached {
+             let xref_reference: &'static XRef = unsafe { core::mem::transmute(xref.deref()) };
+ 
+             let ctx = ReaderContext::new(xref_reference, false);
+-            let pages = xref_reference
+-                .get_with(xref.trailer_data().pages_ref, &ctx)
++            // H11: an inline root is walked exactly like a resolved one.
++            let root = match xref.trailer_data().pages {
++                PagesLocation::Ref(id) => xref_reference.get_with::<Dict<'_>>(id, &ctx),
++                PagesLocation::Inline => xref_reference.inline_pages_root(&ctx),
++            };
++            let pages = root
+                 .and_then(|p| Pages::new(&p, &ctx, xref_reference))
+                 .or_else(|| Pages::new_brute_force(&ctx, xref_reference))
+                 .unwrap_or_else(|| Pages::empty(xref_reference));
+diff --git a/hayro-syntax/src/pdf.rs b/hayro-syntax/src/pdf.rs
+index d4107e3..7b5f518 100644
+--- a/hayro-syntax/src/pdf.rs
++++ b/hayro-syntax/src/pdf.rs
+@@ -4,11 +4,12 @@ use crate::PdfData;
+ use crate::filter::{DecodeBudget, DecodeLimits, DecodeStats};
+ use crate::object::Object;
+ use crate::object::ObjectIdentifier;
++use crate::object::dict::Dict;
+ use crate::page::Pages;
+ use crate::page::cached::CachedPages;
+-use crate::reader::Reader;
++use crate::reader::{Reader, ReaderContext};
+ use crate::sync::{Arc, OnceLock};
+-use crate::xref::{XRef, XRefError, fallback, root_xref};
++use crate::xref::{PagesLocation, XRef, XRefError, fallback, root_xref};
+ 
+ pub use crate::crypto::DecryptionError;
+ use crate::metadata::Metadata;
+@@ -26,6 +27,30 @@ pub struct Pdf {
+     data: PdfData,
+ }
+ 
++/// The root of a document's page tree, as returned by [`Pdf::pages_root`].
++///
++/// Fork change H11: the catalog's `/Pages` entry is normally a reference, but
++/// it may also be a dictionary written directly in the catalog. The two are
++/// kept apart (rather than an `Option` of an identifier) because an inline
++/// root is a valid page tree, not a missing one.
++#[derive(Debug, Clone)]
++pub enum PagesRoot<'a> {
++    /// `/Pages` references this object.
++    Ref(ObjectIdentifier),
++    /// `/Pages` is this dictionary, written inline in the catalog.
++    Inline(Dict<'a>),
++}
++
++impl PagesRoot<'_> {
++    /// The root's object identifier, or `None` for an inline root.
++    pub fn id(&self) -> Option<ObjectIdentifier> {
++        match self {
++            Self::Ref(id) => Some(*id),
++            Self::Inline(_) => None,
++        }
++    }
++}
++
+ /// An error that occurred while loading a PDF file.
+ #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+ pub enum LoadPdfError {
+@@ -80,8 +105,8 @@ impl Pdf {
+ 
+         // The page tree is not read here (see `pages`), so a document whose
+         // tree is unreadable opens and has no pages. The catalog and its
+-        // `/Pages` reference are still required: resolving the trailer above
+-        // fails without them.
++        // `/Pages` entry (a reference or, since H11, an inline dictionary)
++        // are still required: resolving the trailer above fails without them.
+         Ok(Self {
+             xref,
+             header_version: version,
+@@ -131,14 +156,27 @@ impl Pdf {
+         self.pages.get().is_some()
+     }
+ 
+-    /// Return the object identifier of the root of the page tree (the
+-    /// catalog's `/Pages` entry).
++    /// Return the root of the page tree (the catalog's `/Pages` entry): the
++    /// object it references or, when the catalog writes the root inline, the
++    /// dictionary itself.
+     ///
+     /// Together with [`XRef::get`] and [`Page::from_dict`](crate::page::Page::from_dict),
+     /// this lets a caller walk the page tree on its own terms instead of
+-    /// calling [`Pdf::pages`].
+-    pub fn pages_root(&self) -> ObjectIdentifier {
+-        self.xref.trailer_data().pages_ref
++    /// calling [`Pdf::pages`]. An inline root has no identifier, so a caller
++    /// that deduplicates nodes by identifier cannot do so for it (nothing can
++    /// refer back to it either).
++    pub fn pages_root(&self) -> PagesRoot<'_> {
++        match self.xref.trailer_data().pages {
++            PagesLocation::Ref(id) => PagesRoot::Ref(id),
++            // Read again from the catalog, which `Pdf::new` already parsed;
++            // an empty dictionary (no `/Kids`, so no pages) stands in if a
++            // lazy repair has since replaced the catalog.
++            PagesLocation::Inline => PagesRoot::Inline(
++                self.xref
++                    .inline_pages_root(&ReaderContext::new(&self.xref, false))
++                    .unwrap_or_default(),
++            ),
++        }
+     }
+ 
+     /// Return whether the xref table was broken and had to be rebuilt by
+diff --git a/hayro-syntax/src/xref.rs b/hayro-syntax/src/xref.rs
+index fb212b9..1f121bc 100644
+--- a/hayro-syntax/src/xref.rs
++++ b/hayro-syntax/src/xref.rs
+@@ -353,14 +353,14 @@ impl XRef {
+                     .get::<Dict<'_>>(INFO)
+                     .map(|d| parse_metadata(&d))
+                     .unwrap_or_default();
+-                let pages_ref = root.get_ref(PAGES).ok_or(XRefError::Unknown)?;
++                let pages = PagesLocation::of_catalog(&root).ok_or(XRefError::Unknown)?;
+                 let has_ocgs = root.get::<Dict<'_>>(OCPROPERTIES).is_some();
+                 let version = root
+                     .get::<Name<'_>>(VERSION)
+                     .and_then(|v| PdfVersion::from_bytes(v.deref()));
+ 
+                 let td = TrailerData {
+-                    pages_ref: pages_ref.into(),
++                    pages,
+                     root_ref: root_ref.into(),
+                     version,
+                 };
+@@ -369,10 +369,10 @@ impl XRef {
+             }
+             XRefInput::RootRef(root_ref) => {
+                 let root = xref.get::<Dict<'_>>(root_ref).ok_or(XRefError::Unknown)?;
+-                let pages_ref = root.get_ref(PAGES).ok_or(XRefError::Unknown)?;
++                let pages = PagesLocation::of_catalog(&root).ok_or(XRefError::Unknown)?;
+ 
+                 let td = TrailerData {
+-                    pages_ref: pages_ref.into(),
++                    pages,
+                     root_ref,
+                     version: None,
+                 };
+@@ -450,6 +450,15 @@ impl XRef {
+         self.trailer_data().root_ref
+     }
+ 
++    /// The catalog's `/Pages` dictionary when it is written inline (H11),
++    /// read through `ctx`. `None` when the catalog no longer resolves or no
++    /// longer holds a dictionary there, which only a lazy repair that
++    /// replaced the catalog can cause.
++    pub(crate) fn inline_pages_root<'a>(&'a self, ctx: &ReaderContext<'a>) -> Option<Dict<'a>> {
++        self.get_with::<Dict<'a>>(self.root_id(), ctx)?
++            .get::<Dict<'a>>(PAGES)
++    }
++
+     /// Whether the PDF has optional content groups.
+     pub fn has_optional_content_groups(&self) -> bool {
+         match &self.0 {
+@@ -793,9 +802,36 @@ struct MapRepr {
+     repaired: bool,
+ }
+ 
++/// Where the catalog's `/Pages` entry lives (fork change H11).
++///
++/// The specification wants an indirect reference, but readers accept a page
++/// tree root written inline in the catalog, so we do too. Only the shape is
++/// recorded: a `Dict` borrows from the document and cannot live in the
++/// trailer data, so an inline root is read again from the catalog when it is
++/// needed (see [`XRef::inline_pages_root`]).
++#[derive(Debug, Copy, Clone, PartialEq, Eq)]
++pub(crate) enum PagesLocation {
++    /// `/Pages` is a reference to this object.
++    Ref(ObjectIdentifier),
++    /// `/Pages` is a dictionary written directly in the catalog.
++    Inline,
++}
++
++impl PagesLocation {
++    /// Classifies `catalog`'s `/Pages` entry without resolving it. `None`
++    /// when the key is missing or holds neither a reference nor a
++    /// dictionary: such a catalog stays unreadable, as before H11.
++    fn of_catalog(catalog: &Dict<'_>) -> Option<Self> {
++        match catalog.get_raw::<Dict<'_>>(PAGES)? {
++            MaybeRef::Ref(r) => Some(Self::Ref(r.into())),
++            MaybeRef::NotRef(_) => Some(Self::Inline),
++        }
++    }
++}
++
+ #[derive(Debug, Copy, Clone)]
+ pub(crate) struct TrailerData {
+-    pub(crate) pages_ref: ObjectIdentifier,
++    pub(crate) pages: PagesLocation,
+     pub(crate) root_ref: ObjectIdentifier,
+     pub(crate) version: Option<PdfVersion>,
+ }
+@@ -803,7 +839,7 @@ pub(crate) struct TrailerData {
+ impl TrailerData {
+     pub(crate) fn dummy() -> Self {
+         Self {
+-            pages_ref: ObjectIdentifier::new(0, 0),
++            pages: PagesLocation::Ref(ObjectIdentifier::new(0, 0)),
+             root_ref: ObjectIdentifier::new(0, 0),
+             version: None,
+         }

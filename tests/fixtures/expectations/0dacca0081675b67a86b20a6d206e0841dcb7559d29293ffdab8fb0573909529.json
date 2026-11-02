@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "0dacca0081675b67a86b20a6d206e0841dcb7559d29293ffdab8fb0573909529",
+  "size": 558,
+  "source": "corpus-c/catalog_direct_pages.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Hello\n",
+      "sha256": "66a045b452102c59d840ec097d59d9467e13a3f34f6494e539ffd32c1bb35f18",
+      "error": null
+    }
+  ]
+}

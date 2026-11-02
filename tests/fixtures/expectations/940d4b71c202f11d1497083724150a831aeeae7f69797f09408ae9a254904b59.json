@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "940d4b71c202f11d1497083724150a831aeeae7f69797f09408ae9a254904b59",
+  "size": 1000,
+  "source": "corpus-c/kp08_noview.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Body\n",
+      "sha256": "421dc617d921c24f41441973d8476605718a14a5c2228b8344cc1d6d816e8d39",
+      "error": null
+    }
+  ]
+}

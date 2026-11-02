@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "2baa7955fbebe0945dfaeb8a6e1979689a665ada7a2db8429f72d20ab778f0c5",
+  "size": 695,
+  "source": "corpus-c/tj_adjust.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "A B\nCD\nE\n",
+      "sha256": "4fb1a57fcdf236dcdc0b29f31a1df9c0c6e1b8d7345fbd137037daf838819d86",
+      "error": null
+    }
+  ]
+}

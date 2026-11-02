@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "c178b024f894d98705a35e29a0cb37e1cb91315d3b0705e15baacfd129e9789b",
+  "size": 12499,
+  "source": "corpus-b/hayro/xref_invalid_offsets.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "This is a PDF with invalid offsets.\n",
+      "sha256": "e63fffea7377a943ebe4c87233481c49505ec3e6e8bcf551550ad9c95e9e4b5e",
+      "error": null
+    }
+  ]
+}

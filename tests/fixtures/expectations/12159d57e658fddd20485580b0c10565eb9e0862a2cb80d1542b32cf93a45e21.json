@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "12159d57e658fddd20485580b0c10565eb9e0862a2cb80d1542b32cf93a45e21",
+  "size": 1238,
+  "source": "corpus-c/kp24_w_000A_before.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "A B\n",
+      "sha256": "c36bc118e5e9457ca489bc3adde2566dc951ec68b1b696128ef116048d3d6044",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "2f2442d47012745a2a585c33efba1c5e1df8818597ca25f6ec3e95bd463e220a",
+  "size": 682,
+  "source": "corpus-c/kp13_tr3.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Mode3\n",
+      "sha256": "64b17621f6c5d927cbccabd233ca7fe6d127829de04a4e1dc5cb8f607e87019d",
+      "error": null
+    }
+  ]
+}

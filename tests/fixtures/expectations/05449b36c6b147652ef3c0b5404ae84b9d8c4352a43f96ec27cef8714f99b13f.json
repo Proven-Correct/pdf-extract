@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "05449b36c6b147652ef3c0b5404ae84b9d8c4352a43f96ec27cef8714f99b13f",
+  "size": 5622,
+  "source": "corpus-b/pdfbox/PDFBOX-4531-bidi-ligature-1.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "אּ \n \nﻻ \n \n",
+      "sha256": "1e8b5d0b6c1f09e11e51a97bc935c18afd84a6015f5139c3cf8c4fe7f2574b5a",
+      "error": null
+    }
+  ]
+}

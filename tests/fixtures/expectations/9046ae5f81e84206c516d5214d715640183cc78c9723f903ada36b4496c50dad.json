@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "9046ae5f81e84206c516d5214d715640183cc78c9723f903ada36b4496c50dad",
+  "size": 747,
+  "source": "corpus-c/kp02_break_11pt_12.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Alpha\nBeta\n",
+      "sha256": "272cd331f3a50cefcfb5d5d56f790879de24df2e792d6f175e23f5de9f0a5625",
+      "error": null
+    }
+  ]
+}

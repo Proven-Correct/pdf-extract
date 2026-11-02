@@ -1,0 +1,174 @@
+# Python packaging for the `pdf-extract` distribution (import name
+# `pdf_extract`). Role: maturin build backend config, the dev tool group, and
+# the configuration of the Python-side tools (pytest, coverage, ruff, mypy).
+# The native module is crates/python; the pure-Python half is python/.
+# Development loop: `uv sync && tools/build/stage-helper.sh && uv run maturin
+# develop && uv run pytest` (the staging step builds the OCR helper).
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[project]
+name = "pdf-extract"
+# One version source: maturin reads it from crates/python, which inherits the
+# workspace version. The OCR helper's version handshake compares crate
+# versions, so a separately declared package version could drift from it.
+dynamic = ["version"]
+description = "Thread-safe PDF text extraction (Rust core, Python binding)"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+# Notices that must travel with the binary. The wheel embeds Adobe's
+# Helvetica.afm (via the testkit linked into _native; Adobe forbids
+# distributing it without README-AFM.txt) and the Adobe Glyph List table
+# (notice in THIRD_PARTY_NOTICES), and links the Rust standard library
+# statically (crate list in THIRD_PARTY_NOTICES Part 5; the Rust project's
+# own notice, copied verbatim from the pinned toolchain by gen-notices.sh).
+license-files = [
+    "LICENSE",
+    "THIRD_PARTY_NOTICES",
+    "crates/testkit/data/README-AFM.txt",
+    "tools/license/rust-std-COPYRIGHT.html",
+]
+# No "License ::" classifier: PEP 639 deprecates them in favour of the SPDX
+# `license` expression above. The Python versions mirror requires-python and
+# the wheels.yml matrix (abi3 for 3.13+, plus cp314t wheels).
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Free Threading :: 3 - Stable",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Rust",
+    "Topic :: Text Processing",
+    "Typing :: Typed",
+]
+requires-python = ">=3.13"
+authors = [{ name = "Christophe Pettus" }]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/Proven-Correct/pdf-extract"
+Source = "https://github.com/Proven-Correct/pdf-extract"
+Issues = "https://github.com/Proven-Correct/pdf-extract/issues"
+Releases = "https://github.com/Proven-Correct/pdf-extract/releases"
+
+[dependency-groups]
+dev = [
+    "cyclonedx-python-lib[json-validation]>=11",
+    "maturin>=1.9,<2",
+    "mypy>=1.13",
+    "pytest>=8",
+    "pytest-cov>=5",
+    "ruff>=0.8",
+]
+
+[tool.maturin]
+# Mixed layout: pure-Python package in python/, compiled extension installed as
+# pdf_extract._native.
+python-source = "python"
+module-name = "pdf_extract._native"
+manifest-path = "crates/python/Cargo.toml"
+# The OCR helper (run 0002 §3.7, D-21): a second compiled program that
+# maturin cannot build itself. tools/build/stage-helper.sh builds it and
+# copies it into the package directory before `maturin develop`/`build`; it
+# is git-ignored there, so it has to be included explicitly. A wheel built
+# without staging simply lacks it (`isolation="process"` then raises
+# OcrUnavailableError(reason="engine_not_built")).
+include = [
+    { path = "python/pdf_extract/pdf-extract-ocr-helper", format = "wheel" },
+    # The sdist must be able to produce a release wheel offline apart from
+    # the crate registry (packaging spec "Source distribution"): the vendored
+    # hayro crates ([patch.crates-io] path dependencies) and C/C++ trees,
+    # their provenance and patch series, and the wheel build itself
+    # (build-wheel.sh stages the helper, which maturin cannot build, and
+    # writes the SBOMs from uv.lock's maturin pin, about.toml and
+    # vendor/PROVENANCE.md). A plain `pip install` of the sdist builds the
+    # extension without the helper; run tools/build/build-wheel.sh instead.
+    { path = "vendor/**/*", format = "sdist" },
+    { path = "tools/build/build-wheel.sh", format = "sdist" },
+    { path = "tools/build/stage-helper.sh", format = "sdist" },
+    { path = "tools/license/sbom.py", format = "sdist" },
+    { path = "tools/license/rust_std.py", format = "sdist" },
+    { path = "about.toml", format = "sdist" },
+    { path = "uv.lock", format = "sdist" },
+    # The toolchain pin: build-wheel.sh installs exactly it in the container.
+    { path = "rust-toolchain.toml", format = "sdist" },
+]
+
+# The wheel's CycloneDX SBOMs (PEP 770, `.dist-info/sboms/`) come from
+# tools/license/sbom.py, passed by tools/build/build-wheel.sh with
+# `--sbom-include`. maturin's own Rust SBOM is off: it resolves every
+# target's dependencies (loom and other platforms' crates appear as
+# required) and embeds the build machine's absolute paths. Keys per
+# maturin 1.15's maturin.schema.json (SbomConfig: rust, auditwheel,
+# include); auditwheel's SBOM of grafted libraries keeps its default.
+[tool.maturin.sbom]
+rust = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+# Strict markers and config: a typo in a marker or option is an error, not a
+# silently skipped test.
+addopts = ["--strict-markers", "--strict-config", "-ra"]
+xfail_strict = true
+
+[tool.coverage.run]
+# `pytest --cov=pdf_extract` measures the installed package, which `maturin
+# develop` points at python/pdf_extract.
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = ["if TYPE_CHECKING:"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+# tools/oracle is a separate uv project with its own ruff configuration.
+# Markdown is excluded because ruff formats code blocks in it, which would
+# rewrite the frozen specs; CI formats Python sources only.
+extend-exclude = ["tools", "vendor", "target", "*.md"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "PT", "RUF", "PL"]
+ignore = [
+    # Tests compare against literal limits, page counts and offsets.
+    "PLR2004",
+    # The package's exported aliases (Isolation, PathLike, ...) stay
+    # `X: TypeAlias = ...`: the PEP 695 `type` statement would make them
+    # TypeAliasType objects at run time, which callers cannot use in
+    # `isinstance` or `typing.get_args` as they can today.
+    "UP040",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pdf_extract"]
+# The tests' helper modules (tests/python/{pdfs,ocrkit}.py), imported by
+# bare name.
+known-local-folder = ["ocrkit", "pdfs"]
+
+[tool.ruff.lint.per-file-ignores]
+# `open` deliberately shadows the builtin: it is the library's API name.
+"python/pdf_extract/__init__.py" = ["A004"]
+
+[tool.mypy]
+strict = true
+python_version = "3.13"
+# tools/fuzz: the fuzzing ledger and seed scripts; tools/license/sbom.py and
+# tools/build/{verify_wheel,smoke}.py: the wheel SBOM generator and checks.
+# On the path too, so their tests import them by module name and are
+# checked against their types.
+mypy_path = "python:tools/fuzz:tools/license:tools/build"
+files = ["python", "tests/python", "tools/fuzz", "tools/license", "tools/build"]
+warn_unreachable = true
+
+[tool.uv]
+# `uv sync` installs only the dev tools; the package itself is built and
+# installed (editable, into .venv) by `uv run maturin develop`, which is the
+# step that compiles the Rust extension. Letting uv build it too would compile
+# the extension twice and race maturin's install.
+package = false

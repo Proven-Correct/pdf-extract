@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "57bc1a71218358f2208fb474911cc44ea4ff9ec41f562db7770ae23720db5027",
+  "size": 40625,
+  "source": "corpus-c/deep_obj_20k.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ]
+}

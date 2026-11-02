@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "db95eb71f470105303c185f1a5e2f71d60b5dd429000897042a9dcbb9c00f5e3",
+  "size": 1231,
+  "source": "corpus-c/tounicode_multi_0041_0009.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "AA\tB\n",
+      "sha256": "76f1edbe6e31d80515eb430f428746107c26fba99f4d967bff5b5ce16bf90b2a",
+      "error": null
+    }
+  ]
+}

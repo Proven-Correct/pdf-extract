@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "2d4adb040c964c00b2dc3f36f2bb04645b68aa9db9f96783f710364b8d86b191",
+  "size": 2459,
+  "source": "corpus-b/pdfbox/PDFBOX-3067-negativeTf.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "PDFBox\n",
+      "sha256": "c930d19e39f43884ae482e69c96f97ea0f9b155c103fb1ab76003a7a11c0a48d",
+      "error": null
+    }
+  ]
+}

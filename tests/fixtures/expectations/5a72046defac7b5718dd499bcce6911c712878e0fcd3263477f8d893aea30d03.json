@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "5a72046defac7b5718dd499bcce6911c712878e0fcd3263477f8d893aea30d03",
+  "size": 2662,
+  "source": "corpus-b/pdfbox/testPDF_multiFormatEmbFiles.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "Go to Document->File Attachments to View Embedded Files\n",
+      "sha256": "4b7e95e2e93cbdb828dad60226d712b5bff8230924cb12e794ee0c3ef7b91379",
+      "error": null
+    }
+  ]
+}

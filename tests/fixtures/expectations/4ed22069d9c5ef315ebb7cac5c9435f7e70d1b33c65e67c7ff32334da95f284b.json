@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "4ed22069d9c5ef315ebb7cac5c9435f7e70d1b33c65e67c7ff32334da95f284b",
+  "size": 1119780,
+  "source": "corpus-d/clean_body_12pt_skew.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "When in the Course of human events, it becomes necessary for one people to\ndissolve the politcal bands which have connected them with another, and to assume\n‘among the powers of the earth, the separate and equal station to which the Laws of\nNature and of Nature's God entitle them, a decent respectto the opinions of mankind\nrequires that they should declare the causes which impel them to the separation. We\nhold these truths to be self-evident, that all men are created equal, that they are\nendowed by their Greator with certain unalienable Rights, that among these are Life,\nLiberty and the pursuit of Happiness. That to secure these rights, Governments are\ninstituted among Men, deriving theie just powers from the consent of the governed,\n‘That whenever any Form of Government becomes destructive of these ends, itis the\nRight of the People to alter or to abolish it, and to institute new Government, laying\nits foundation on such principles and organizing its powers in such form, as to them\n‘shall seem most likely to effect their Safety and Happiness. Prudence, indeed, will\ndictate that Governments long established should not be changed for ight and\ntransient causes: and accordingly all experience hath shewn, that mankind are more\ndisposed to suffer, while evils are sufferable, than to right themselves by abolishing\nthe forms to which they are accustomed. But when a long train of abuses and\nusurpations, pursuing invariably the same Object evinces a design to reduce them\ntnder absolute Despotism, itis their right, itis their duty, to throw off such\n‘Government, and to provide new Guards for their future security. Such has been the\npatient sutferance of these Colonies; and such is now the necessity which constraing\nthem to alter their former Systems of Government. The history of the present King of\nGreat Britain isa history of repeated injuries and usurpations, all having in direct\nobject the establishment of an absolute Tyranny over these States. To prove this, let\nFacts be submitted to a candid world. He has refused his Assent to Laws, the most\nwholesome and necessary for the public good. He has forbidden his Governors to\npass Laws of immediate and pressing importance, unless suspended in their\nbperaton til his Assent should be obtained; and when so suspended, he has utterly\nrnoglected to attend to them. He has refused to pass other Laws for the\n‘accommodation of large districts of people, unless those people would relinquish the\nfightof Representation in the Legislature, a right inestimable to them and formidable\nto tyrants only. He has called together legislative bodies at places unusual,\nuncomfortable, and distant from the depository oftheir public Records, for the sole\npurpose of fatiguing them into compliance with his measures. He has dissolved\nRepresentative Houses repeatedly, for opposing with manly firmness his invasions\ncon the rights of the people. He has refused fora long time, after such dissolutions, fo\n‘cause others to be elected: whereby the Legislative powers, incapable of\n‘Annihilation, have retumed to the People at large for their exercise; the State\nremaining in the mean time exposed to all the dangers of invasion from without, and\nconvulsions within. He has endeavoured to prevent the population of these States;\n",
+        "sha256": "f8d465e6cfb080724b5c75f7fd6aa9dec612750a5ba28bdf895d1168e188603b"
+      }
+    ]
+  }
+}

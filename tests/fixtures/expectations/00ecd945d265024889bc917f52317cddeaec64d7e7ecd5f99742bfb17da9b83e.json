@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "00ecd945d265024889bc917f52317cddeaec64d7e7ecd5f99742bfb17da9b83e",
+  "size": 1200,
+  "source": "corpus-c/kp22_cid_ge_258_raw.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "đĂăĄĆĬ\n",
+      "sha256": "583e4cca8c4c9086fd47c73d496325b6b12aa3b307b20375a7be4c40f466885a",
+      "error": null
+    }
+  ]
+}

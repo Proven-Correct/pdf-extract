@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "sha256": "131e3a51c7e3215f4ac8bcabd570dbb308185f74dbd7f8f9920394f600211aea",
+  "size": 20066,
+  "source": "corpus-b/pdfbox/with_outline.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 6,
+  "pages": [
+    {
+      "index": 0,
+      "text": "First level 1\nFirst level 2\nFist level 3\nSome content\n",
+      "sha256": "016e42e37a3059ccf2c68c4b45df86f6d5b5e245cf919e1f3955de54ab5ac839",
+      "error": null
+    },
+    {
+      "index": 1,
+      "text": "Some other content\n",
+      "sha256": "e0300c56d5afb4c3c443203c0d25134605c52772119f8adb5d6a9c3842f803cb",
+      "error": null
+    },
+    {
+      "index": 2,
+      "text": "Second at level 1\nSecond level 2\nContent\n",
+      "sha256": "ab12b75dbd64a15fa760e7de4aa11a4db028143bb9f21663efaf7452438e0b30",
+      "error": null
+    },
+    {
+      "index": 3,
+      "text": "Third level 1\nThird level 2\nThird level 3\nContent\n",
+      "sha256": "600c44f40f0501c4f01642ffda94d8685a961fa77821be988215f6ab827eb8e6",
+      "error": null
+    },
+    {
+      "index": 4,
+      "text": "Fourth level 1\nContent\n",
+      "sha256": "96d47c4f0824bc2e45c89a7c3920d36573f38cb34ed6a59f68164549e5c71da6",
+      "error": null
+    },
+    {
+      "index": 5,
+      "text": "Content\n",
+      "sha256": "c99404a35eb9f1d0abe2705a0483c216a47036be108a8dc138765b551a4e9715",
+      "error": null
+    }
+  ]
+}

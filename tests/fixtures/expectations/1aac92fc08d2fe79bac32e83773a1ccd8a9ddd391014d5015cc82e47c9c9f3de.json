@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "1aac92fc08d2fe79bac32e83773a1ccd8a9ddd391014d5015cc82e47c9c9f3de",
+  "size": 8703004,
+  "source": "built/clean_rotate90_noise.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "propriations of Lands. He has obstructed the Administration of Justice, by refusing his Assent to Laws for\nas made Judges dependent on his Will alone, for the tenure of ther offices, and the amount and payment of\ntitude of New Oifices, and sent hither swarms of Officers to harass our people, and eat out their substance.\neace, Standing Armies without the Consent of our legislatures. He has affected to render\nthe Miltary\nCivil power. He has combined with others to subject us to a jurisdiction foreign to our constitution, and\ng his Assent to their Acts of pretended Legistation. When in the Course of human events, it becomes\ne the political bands which have connected them with another, and to assume among the powers of the\nn to which the Laws of Nature and of Nature's God entitle them, a decent respect tothe opinions of mankind\ne causes which impel them to the separation. We hold these truthsto be self-evident, that allen are\ned by their Creator with certain unalienable Rights, that among these are Lie, Liberty and the pursut of\nhts, Governments\nare institutedamong Men, deriving their just powers from the consent of the governed,\nment becomes destructive of these ends, it's the Right of the People to alter orto abolish it, and to institute\nion on such principles and organizing its powers in such form, as to them shall seem most tkly to effect\nce, indeed, will dictate that Governments long established should not be changed for ight and transient\nnce hath shewn, that mankind are more disposed to suffer, while evis are sufferable, than to right\n to which they are accustomed.\nBut when a long train of abuses and usurpations, pursuing invariably the\nduce them under absolute Despotism, itis their right, itis their duty, to throwoff such Government, and to\nsecurity. Such has been the patient sutferance of these Colonies; and such is now the necessity which\n Systoms of Government. The history ofthe present King of Great Britain isa history of repeated injuries\n object the establishment of an absolute Tyranny over these States. To prove ths, let Facts be submitted to\nAssent o Laws, the most wholesome and necessary for the public good. He has forbidden his Governorsto\nng importance, unless suspended in their operation tl his Assent should be obtained; and when so\nd to altend to them. He has relused to pass other Laws forthe accommodation of large districts of people,\nh the right of Representation inthe Legislature, aright inestimable to them and formidable to tyrants onl.\nodies at places unusual, uncomfortable, and distant from the depository oftheir pubic Records, forthe sole\n",
+        "sha256": "a3c2fd2aa57686ef699ca8a538d0d081df6680fab0b3f535aae510e72481629a"
+      }
+    ]
+  }
+}

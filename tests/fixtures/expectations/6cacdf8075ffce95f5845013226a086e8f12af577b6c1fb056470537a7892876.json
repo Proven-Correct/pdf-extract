@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "6cacdf8075ffce95f5845013226a086e8f12af577b6c1fb056470537a7892876",
+  "size": 8766,
+  "source": "corpus-b/hayro/issue11.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "A test PDF\n",
+      "sha256": "fe800a71be55f983916d2c0b1bee1a3f293eab91d619dfac76f9077e200b7475",
+      "error": null
+    }
+  ]
+}

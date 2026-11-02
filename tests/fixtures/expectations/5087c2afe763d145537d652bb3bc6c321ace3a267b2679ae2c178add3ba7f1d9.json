@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "sha256": "5087c2afe763d145537d652bb3bc6c321ace3a267b2679ae2c178add3ba7f1d9",
+  "size": 6605,
+  "source": "corpus-b/pdfbox/rotation.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 2,
+  "pages": [
+    {
+      "index": 0,
+      "text": " \n \nThis is my first page with normal layout. \nThis is the second line on the page. \n \n \n \n \n",
+      "sha256": "108bcaa998eaa26ccf456f842b475c145ebb7318e7c10e581c1203258b41a7d9",
+      "error": null
+    },
+    {
+      "index": 1,
+      "text": "This is my second page.  It will have a landscape layout. \nSecond line here. \n",
+      "sha256": "5add525b4592f856c632fab3f34acb03c2b4e53e60758139e9659473b833c7d8",
+      "error": null
+    }
+  ]
+}

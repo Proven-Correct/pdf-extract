@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "sha256": "909482d1ba575bff3569e049e60c21bbe881120a7ece0440fc432abbe11e33eb",
+  "size": 202998,
+  "source": "corpus-d/lowres_two_column_150.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-03"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error": null
+    }
+  ],
+  "ocr": {
+    "dpi": 72,
+    "language": "eng",
+    "tessdata_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "pages": [
+      {
+        "index": 0,
+        "text": "{rom the consent of the governed, That\ndistricts of people, unless those people would\nwhenever any Form ofGovernment becomes\nrelinquish the right of Representation in the\ndestructive of these ends, itis the Right of\nLegislature, aright inestimable to them and\nthe People to alter or to abolish it, andto\nformidable\nto tyrants only. He has called\ninstitute new Government, laying its\ntogether legislative bodies at places unusual\n{foundation on such principles and organizing\n_uncomfortable, and distant from the\nits powers in such form, as to them shall\ndepository of their public Records, for the\n‘seem most likely to effect their Safety and\nsole purpose of fatiguing them into\nHappiness. Prudence, indeed, wll dictate\ncompliance wit his measures. He has\nthat Governments long established should\ndissolved Representative Houses repeatedly,\nrot be changed for light and transient\nfor opposing with manly firmness his\n‘causes; and accordingly all experience hath\ninvasions on the rights ofthe people. He has\n‘shewn, that mankind are more disposed to\n—_—_refused for a long time, alter such\nsuffer, while evils are sufferable, than to right\ndissolutions, to cause others to be elected;\nthemselves by abolishing the formsto which\nwhereby the Legislative powers, incapableot\nthey\nare accustomed. Butwhen along rain\n_Anniilation, have returned to the People at\n‘of abuses and usurpations, pursuing\nlarge for their exercise; the State remaining in\ninvariably the same Object evinces a design\n_the mean time exposed to all the dangers of\nto,reduce them under absolute Despotism, it\ninvasion\nfrom without, and convulsions\nis thoi right, itis their duty, to throw off such\nwithin. He has endeavoured to prevent the\n‘Government, and to provide new Guards for\npopulation ofthese States; for that purpose\ntheir future security. Such has been the\n‘obstructing the Laws for Naturalization of\nppatint sufferance of these Colonies; and\nForeigners; refusing to pass others to\n‘such is now the necessity which constrains\nencourage their migrations hither, and raising\nthem to alter their former Systems ot\nthe conditions of new Appropriations ot\nGovernment. The history\nof the present King\nLands. He has obstructed the Administration\n(of Great Britain isa history of repeated\nof Justice, by refusing his Assent to Laws for\ninjuries and usurpation, all having in direct\nestablishing Judiciary powers. He has made\n‘object the establishment of an absolute\nJudges dependent on his Will alone, for the\n‘Tyranny over these States. To prove this, let\ntenure oftheir offices, and the amount and\nFacts besubmitted\nto a candid world.Hehhas\npayment\nof ther salaries. He has erecieda\nrefused his Assent to Laws, the most\n‘multitude of New Offices, and sent hither\nwholesome and necessary forthe public\n‘swarms of Officers to harass our people, and\n‘Good. He has forbidden his Governors to\neat out their substance.He has kept among\npass Laws of immediate and pressing\nUs, in times of peace, Standing Armies\nimportance, unless suspended in thoir\nwithout the Consent\nof our legislatures. He\n‘operation til his Assent should be obtained;\nhas affected to render\nthe Miltary\nland when so suspended, he has utterly\nIndependent of and superior tothe Civt\nneglected to attend to them. He has refused\npower. He has combined with others 10\ntopass other Laws forthe accommodation of\nsubject usto a jurisdiction foreignto our\n",
+        "sha256": "932140513ed4f04591196198fc015fa593d54e8622f9d89ea46144c106ac8ca9"
+      }
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sha256": "ddeae7b62a8aba5130d6692cbcf18f3799b1dd7f02d267bb81fd809c2325221e",
+  "size": 744,
+  "source": "corpus-c/kp01_mixed_8to20_16.pdf",
+  "oracle": {
+    "pymupdf": "1.28.2",
+    "mupdf": "1.28.2",
+    "python": "3.13.14",
+    "platform": "macOS-14.8.7-arm64",
+    "generated": "2026-10-02"
+  },
+  "open": {
+    "ok": true,
+    "exception": null,
+    "needs_pass": false,
+    "is_encrypted": false
+  },
+  "page_count": 1,
+  "pages": [
+    {
+      "index": 0,
+      "text": "small\nBig\n",
+      "sha256": "e0cbbca4ea0cfee841ba6c837a224419c07c84fd4b26ad1eecf8df0295fa7edf",
+      "error": null
+    }
+  ]
+}
