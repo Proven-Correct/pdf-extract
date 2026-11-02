@@ -10,6 +10,8 @@ name: CI
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -24,11 +26,13 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Trigger strategy: push only to main to catch breakages there. Pull requests do
-# not trigger CI automatically: fixes land as a series of small PRs merged one
-# after another, and a full run per PR would mostly be discarded. Run a PR branch
-# on demand with workflow_dispatch (`gh workflow run ci.yml --ref <branch>`).
-# cancel-in-progress keys on github.ref, so a burst of merges to main runs once
+# Trigger strategy (ADR 0098): every push to main, every pull request into main,
+# and workflow_dispatch for any other branch. A pull request runs on GitHub's
+# merge of the branch with main (refs/pull/N/merge), so it tests what merging
+# would produce; a pull request from a fork waits for a maintainer's approval
+# before it runs, and runs with the read-only token below and no secrets (the
+# workflow uses none). cancel-in-progress keys on github.ref, so a new push to a
+# pull request cancels its previous run, and a burst of merges to main runs once
 # for the newest commit.
 
 jobs:

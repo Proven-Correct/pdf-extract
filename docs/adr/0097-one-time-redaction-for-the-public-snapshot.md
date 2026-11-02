@@ -102,3 +102,13 @@ public, a bare `#NNN` is a legitimate public reference again.
 - A new mention of a blocked term, or of the consumer's code, fails CI.
 - The no-rewrite rule is unchanged for every later edit. This record is
   not a precedent.
+
+## Addendum (2026-11-02)
+
+The export ran once:
+- `tools/release/build-public-history.sh` built the public history from internal commit `a7c8ecf`: 39 commits (three pristine imports, 22 + 13 replayed patches, one snapshot), the four vendor tags, and one author and committer identity.
+- All three of its checks passed.
+- A final search of the tree (including `vendor/` and binary files) and of every commit message found none of the source terms. The only hits were the plain terms that `wordlist.rs` must spell out, and chance two-byte matches inside the compressed image streams of three test PDFs.
+
+The public repository's `main` is that snapshot (`dbcc847`). The internal repository was renamed and archived.
+

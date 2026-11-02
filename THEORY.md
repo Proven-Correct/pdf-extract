@@ -502,14 +502,17 @@ for the choice of `LOOM_MAX_PREEMPTIONS=3`.
 
 **Why hardening is cost-capped and mostly local (ADR 87, 85).** Phase 3 needs
 fuzzing, sanitizers and loom, with 72 clean hours of fuzzing as the original exit (waived, ADR 93). The
-repository is internal, so Actions minutes are billed and the owner capped
-recurring runner cost tightly. Seventy-two hours across five targets in CI
+repository was internal then, so Actions minutes were billed and the owner capped
+recurring runner cost tightly. (Since the public release minutes are free; the
+shape below stands for the reasons in ADR 87's addendum, chiefly that sanitizer
+and fuzz results change only when the code does, while pull requests now run CI
+automatically, ADR 98.) Seventy-two hours across five targets in CI
 would be 360 runner-hours; a nightly sanitizer schedule would be a standing bill
 for results that change only when the code does; a cache-based ledger can be
 evicted silently and lose the count. So long fuzzing runs on the developer's
 machine, resumably, and is counted in a committed ledger, and the workflow in
 CI is dispatch-only, with a time-capped smoke run and the two sanitizer runs.
-`ci.yml` depends on none of it (ADR 85 is unchanged). The consequences are
+`ci.yml` depends on none of it (ADR 85 then; ADR 98 now). The consequences are
 stated plainly in the ADR: fuzzing depth depends on someone running the script,
 the ledger is a progress log and not an attestation, and CI catches only
 regressions of committed reproducers and shallow crashes. Fixed findings

@@ -46,7 +46,7 @@
 
 ## 7. Consumer handoff (D6) — needs the owner's confirmation
 
-- [ ] 7.1 Write the Phase 4 planning proposal into the consumer's repository as a new OpenSpec change (proposal, design and tasks; no code). It covers:
+- [x] 7.1 Write the Phase 4 planning proposal into the consumer's repository as a new OpenSpec change (proposal, design and tasks; no code). It covers:
   - the offline parity run on a snapshot of the stored PDFs (gate A via `run_private_corpus.sh`) and the downstream check against the PyMuPDF output already stored, neither running PyMuPDF inside the application;
   - one cut-over release: pdf-extract replaces PyMuPDF, all PDF extraction runs in a child process per document under a wall-clock deadline with capped retries and quarantine, and `pymupdf` is dropped;
   - the dependency pinned by public URL plus hash;
@@ -57,4 +57,4 @@
 
 ## 8. Close-out
 
-- [ ] 8.1 Update ARCHITECTURE, THEORY and README for the public state (repository locations, release source, the parity API) in the public repository, and update the ADR index. Verify that the docs match the code and `adr_index.py` exits 0.
+- [x] 8.1 Update ARCHITECTURE, THEORY and README for the public state (repository locations, release source, the parity API) in the public repository, and update the ADR index. Verify that the docs match the code and `adr_index.py` exits 0.

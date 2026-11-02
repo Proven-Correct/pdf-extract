@@ -121,3 +121,12 @@ on untrusted input contain crashes and hangs. Everything else in this record
 stands: the local script, the committed ledger and the dispatch-only
 workflow. The status stays Accepted because the decision log has no
 partial-supersession status, the same pattern as ADR 0035, 0061 and 0086.
+
+## Addendum (2026-11-02)
+
+The repository became public on 2026-11-02, so Actions minutes are no longer billed, and the cost reason above no longer holds. The decision stands for its other reasons:
+- **The workflow stays dispatch-only.** Sanitizer and fuzz-smoke results change only when the code does, so a schedule would mostly rerun unchanged code and produce noise.
+- **Long fuzzing stays local.** It needs a resumable, committed ledger (`fuzz/ledger.json`), which a cache-evicting CI runner cannot provide.
+
+Pull requests now run `ci.yml` automatically (ADR 0098), which does not depend on this workflow.
+
