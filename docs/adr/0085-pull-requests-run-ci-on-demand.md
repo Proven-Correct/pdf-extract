@@ -2,7 +2,8 @@
 id: 0085
 title: Pull requests run CI on demand; main runs on every push
 date: 2026-10-14
-status: Accepted
+status: Superseded
+superseded_by: 0098
 summary: The CI workflow triggers automatically only on pushes to main (cancel-in-progress keeps the newest); pull requests run only when dispatched by hand.
 ---
 

@@ -65,3 +65,10 @@ Two open questions in the design spec bear on publishing:
 - `RELEASING.md` is the release procedure, and the `Wheels` workflow refuses
   a version with no committed release notes.
 - A later move to PyPI only adds a channel; nothing here prevents it.
+
+## Addendum (2026-11-02)
+
+v0.1.1, the first public release, was published from the public repository's tag `v0.1.1`:
+- `Wheels` run 41522501002 passed every job and attached six wheels, the sdist, `SHA256SUMS` and the committed notes.
+- An aarch64 abi3 wheel was installed anonymously by URL plus hash (`pip install --require-hashes`) on a clean `ubuntu:26.04` with its own Python 3.14.
+

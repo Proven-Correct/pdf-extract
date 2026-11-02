@@ -178,10 +178,10 @@ It writes `target/ocr-report.json` (per-page CER/WER, an order-insensitive word 
 builds corpus D's twelve noise variants into `target/corpus-d/` (about
 105 MB, regenerated when missing).
 
-CI runs automatically only on pushes to `main`; pull requests are not run
-unless asked (ADR 85). Run a branch with `gh workflow run ci.yml --ref <branch>`.
-Run the checks above before pushing: a red `main` is the first CI signal for a
-merged change.
+CI runs on every pull request into `main` and every push to `main` (ADR 0098);
+a pull request from a fork runs once a maintainer approves it. Run any other
+branch with `gh workflow run ci.yml --ref <branch>`. Run the checks above before
+pushing.
 
 ### Language data
 

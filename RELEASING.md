@@ -29,7 +29,7 @@ it.
    run `tools/license/gen-notices.sh` and commit `THIRD_PARTY_NOTICES` and
    `tools/license/rust-std-COPYRIGHT.html`. CI's `deny` job fails if they are
    stale, and so does the release's `license` job.
-5. **Rehearse** (optional, billed: about 3–5 runner-hours):
+5. **Rehearse** (optional; about 3–5 runner-hours):
    `gh workflow run wheels.yml --ref main` runs everything except the
    GitHub Release and uploads the files as workflow artifacts.
 

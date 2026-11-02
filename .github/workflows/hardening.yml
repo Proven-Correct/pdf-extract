@@ -1,15 +1,16 @@
 # Hardening runs: a fuzz smoke test of the five cargo-fuzz targets and the
 # Rust test suite under AddressSanitizer and ThreadSanitizer (design D8, D9;
-# ADR 0087). Manual dispatch ONLY, never on a schedule or a push: the
-# repository is internal and billed, so long fuzzing runs locally
-# (tools/fuzz/run.sh, counted in fuzz/ledger.json) and this workflow is the
-# short, on-demand CI counterpart. ci.yml's per-push pipeline does not depend
-# on anything here.
+# ADR 0087 and its 2026-11-02 addendum). Manual dispatch ONLY, never on a
+# schedule or a push: the results change only when the code does, so a
+# schedule would rerun unchanged code, and long fuzzing runs locally
+# (tools/fuzz/run.sh, counted in fuzz/ledger.json), where it can resume. This
+# workflow is the short, on-demand CI counterpart. ci.yml's pipeline does not
+# depend on anything here.
 #
 # Dispatch: gh workflow run hardening.yml --ref <branch> \
 #             -f job=fuzz-smoke|asan|tsan|all -f fuzz_minutes=10
 #
-# Cost at the defaults: the smoke run is five targets x 10 minutes plus their
+# Runner time at the defaults: the smoke run is five targets x 10 minutes plus their
 # builds, about one runner-hour; each sanitizer run is one to two.
 #
 # Both halves run on the dated nightly pinned in fuzz/rust-toolchain.toml and

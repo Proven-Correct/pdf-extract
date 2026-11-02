@@ -1,9 +1,10 @@
 # Release wheels (Phase 3 change 2, design D8; ADR 0091; packaging spec).
 #
 # Runs ONLY on a `v*` tag push or a manual dispatch: never on a schedule, a
-# branch push or a pull request. The repository is internal and Actions
-# minutes are billed (ADR 0087); one run is about 3-5 runner-hours. Per push,
-# ci.yml's `wheel` job builds and checks one wheel (manylinux x86_64 abi3).
+# branch push or a pull request. One run is about 3-5 runner-hours across
+# eight platform jobs, and its result matters only for a release; per push and
+# per pull request, ci.yml's `wheel` job builds and checks one wheel
+# (manylinux x86_64 abi3).
 #
 #   version     docs/releases/v<workspace version>.md must exist; on a tag,
 #               the tag must be v<workspace version>
