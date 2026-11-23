@@ -149,6 +149,16 @@ git ls-files -z '*.sh' | xargs -0 uvx --from shellcheck-py==0.11.0.1 shellcheck 
 tools/license/gen-notices.sh           # rewrite THIRD_PARTY_NOTICES (needs cargo-about 0.9.2, jq, rustup, Python >= 3.11 as $PYTHON)
 ```
 
+The OCR crate's tests (so `cargo test --workspace`) need `TESSDATA_PREFIX` set to the
+pinned model (without it `common::tessdata()` panics unless a system directory happens to hold
+`eng.traineddata`). Fetch it once and export it (details in the
+quality-gate paragraph below):
+
+```sh
+(cd tools/oracle && uv run python mkcorpusd.py --fetch-model)
+export TESSDATA_PREFIX=$PWD/tools/oracle/.cache/tessdata_fast
+```
+
 Hardening checks (need the pinned nightly in `fuzz/rust-toolchain.toml`; the `loom` run needs only the stable toolchain; details in `ARCHITECTURE.md`):
 
 ```sh
