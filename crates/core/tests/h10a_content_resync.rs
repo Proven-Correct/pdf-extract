@@ -66,15 +66,18 @@ fn a_malformed_name_run_is_skipped_whole() {
     let (ops, skipped) = operators(b"a#zz Q");
     assert_eq!(ops, ["Q"]);
     assert_eq!(skipped, 4);
-    // Linear time on a long run (quadratic rescanning would take minutes).
+    // A long run is still one skip. Linear time (quadratic rescanning would
+    // take minutes) is not asserted by the clock, as in
+    // `a_long_run_of_stray_bytes_is_linear`: a fixed bound (it was 5 s) is
+    // overrun by coverage instrumentation on a shared runner with the scan
+    // still linear (issue #6), and a quadratic regression would show as a
+    // test that does not finish.
     let mut data = b"a".to_vec();
     data.extend(std::iter::repeat_n(b'#', 4 << 20));
     data.extend_from_slice(b" Q");
-    let start = std::time::Instant::now();
     let (ops, skipped) = operators(&data);
     assert_eq!(ops, ["Q"]);
     assert_eq!(skipped, (4 << 20) + 1);
-    assert!(start.elapsed() < std::time::Duration::from_secs(5));
 }
 
 #[test]

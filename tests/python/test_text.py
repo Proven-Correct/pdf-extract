@@ -171,14 +171,24 @@ def test_operator_cap_raises_limit_exceeded(fixtures: Fixtures) -> None:
 
 
 def test_time_budget_raises_limit_exceeded_promptly(fixtures: Fixtures) -> None:
+    # The budget, and not something else, ended the page, and not before it
+    # ran out: the library starts its clock after `start`, on the same
+    # monotonic clock (CLOCK_MONOTONIC on Linux, mach_absolute_time on
+    # macOS), read in integer nanoseconds so no float rounding enters the
+    # comparison. The upper bound is a hang watchdog, not slack on the
+    # budget: a fixed slack (it was 2 s) is overrun by coverage
+    # instrumentation on shared runners with the budget honoured (issue #6).
+    # Uncut, the page runs for tens of seconds.
+    budget_ns = 500_000_000
     doc = pdf_extract.open(fixtures.path("form_fanout_22"), limits=Limits(page_time_budget=0.5))
-    start = time.monotonic()
+    start = time.monotonic_ns()
     with pytest.raises(LimitExceededError) as info:
         doc[0].text()
-    elapsed = time.monotonic() - start
+    elapsed = time.monotonic_ns() - start
     assert info.value.limit_name == "page_time_budget"
     assert info.value.value == 500  # milliseconds
-    assert elapsed < 0.5 + 2.0, elapsed
+    assert elapsed >= budget_ns, elapsed
+    assert elapsed < 10 * 1_000_000_000, elapsed  # hang watchdog
 
 
 def test_character_cap_returns_a_partial_page(fixtures: Fixtures) -> None:

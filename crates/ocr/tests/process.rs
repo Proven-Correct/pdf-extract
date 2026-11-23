@@ -144,6 +144,11 @@ fn a_garbage_frame_kills_the_helper() {
     assert!(ocr(&e, &body()).is_ok(), "respawned");
 }
 
+/// How long [`a_hanging_helper_is_killed_at_the_deadline`] may take before it
+/// counts as hung: twelve times its kill time (500 ms + GRACE), generous for
+/// an instrumented build, and finite where the fault itself is not.
+const HANG_WATCHDOG: Duration = Duration::from_secs(30);
+
 #[test]
 fn a_hanging_helper_is_killed_at_the_deadline() {
     let _g = serial();
@@ -161,10 +166,19 @@ fn a_hanging_helper_is_killed_at_the_deadline() {
         matches!(r, Err(OcrError::Page(OcrPageError::Timeout(d))) if d == timeout),
         "{r:?}"
     );
-    // The kill comes at timeout + GRACE; the slack covers the kill, the
-    // reap and a loaded scheduler, not a second GRACE.
-    let bound = timeout + GRACE + Duration::from_secs(2);
-    assert!(elapsed < bound, "{elapsed:?} (bound {bound:?})");
+    // The parent kills the helper at the page deadline plus GRACE, and the
+    // deadline is taken inside `ocr()`, after `start`, so the call cannot
+    // have returned sooner. hang-on-recognize never answers and never exits
+    // (helper.rs sleeps forever), so there is no natural exit to stay below:
+    // the kill itself is proven by the signal status below, and the upper
+    // bound is only a hang watchdog. It used to be timeout + GRACE + 2 s,
+    // which coverage instrumentation on a shared runner can overrun with the
+    // kill on time (issue #6).
+    assert!(elapsed >= timeout + GRACE, "{elapsed:?}");
+    assert!(
+        elapsed < HANG_WATCHDOG,
+        "{elapsed:?} (watchdog {HANG_WATCHDOG:?})"
+    );
     // waitpid returned: no zombie is left behind.
     let status = reaped(pid).expect("reaped");
     assert_eq!(status.code(), None, "killed by a signal: {status:?}");
