@@ -77,6 +77,25 @@ fn faults_parse_only_known_values() {
         Some(Fault::Slow(Duration::from_millis(250)))
     );
     assert_eq!(Fault::parse("slow-on-recognize:x"), None);
+    // The directory is everything after the count's colon, colons included.
+    assert_eq!(
+        Fault::parse("rendezvous-on-recognize:3:/tmp/a:b"),
+        Some(Fault::Rendezvous {
+            n: 3,
+            dir: PathBuf::from("/tmp/a:b")
+        })
+    );
+    for bad in [
+        "rendezvous-on-recognize:0:/tmp/x",
+        "rendezvous-on-recognize:-1:/tmp/x",
+        "rendezvous-on-recognize:x:/tmp/x",
+        "rendezvous-on-recognize::/tmp/x",
+        "rendezvous-on-recognize:3",
+        "rendezvous-on-recognize:3:",
+        "rendezvous-on-recognize",
+    ] {
+        assert_eq!(Fault::parse(bad), None, "{bad}");
+    }
     assert_eq!(Fault::parse("abort"), None);
     // This test process has neither variable set.
     assert_eq!(Fault::from_env(), None);
@@ -206,6 +225,63 @@ fn in_process_faults_answer_the_first_request_only() {
         Some(Fault::Slow(Duration::from_millis(1))),
     );
     assert!(matches!(&replies[1], Message::Result(_)), "{replies:?}");
+}
+
+/// A fresh, empty directory for one rendezvous test.
+fn rendezvous_dir(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("pxo-helper-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    dir
+}
+
+#[test]
+fn a_rendezvous_of_one_recognises_and_leaves_a_marker() {
+    let dir = rendezvous_dir("rendezvous-1");
+    let fault = Fault::Rendezvous {
+        n: 1,
+        dir: dir.clone(),
+    };
+    let (_, replies) = run(&[hello(), white(1), white(1)], b"", Some(fault));
+    assert!(matches!(&replies[1], Message::Result(_)), "{replies:?}");
+    assert!(matches!(&replies[2], Message::Result(_)), "{replies:?}");
+    assert!(dir.join(std::process::id().to_string()).is_file());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_rendezvous_whose_peers_never_arrive_fails_at_the_deadline() {
+    let dir = rendezvous_dir("rendezvous-2");
+    let fault = Fault::Rendezvous {
+        n: 2,
+        dir: dir.clone(),
+    };
+    let start = Instant::now();
+    let (status, replies) = run(
+        &[hello(), recognize(1, 1, vec![255], 100), white(1)],
+        b"",
+        Some(fault),
+    );
+    assert_eq!(status, 0);
+    assert!(start.elapsed() >= Duration::from_millis(100));
+    assert!(
+        matches!(&replies[1], Message::PageErr(k, d) if *k == page_err::RECOGNITION && d == "rendezvous timed out: 1/2"),
+        "{replies:?}"
+    );
+    // Only the first request waits.
+    assert!(matches!(&replies[2], Message::Result(_)), "{replies:?}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_rendezvous_directory_that_cannot_take_a_marker_fails_the_page() {
+    let dir = rendezvous_dir("rendezvous-missing").join("absent");
+    let fault = Fault::Rendezvous { n: 1, dir };
+    let (_, replies) = run(&[hello(), white(1)], b"", Some(fault));
+    assert!(
+        matches!(&replies[1], Message::PageErr(k, d) if *k == page_err::RECOGNITION && d.starts_with("rendezvous: cannot create")),
+        "{replies:?}"
+    );
 }
 
 #[test]
