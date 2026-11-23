@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-14]
+        os: [ubuntu-24.04, macos-15]
     steps:
       # Full history: test-check-patches.sh re-exports the vendor patch series
       # from the vendor/*-pristine-N tags, which a shallow clone lacks (the
@@ -92,7 +92,7 @@ jobs:
   # golden test inside `rust`; here the two hosts' rasters must agree within
   # tolerance (>= 99.9 % identical pixels, max |delta| <= 8 gray levels),
   # because vello_cpu and pic-scale pick SIMD kernels at run time (NEON on
-  # macos-14, AVX2/SSE on ubuntu-24.04). Builds only pdf-extract-render's
+  # macos-15, AVX2/SSE on ubuntu-24.04). Builds only pdf-extract-render's
   # tests, so no Tesseract build and no tessdata.
   render-cross-os:
     needs: rust
@@ -108,7 +108,7 @@ jobs:
           path: ${{ runner.temp }}/golden-linux
       - uses: actions/download-artifact@v7
         with:
-          name: render-golden-macos-14
+          name: render-golden-macos-15
           path: ${{ runner.temp }}/golden-macos
       - run: >-
           cargo test $CARGO_FLAGS -p pdf-extract-render --test golden --
@@ -246,7 +246,7 @@ jobs:
         include:
           - { os: ubuntu-24.04, python: "3.13" }
           - { os: ubuntu-24.04, python: "3.14" }
-          - { os: macos-14, python: "3.13" }
+          - { os: macos-15, python: "3.13" }
     steps:
       - uses: actions/checkout@v7
       - run: rustup toolchain install

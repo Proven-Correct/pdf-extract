@@ -118,8 +118,8 @@ jobs:
           - { platform: linux-x86_64, runner: ubuntu-24.04, docker: x86_64, abi: ft, python: "3.14t" }
           - { platform: linux-aarch64, runner: ubuntu-24.04-arm, docker: aarch64, abi: abi3, python: "3.13" }
           - { platform: linux-aarch64, runner: ubuntu-24.04-arm, docker: aarch64, abi: ft, python: "3.14t" }
-          - { platform: macos-arm64, runner: macos-14, docker: "", abi: abi3, python: "3.13" }
-          - { platform: macos-arm64, runner: macos-14, docker: "", abi: ft, python: "3.14t" }
+          - { platform: macos-arm64, runner: macos-15, docker: "", abi: abi3, python: "3.13" }
+          - { platform: macos-arm64, runner: macos-15, docker: "", abi: ft, python: "3.14t" }
     steps:
       - uses: actions/checkout@v7
       # Linux: the container's rustup, registry and build output (under
