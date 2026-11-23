@@ -81,7 +81,7 @@ CI SHALL run fuzzing only on manual dispatch, never on a schedule or on push, wi
 
 #### Scenario: No scheduled or push-triggered fuzzing
 - **WHEN** commits are pushed to `main` or time passes
-- **THEN** no fuzzing job starts. The per-push CI runs only the stable regression replay, and its triggers stay as ADR 0085 sets them [ADR-0085]
+- **THEN** no fuzzing job starts. CI runs only the stable regression replay, and only when dispatched [ADR-0099]
 
 #### Scenario: Dispatched smoke run
 - **WHEN** the hardening workflow is dispatched with default inputs

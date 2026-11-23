@@ -505,14 +505,14 @@ fuzzing, sanitizers and loom, with 72 clean hours of fuzzing as the original exi
 repository was internal then, so Actions minutes were billed and the owner capped
 recurring runner cost tightly. (Since the public release minutes are free; the
 shape below stands for the reasons in ADR 87's addendum, chiefly that sanitizer
-and fuzz results change only when the code does, while pull requests now run CI
-automatically, ADR 98.) Seventy-two hours across five targets in CI
+and fuzz results change only when the code does, while `ci.yml` itself is
+dispatch-only again, ADR 99.) Seventy-two hours across five targets in CI
 would be 360 runner-hours; a nightly sanitizer schedule would be a standing bill
 for results that change only when the code does; a cache-based ledger can be
 evicted silently and lose the count. So long fuzzing runs on the developer's
 machine, resumably, and is counted in a committed ledger, and the workflow in
 CI is dispatch-only, with a time-capped smoke run and the two sanitizer runs.
-`ci.yml` depends on none of it (ADR 85 then; ADR 98 now). The consequences are
+`ci.yml` depends on none of it (ADR 85, 98, 99). The consequences are
 stated plainly in the ADR: fuzzing depth depends on someone running the script,
 the ledger is a progress log and not an attestation, and CI catches only
 regressions of committed reproducers and shallow crashes. Fixed findings
@@ -574,9 +574,9 @@ real wheel showed it resolves every target (loom and other platforms' crates
 appear as shipped) and embeds the build machine's paths, so a small
 generator over `cargo tree` for the wheel's own target replaced it. abi3 is an
 opt-in feature rather than always on because free-threaded CPython has no
-stable ABI and development builds should keep the full API; the per-push job
+stable ABI and development builds should keep the full API; the CI `wheel` job
 runs the whole suite against the abi3 wheel so the two cannot drift. Only one
-wheel is built per push and the full matrix waits for a tag or a dispatch,
+wheel is built per CI run and the full matrix waits for a tag or a dispatch,
 for the same cost reason as hardening (ADR 87). Releases go to GitHub, not a
 package index, because the package name is still undecided (design spec
 §17.2 Q1).

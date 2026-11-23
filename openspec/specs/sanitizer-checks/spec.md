@@ -25,7 +25,7 @@ The Rust workspace test suite SHALL be runnable with ThreadSanitizer, through th
 - **THEN** it passes only if every included test passes and the sanitizer reports no data race [§13.3]
 
 ### Requirement: Sanitizer runs are manual only
-Sanitizer jobs SHALL run in CI only on manual dispatch, never on a schedule or on push, and the per-push CI SHALL NOT depend on them.
+Sanitizer jobs SHALL run in CI only on manual dispatch, never on a schedule or on push, and the main CI workflow SHALL NOT depend on them.
 
 #### Scenario: No recurring sanitizer cost
 - **WHEN** commits are pushed to `main` or time passes

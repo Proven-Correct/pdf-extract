@@ -1,6 +1,6 @@
 # The licence checks, as one reusable workflow (licensing spec "License checks
 # rerun on release"; design D5 of the complete-license-pipeline change). Called
-# by ci.yml's `deny` job on every main push and by wheels.yml's `license` job
+# by ci.yml's `deny` job on every CI run and by wheels.yml's `license` job
 # on the exact commit being released, so CI and release cannot run different
 # check lists. It has no trigger of its own.
 name: License
