@@ -144,7 +144,7 @@ abandons the parent's pool (O30).
 - **Python 3.11's `Thread.join` returns before the OS thread is gone,** so thread-count tests (`tests/python`, `crates/core/tests/extract_threads.rs`) settle (poll) before comparing counts or `/proc` thread totals. The Rust poller (`crates/core/tests/thread_poll/`, Linux only) is a directory module shared by two test binaries (`extract_threads.rs` must be the only test in its binary, so the panic-propagation test is `thread_poll_panic.rs`); a drop guard stops the poller when the closure under test panics, otherwise `thread::scope` would hang the test instead of failing it.
 - **The `ocr-system` job excludes the fork and silence tests** (Ubuntu's OpenMP Tesseract is not usable in a forked child, and silence is a vendored-build claim).
 - **Wordlist:** `cargo test -p pdf-extract-testkit --test wordlist` runs over the whole tree, including specs and ADRs.
-- **A pull request's run tests its merge with `main`; a dispatched run (`gh workflow run ci.yml --ref <branch>`) tests the branch tip only.** A dispatched branch that is behind `main` can pass and still fail on `main`. A pull request whose run predates later merges to `main` is stale the same way: re-run it before merging when the change interacts with recent work. A red run on `main` is fixed as part of the change that caused it (ADR 0098).
+- **A dispatched run (`gh workflow run ci.yml --ref <branch>`) tests the branch tip only, and nothing runs CI automatically (ADR 0099).** A branch that is behind `main` can pass and still fail on `main`, and a pull request shows no check at all unless someone dispatched one: dispatch on `main` after a block of merges. A red run on `main` is fixed as part of the change that caused it.
 - **Heavy Linux jobs need `.github/actions/free-disk`.** The `rust`, `coverage` and `python-coverage` jobs build the workspace's tests more than once (or instrumented) on a ~3 GB-free ubuntu-24.04 runner; without the action the linker dies with SIGBUS, which does not look like a disk problem. A new heavy Linux job runs it after checkout.
 - **`threading.stack_size(512 KiB)` does not guarantee a 512 KiB stack on Linux.** glibc serves new threads from its cache of exited threads' stacks and accepts a block up to 4× the request, so after Rust's 2 MiB worker threads (`extract(workers=...)`) exit, a 512 KiB thread can get 2 MiB (internal issue #70). `tests/python/pdfs.on_small_stack` therefore measures each thread's real stack (`pthread_getattr_np` / `pthread_get_stacksize_np`) and parks oversized ones until it gets the requested size; `test_small_stack.py` asserts the real size on Linux and macOS. The Rust integration tests get the same check from `crates/core/tests/common/stack.rs` (`on_small_stack`; the render tests include that file by `#[path]`; `tests/stack_size.rs` tests the runner); it needs `unsafe` pthread FFI, so it cannot live in the `forbid(unsafe_code)` testkit or in core's library code. Core's own unit tests (`src/text/tests`) include the same file by `#[path]` under `#[allow(unsafe_code)]`, which the unit-test build permits because core is `deny`, not `forbid`, there (ADR 0089; `text::tests::the_unit_tests_small_stack_is_measured` pins it); any further `allow(unsafe_code)` under `cfg(test)` widens that exception. Off Linux and macOS the measurement is taken on trust (`stack_fits(None)`), and CI runs only those two.
 
@@ -230,19 +230,17 @@ All jobs build with `--locked`; none is parked (`.github/actionlint.yaml` is gon
 | `python` | ubuntu 3.13/3.14, macOS 3.13: maturin release build, ruff and mypy (also over `tools/fuzz`, `tools/license`, `tools/build`), stubtest, pytest with `pdf_extract` coverage ≥ 95% |
 | `wheel` | ubuntu-24.04: `build-wheel.sh --docker x86_64 abi3` (cached `target/{docker,manylinux}-x86_64`), `verify_wheel.py`, `smoke.py` from a fresh venv outside the checkout, then the whole pytest suite against the installed wheel (no coverage gate) |
 | `python-freethreaded` | ubuntu 3.14t, `PYTHON_GIL=0`; asserts the GIL stays off after import; no lint |
-| `shellcheck` | ubuntu-24.04: shellcheck (pinned `shellcheck-py` via `uvx`) over every `git ls-files '*.sh'`; its own job because the lint does not depend on the OS. Also `tools/sanitizers/check-suppressions.sh` and its `--self-test`, so a bad sanitizer suppression fails on push |
+| `shellcheck` | ubuntu-24.04: shellcheck (pinned `shellcheck-py` via `uvx`) over every `git ls-files '*.sh'`; its own job because the lint does not depend on the OS. Also `tools/sanitizers/check-suppressions.sh` and its `--self-test`, so a bad sanitizer suppression fails the next CI run |
 | `coverage` | cargo-llvm-cov (`--no-fail-fast`); gates `crates/{core,render,ocr}` ≥ 95% lines; testkit, python, tesseract-sys reported (the C++ shim is not instrumented); uploads `lcov.info` |
 | `python-coverage` | report-only: Rust coverage of `crates/python` from pytest |
 | `parity` | `cargo test -p pdf-extract-core --test parity` (gates C and B) against committed expectations, no PyMuPDF; uploads both parity reports |
 | `bench` | report-only (`continue-on-error`): criterion + peak RSS → `bench.json`, annotated against `crates/core/benches/baseline.json` (recorded on a local arm64 Mac; replace with a CI artefact). Never gate on bench numbers |
 
-Trigger strategy (ADR 0098, superseding 0085): CI runs on every push to `main`, on every
-pull request into `main` (GitHub's merge ref; a fork's pull request waits for a
-maintainer's approval and gets the read-only token, and the workflow uses no secrets),
-and on `workflow_dispatch` for any other branch (`gh workflow run ci.yml --ref <branch>`).
-The concurrency group is keyed on `github.ref` with cancel-in-progress, so a new push to a
-pull request cancels its previous run and a burst of merges to `main` runs once for the
-newest commit. Every job has a `timeout-minutes`.
+Trigger strategy (ADR 0099, superseding 0098): CI runs only on `workflow_dispatch`
+(`gh workflow run ci.yml --ref <branch>`); pushes and pull requests, including a fork's,
+start nothing, and a maintainer dispatches a run at the end of a block of work. The
+concurrency group is keyed on `github.ref` with cancel-in-progress, so a second dispatch
+on the same ref cancels the first. Every job has a `timeout-minutes`.
 
 **Weekly advisories** (`.github/workflows/advisories.yml`, ADR 0095): the repository's
 only `schedule` trigger (Mondays 06:17 UTC, plus `workflow_dispatch`), one

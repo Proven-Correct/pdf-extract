@@ -8,10 +8,6 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -26,14 +22,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Trigger strategy (ADR 0098): every push to main, every pull request into main,
-# and workflow_dispatch for any other branch. A pull request runs on GitHub's
-# merge of the branch with main (refs/pull/N/merge), so it tests what merging
-# would produce; a pull request from a fork waits for a maintainer's approval
-# before it runs, and runs with the read-only token below and no secrets (the
-# workflow uses none). cancel-in-progress keys on github.ref, so a new push to a
-# pull request cancels its previous run, and a burst of merges to main runs once
-# for the newest commit.
+# Trigger strategy (ADR 0099, superseding 0098): workflow_dispatch only. Pushes
+# and pull requests do not start a run; the owner dispatches one with
+# `gh workflow run ci.yml --ref <branch>` at the end of a block of work, which
+# tests that ref's tip (not a merge with main). cancel-in-progress keys on
+# github.ref, so a second dispatch on the same ref cancels the first.
 
 jobs:
   rust:
@@ -142,7 +135,7 @@ jobs:
       - uses: astral-sh/setup-uv@v10.2.0
       - run: git ls-files -z '*.sh' | xargs -0 uvx --from shellcheck-py==0.11.0.1 shellcheck
       # The sanitizer suppression files (run only by the dispatch-only
-      # hardening.yml) are linted on every push, so an unjustified entry or
+      # hardening.yml) are linted on every CI run, so an unjustified entry or
       # one covering our own crates is caught without a sanitizer run.
       - run: tools/sanitizers/check-suppressions.sh
       - run: tools/sanitizers/check-suppressions.sh --self-test
@@ -312,7 +305,7 @@ jobs:
       - run: uv run --no-sync python -c "import sys, pdf_extract; assert sys._is_gil_enabled() is False"
       - run: uv run --no-sync pytest --cov=pdf_extract --cov-fail-under=95
 
-  # One release wheel per push (ship-wheels-sbom-process-default, design D8):
+  # One release wheel per CI run (ship-wheels-sbom-process-default, design D8):
   # manylinux_2_28 x86_64, abi3, built by the same script as the release
   # workflow (tools/build/build-wheel.sh, inside the digest-pinned manylinux
   # image), so a change that drops the OCR helper, the SBOMs or the licence

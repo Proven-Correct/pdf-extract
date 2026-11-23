@@ -1,9 +1,9 @@
 # Weekly RustSec advisory check (licensing spec "Advisory and duplicate-version
 # checks"; design D6 of the complete-license-pipeline change; ADR 0095).
 #
-# CI checks advisories on every main push and the release workflow on every
-# release, but an advisory published after a release would otherwise go
-# unseen until the next push. This is the repository's only `schedule`
+# CI checks advisories on every dispatched run (ADR 0099) and the release
+# workflow on every release, but an advisory published after a release would
+# otherwise go unseen until the next run. This is the repository's only `schedule`
 # trigger: the project owner approved it on 2026-10-22 because it costs a few
 # runner-minutes a week. It runs nothing but `cargo deny check advisories`:
 # no build (the action's `cargo metadata` may install the rust-toolchain.toml

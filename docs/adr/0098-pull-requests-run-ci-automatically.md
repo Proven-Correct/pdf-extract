@@ -2,8 +2,9 @@
 id: 0098
 title: Pull requests run CI automatically
 date: 2026-11-02
-status: Accepted
+status: Superseded
 supersedes: 0085
+superseded_by: 0099
 summary: Now that the repository is public, ci.yml runs on every pull request into main (on GitHub's merge ref; forks wait for a maintainer's approval) as well as on pushes to main and by dispatch.
 ---
 

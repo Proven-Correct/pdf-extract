@@ -171,7 +171,7 @@ The corpus-A gate SHALL run only by hand against a private directory outside the
 - **THEN** it refuses in-repository paths and writes a report without text, with the same 0/1/2 exit statuses [0002 §3.8, §4.12]
 
 ### Requirement: Parity and OCR quality gates block CI
-The CI pipeline SHALL run gates C and B on every push to the main branch and on any branch run on demand (pull requests run on demand; ADR 0085), and SHALL run the corpus-D OCR quality gate with the pinned model; a failure of either SHALL fail the pipeline. Performance numbers SHALL NOT gate.
+The CI pipeline SHALL run gates C and B on every CI run, which is dispatched on demand for `main` or any branch (ADR 0099), and SHALL run the corpus-D OCR quality gate with the pinned model; a failure of either SHALL fail the pipeline. Performance numbers SHALL NOT gate.
 
 #### Scenario: Gate failure
 - **WHEN** gate C, gate B or an O34 CER gate fails on CI
