@@ -8,10 +8,17 @@
 //! `harness = false`: the fork happens from this binary's own `main`, with
 //! exactly one other thread (the one whose page is in flight), so the
 //! child's state is known.
+//!
+//! "In flight" is observed, not assumed from a sleep (issue #6): every
+//! helper holds its first page at a `rendezvous-on-recognize:2` (see the
+//! helper's fault hooks), whose marker the parent's helper creates only
+//! after reading the whole `Recognize` frame. The fork waits for that
+//! marker, and nothing can complete the rendezvous before the fork.
 
 mod common;
 
-use std::time::Duration;
+use std::path::Path;
+use std::time::{Duration, Instant};
 
 use pdf_extract_core::{BlockSeparator, Document};
 use pdf_extract_ocr::isolation::client::{helper_log, set_helper_test_env};
@@ -28,15 +35,38 @@ fn recognises(engine: &OcrEngine, doc: &Document) -> bool {
         })
 }
 
+/// How long the parent's helper may take to reach its first page: the
+/// page budget (`page_timeout`'s default), which also bounds its wait at
+/// the rendezvous.
+const MARKER_WAIT: Duration = Duration::from_secs(60);
+
+/// Waits until `marker` exists, panicking at [`MARKER_WAIT`].
+fn await_marker(marker: &Path) {
+    let deadline = Instant::now() + MARKER_WAIT;
+    while !marker.exists() {
+        assert!(
+            Instant::now() < deadline,
+            "the parent's helper did not reach its first page within {MARKER_WAIT:?} ({} absent)",
+            marker.display()
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
 #[cfg(unix)]
 fn main() {
     if std::env::args().any(|a| a == "--list") {
         return;
     }
-    // Every helper sleeps 1.5 s before its first page, so the parent's page
-    // is certainly in flight when the fork happens.
+    // Every helper holds its first page until `meet` has two entries. The
+    // parent's helper supplies the first. Nothing can supply the second
+    // before the fork: it is the child's helper (armed too, so it never
+    // waits) or the release file this thread writes after forking,
+    // whichever comes first.
+    let meet = common::scratch("process-fork-rendezvous");
+    let fault = format!("rendezvous-on-recognize:2:{}", meet.display());
     set_helper_test_env(&[
-        ("PDF_EXTRACT_OCR_HELPER_FAULT", "slow-on-recognize:1500"),
+        ("PDF_EXTRACT_OCR_HELPER_FAULT", &fault),
         ("PDF_EXTRACT_OCR_HELPER_FAULT_ARMED", "1"),
     ]);
     let engine = OcrEngine::tesseract_with_candidates(
@@ -52,12 +82,19 @@ fn main() {
 
     std::thread::scope(|s| {
         let in_flight = s.spawn(|| recognises(&engine, &doc));
-        std::thread::sleep(Duration::from_millis(300));
+        // The engine's only helper is idle, so it takes this page. Its
+        // marker means it has read the whole frame, so the other thread has
+        // rendered, checked the helper out (releasing the pool's lock) and
+        // made its last write; from there to poll(2) it runs only
+        // stack-only code. The helper cannot answer until the rendezvous
+        // completes, which nothing can do before the fork.
+        await_marker(&meet.join(parent_helper.to_string()));
 
-        // SAFETY: the only other thread is blocked in poll(2) waiting for
-        // its helper, holding no lock the child needs; the child uses the
-        // engine (whose pool notices the new pid) and leaves through
-        // _exit, never unwinding into the parent's state.
+        // SAFETY: the only other thread is in (or entering) poll(2) waiting
+        // for its helper, holding no lock and making no allocation (see
+        // above); the child uses the engine (whose pool notices the new
+        // pid) and leaves through _exit, never unwinding into the parent's
+        // state.
         let pid = unsafe { libc::fork() };
         assert!(pid >= 0, "fork failed");
         if pid == 0 {
@@ -69,6 +106,9 @@ fn main() {
             // parent's destructors (which would shut down its helpers).
             unsafe { libc::_exit(i32::from(!ok)) };
         }
+        // Completes the rendezvous if the child's helper has not, so the
+        // parent's page finishes whatever the child does.
+        std::fs::write(meet.join("release"), b"").expect("release the rendezvous");
         let mut status = 0;
         // SAFETY: `pid` is our child; `status` is a valid out-pointer.
         let waited = unsafe { libc::waitpid(pid, &raw mut status, 0) };
