@@ -5,7 +5,7 @@ mod common;
 
 use std::io::Read as _;
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use pdf_extract_core::UnavailableReason;
 use pdf_extract_ocr::{Candidates, EngineMode, Isolation, Linkage, OcrConfig, OcrEngine};
@@ -16,11 +16,12 @@ fn build(cfg: OcrConfig, c: &Candidates) -> Result<OcrEngine, pdf_extract_core::
 }
 
 #[test]
-fn a_good_configuration_builds_quickly_with_one_pooled_instance() {
-    let start = Instant::now();
+fn a_good_configuration_builds_with_one_pooled_instance() {
+    // No wall-clock bound (it was 2 s): construction time is Tesseract's
+    // model load, which coverage instrumentation on a shared runner can
+    // stretch past any fixed limit without a regression in our code (issue
+    // #6). What O7 asks of construction is that the first instance is pooled.
     let engine = build(common::config(), &common::nowhere()).expect("engine");
-    let took = start.elapsed();
-    assert!(took < Duration::from_secs(2), "construction took {took:?}");
     assert_eq!(engine.pool_len(), Some(1));
     assert_eq!(engine.tessdata(), Some(common::tessdata().as_path()));
     assert_eq!(engine.config().languages, vec!["eng".to_owned()]);

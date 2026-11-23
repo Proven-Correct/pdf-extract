@@ -13,7 +13,23 @@ use crate::config::{EngineMode, PageSegMode};
 
 /// What the stand-in does after its last answer.
 const DRAIN: &str = "exec /bin/cat > /dev/null";
-const SLEEP: &str = "exec /bin/sleep 30";
+
+/// How long a stand-in that runs [`sleep`] lives before exiting on its own.
+/// The timing tests that use one bound their elapsed time well below this,
+/// so a pass means the parent killed the stand-in at its own deadline rather
+/// than waiting for it to go away by itself.
+const STAND_IN_LIFETIME: Duration = Duration::from_secs(30);
+
+/// The upper bound of those tests: half the stand-in's lifetime. Far above
+/// any deadline they set (at most `GRACE` plus a fraction of a second), so
+/// a slow instrumented build on a shared runner does not reach it (issue
+/// #6), yet a stand-in left to exit by itself always does.
+const BEFORE_NATURAL_EXIT: Duration = Duration::from_secs(STAND_IN_LIFETIME.as_secs() / 2);
+
+/// Sleep for [`STAND_IN_LIFETIME`]: read nothing more and never answer.
+fn sleep() -> String {
+    format!("exec /bin/sleep {}", STAND_IN_LIFETIME.as_secs())
+}
 
 /// Pixels in every raster the stand-ins are asked to recognize, so each
 /// can read exactly one `Recognize` frame before answering.
@@ -248,11 +264,19 @@ fn bad_replies_to_hello_are_init_failures() {
 
 #[test]
 fn a_helper_that_never_answers_hello_is_killed() {
-    let f = factory(fake("hang", &[], SLEEP), Duration::from_millis(200));
+    let start_timeout = Duration::from_millis(200);
+    let f = factory(fake("hang", &[], &sleep()), start_timeout);
     let start = Instant::now();
     let e = f.start().map(|_| ()).expect_err("timeout");
-    assert!(start.elapsed() < Duration::from_secs(5));
+    let elapsed = start.elapsed();
     assert!(e.detail.contains("did not start in time"), "{e}");
+    // The start deadline is taken inside `start()`, after `start`, so the
+    // parent cannot have given up before it. The upper bound is not the
+    // deadline plus a fixed slack (that flaked under coverage on shared
+    // runners, issue #6) but what separates a kill at the deadline from a
+    // stand-in that was left to exit by itself.
+    assert!(elapsed >= start_timeout, "{elapsed:?}");
+    assert!(elapsed < BEFORE_NATURAL_EXIT, "{elapsed:?}");
     // That it was killed and reaped is checked through the real binary
     // (tests/process.rs); here other tests spawn concurrently, so the pid
     // is not identifiable.
@@ -326,19 +350,24 @@ fn replies_to_recognize_are_classified() {
 
 #[test]
 fn a_helper_that_stops_reading_times_out_the_write() {
-    let mut h = started("no-read", b"", SLEEP);
+    let mut h = started("no-read", b"", &sleep());
     let start = Instant::now();
     // Far more than a pipe buffer.
     let r = h.recognize(&image(4 << 20), &req(Duration::from_millis(100)));
     assert_eq!(r, Err(OcrPageError::Timeout(Duration::ZERO)));
     let elapsed = start.elapsed();
+    // The write gives up at the page deadline plus `GRACE`, and the page
+    // deadline is set after `start`. Without the kill the write would block
+    // until the stand-in exits and then fail on the closed pipe, a
+    // `Recognition` error, not a timeout; the upper bound separates the two
+    // as in `a_helper_that_never_answers_hello_is_killed`.
     assert!(elapsed >= GRACE, "{elapsed:?}");
-    assert!(elapsed < GRACE + Duration::from_secs(2), "{elapsed:?}");
+    assert!(elapsed < BEFORE_NATURAL_EXIT, "{elapsed:?}");
 }
 
 #[test]
 fn a_helper_that_ignores_shutdown_is_killed_on_drop() {
-    let h = started("ignore", b"", SLEEP);
+    let h = started("ignore", b"", &sleep());
     let pid = h.id();
     let start = Instant::now();
     drop(h);

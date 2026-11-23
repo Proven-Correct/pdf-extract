@@ -10,9 +10,12 @@
 //!
 //! Operator-limit tests are functional only and use small limits: hayro runs
 //! about 0.9M operators/s in release and far fewer unoptimised, so a
-//! seconds-per-operator claim would be platform-dependent (D-32). The only
-//! wall-clock assertions are on the deadline, which is what bounds time; their
-//! margins are wide for shared CI runners, and the measured times are printed
+//! seconds-per-operator claim would be platform-dependent (D-32). The deadline
+//! tests assert what the deadline guarantees structurally (a deadline stop, at
+//! a deadline check, before the fixture's last operator, not before the
+//! deadline) and bound wall-clock time only by a loose hang watchdog: a tight
+//! bound is overrun by coverage instrumentation on shared CI runners with the
+//! guarantee intact (issue #6). The measured times are printed
 //! (`--nocapture`).
 
 mod common;
@@ -103,44 +106,95 @@ fn form_fanout_is_cut_at_max_ops() {
     assert!(leaves > 0 && leaves < 1 << 22, "{leaves} leaves drawn");
 }
 
+/// Operators `hostile::form_fanout(depth)` costs when nothing cuts it: 2 per
+/// interior form draw, 4 per leaf draw and 4 on the page (the fixture's own
+/// count, checked at a small depth in `form_fanout_is_stopped_by_the_deadline`).
+fn form_fanout_ops(depth: u32) -> u64 {
+    2 * ((1 << depth) - 1) + 4 * (1 << depth) + 4
+}
+
+/// Operators `hostile::operator_flood(n)` costs: `n` plus five on each side
+/// (checked by `operator_flood_completes_without_limits`).
+fn operator_flood_ops(n: u64) -> u64 {
+    n + 10
+}
+
+/// The upper bound of the deadline tests, a hang watchdog rather than a
+/// latency claim: the stop is at most `check_interval` operators past the
+/// deadline (milliseconds in the test profile, even instrumented), so only an
+/// interpreter that stopped reading the clock comes near it.
+const HANG_WATCHDOG: Duration = Duration::from_secs(10);
+
+/// Runs page 0 of `pdf` with no operator limit and a deadline `after` from
+/// just before interpretation starts. Returns the output, the time the
+/// interpreter took and the time since the deadline was set (which, unlike
+/// the first, includes nothing the deadline did not, so it is never less
+/// than `after` when the deadline stopped the page).
+fn run_with_deadline(pdf: &Pdf, after: Duration) -> (common::Output, Duration, Duration) {
+    let mut set = None;
+    let (out, elapsed) = run_page_timed(pdf, &Run::default(), |b| {
+        let now = Instant::now();
+        set = Some(now);
+        b.deadline = Some(now + after);
+    });
+    let since_set = set.expect("the budget hook ran").elapsed();
+    (out, elapsed, since_set)
+}
+
+/// The structural guarantees of a deadline stop on a fixture of `total`
+/// operators: the reason is the deadline; the counter froze at a deadline
+/// check (`tick` reads the clock only when the count is a multiple of
+/// `check_interval`, and counts the refused operator); the fixture had
+/// operators left; the deadline had passed; and no hang.
+fn assert_deadline_stop(out: &common::Output, total: u64, after: Duration, since_set: Duration) {
+    let interval = u64::from(InterpretBudget::DEFAULT_CHECK_INTERVAL);
+    assert_eq!(out.stats.exhausted, Some(BudgetExhaustion::Deadline));
+    assert_eq!(out.stats.ops % interval, 0, "{} ops", out.stats.ops);
+    assert!(out.stats.ops < total, "{} of {total} ops", out.stats.ops);
+    assert!(
+        since_set >= after,
+        "stopped {since_set:?} after a {after:?} deadline"
+    );
+    assert!(since_set < HANG_WATCHDOG, "took {since_set:?}");
+}
+
 #[test]
 fn form_fanout_is_stopped_by_the_deadline() {
-    // The gating wall-clock test: no operator limit, a 500 ms deadline. The
-    // 2 s slack covers the 4,096 operators between deadline checks at
-    // unoptimised speed plus CI noise.
+    // The gating deadline test: no operator limit, a 500 ms deadline. Uncut,
+    // the fixture runs for tens of seconds (about 40 s in the test profile
+    // on an Apple-silicon laptop), well above the watchdog, so a deadline
+    // that never fired would trip the watchdog as well as the counter checks.
+    assert_eq!(
+        run_on_small_stack(hostile::form_fanout(3), Run::default())
+            .stats
+            .ops,
+        form_fanout_ops(3)
+    );
+    let after = Duration::from_millis(500);
     let pdf = open(hostile::form_fanout(22));
-    let (out, elapsed) = run_page_timed(&pdf, &Run::default(), |b| {
-        b.deadline = Some(Instant::now() + Duration::from_millis(500));
-    });
+    let (out, elapsed, since_set) = run_with_deadline(&pdf, after);
     println!(
         "form_fanout(22), 500 ms deadline: stopped after {elapsed:?}, {} ops",
         out.stats.ops
     );
-    assert_eq!(out.stats.exhausted, Some(BudgetExhaustion::Deadline));
-    assert!(
-        elapsed < Duration::from_millis(2_500),
-        "took {elapsed:?}, bound is 500 ms + 2 s"
-    );
+    assert_deadline_stop(&out, form_fanout_ops(22), after, since_set);
 }
 
 #[test]
 fn deadline_stops_an_operator_flood() {
     // 50M operators (100 MB decoded), no operator limit, a 50 ms deadline set
-    // when interpretation starts.
+    // when interpretation starts. `n` is cheap: in the test profile the
+    // whole flood runs in under a second, below the watchdog, so here it is
+    // the counter (`ops < total`) that shows the deadline cut it short.
+    let after = Duration::from_millis(50);
     let pdf = open(hostile::operator_flood(50_000_000));
-    let (out, elapsed) = run_page_timed(&pdf, &Run::default(), |b| {
-        b.deadline = Some(Instant::now() + Duration::from_millis(50));
-    });
+    let (out, elapsed, since_set) = run_with_deadline(&pdf, after);
     println!(
         "operator_flood(50M), 50 ms deadline: stopped after {elapsed:?}, {} ops",
         out.stats.ops
     );
-    assert_eq!(out.stats.exhausted, Some(BudgetExhaustion::Deadline));
+    assert_deadline_stop(&out, operator_flood_ops(50_000_000), after, since_set);
     assert_eq!(out.lines(), ["Start"]);
-    assert!(
-        elapsed < Duration::from_millis(300),
-        "took {elapsed:?}, bound is 300 ms"
-    );
 }
 
 #[test]

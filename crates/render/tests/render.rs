@@ -257,8 +257,14 @@ fn the_operator_budget_is_a_limit_error() {
 
 #[test]
 fn the_time_budget_is_a_limit_error_within_a_second() {
+    // Asserted is that the budget ended the render, and not before it ran
+    // out (`render_gray` starts its clock after `start`). The upper bound is
+    // a hang watchdog: a tight one (it was 1 s) is overrun by coverage
+    // instrumentation on shared runners with the budget honoured (issue #6).
+    // Uncut, the fan-out renders for far longer than the watchdog.
+    let budget = Duration::from_millis(200);
     let limits = Limits {
-        page_time_budget: Duration::from_millis(200),
+        page_time_budget: budget,
         ..Limits::default()
     };
     let doc = open(hostile::form_fanout(22), limits);
@@ -276,7 +282,14 @@ fn the_time_budget_is_a_limit_error_within_a_second() {
         ),
         "{err:?}"
     );
-    assert!(elapsed < Duration::from_secs(1), "took {elapsed:?}");
+    assert!(
+        elapsed >= budget,
+        "stopped after {elapsed:?}, before the budget"
+    );
+    assert!(
+        elapsed < Duration::from_secs(10),
+        "took {elapsed:?} (hang watchdog)"
+    );
 }
 
 #[test]

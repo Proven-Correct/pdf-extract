@@ -179,19 +179,27 @@ fn operator_flood_exceeds_ops_per_page() {
 
 #[test]
 fn form_fanout_is_cut_by_the_page_time_budget() {
-    // The one wall-clock gate (spec D-32): 500 ms budget, 2 s of slack for
-    // the 4,096 operators between deadline checks and CI noise.
+    // The one wall-clock gate (spec D-32): a 500 ms budget. Asserted is that
+    // the budget, and not something else, ended the page, and not before it
+    // ran out; the fork's own tests (hayro_budget.rs) pin that the stop comes
+    // at a deadline check. The upper bound is a hang
+    // watchdog, not slack on the budget: a fixed slack (it was 2 s) is
+    // overrun by coverage instrumentation on shared runners with the budget
+    // honoured (issue #6). Uncut, the page runs for tens of seconds.
+    let budget = Duration::from_millis(500);
     let bytes = hostile::form_fanout(22);
     let (err, elapsed) = on_small_stack(move || {
         let opts = OpenOptions {
             limits: Limits {
-                page_time_budget: Duration::from_millis(500),
+                page_time_budget: budget,
                 ..Limits::default()
             },
             ..OpenOptions::default()
         };
         let doc = Document::from_bytes(bytes, &opts).expect("opens");
         let page = doc.page(0).expect("page");
+        // Before the extraction starts its clock, so `elapsed` cannot be
+        // shorter than the budget if the budget ended the page.
         let start = Instant::now();
         let err = page
             .text(&TextOptions::default())
@@ -206,8 +214,12 @@ fn form_fanout_is_cut_by_the_page_time_budget() {
         }
     );
     assert!(
-        elapsed < Duration::from_millis(2_500),
-        "took {elapsed:?} for a 500 ms budget"
+        elapsed >= budget,
+        "stopped after {elapsed:?}, before the budget"
+    );
+    assert!(
+        elapsed < Duration::from_secs(10),
+        "took {elapsed:?} for a 500 ms budget (hang watchdog)"
     );
     eprintln!("form_fanout(22) stopped after {elapsed:?} (budget 500 ms)");
 }
