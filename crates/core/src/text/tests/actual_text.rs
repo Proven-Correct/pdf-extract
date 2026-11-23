@@ -215,19 +215,21 @@ fn a_span_left_open_in_a_form_ends_with_the_form() {
 }
 
 #[test]
-fn a_4mb_named_property_referenced_2000_times_is_fast() {
-    // §4.9 (6), H10c: the property list is resolved once per context, so
-    // this extracts in under 2 s (about 4.6 s before H10 in release).
+fn a_4mb_named_property_referenced_2000_times_is_resolved_once() {
+    // §4.9 (6), H10c: the property list is resolved once per context, not
+    // once per reference. Asserted as a resolution count rather than a clock:
+    // the 4 MB literal is legitimately parsed a few more times (the budgeted
+    // device reads), which pushes a wall-clock bound past any fixed limit
+    // under coverage instrumentation on a shared runner, so a time bound
+    // cannot tell a slow machine from a regression. The count is exactly what
+    // H10c guarantees (about 4.6 s before H10 in release, 2000 resolutions).
     let mut content = String::from("BT /F 11 Tf 10 100 Td ");
     content.push_str(&"/Span /P0 BDC EMC ".repeat(2000));
     content.push_str("(z) Tj ET");
     let bytes = named(&"\\200".repeat(1 << 20), &content);
-    let start = std::time::Instant::now();
+    // The counter is thread-local and extraction runs on this thread.
+    let before = hayro_interpret::property_hooks::resolutions();
     let p = extract(bytes);
     assert_eq!(texts(&p), ["z"]);
-    assert!(
-        start.elapsed() < std::time::Duration::from_secs(2),
-        "{:?}",
-        start.elapsed()
-    );
+    assert_eq!(hayro_interpret::property_hooks::resolutions() - before, 1);
 }

@@ -7,8 +7,6 @@
 
 mod common;
 
-use std::time::{Duration, Instant};
-
 use common::{Collector, assemble_pdf, interpret, run_device, stream};
 use hayro_interpret::font::Glyph;
 use hayro_interpret::property_hooks::resolutions;
@@ -57,15 +55,18 @@ fn a_named_property_is_resolved_once_per_context() {
 }
 
 #[test]
-fn a_4mb_property_referenced_2000_times_is_fast() {
+fn a_4mb_property_referenced_2000_times_is_resolved_once_each() {
+    // A resolution count, not a clock: a wall-clock bound fails under
+    // coverage instrumentation on shared runners and cannot tell a slow
+    // machine from a regression, while the count is what H10c guarantees.
     let pdf = Pdf::new(named(4 << 20, 2000)).expect("opens");
     let page = &pdf.pages()[0];
     let _ = page.page_stream();
-    let start = Instant::now();
+    let before = resolutions();
     let out = interpret(&pdf, page);
-    let elapsed = start.elapsed();
     assert_eq!(out.text, "z");
-    assert!(elapsed < Duration::from_secs(2), "{elapsed:?}");
+    // `/P0` (4 MB) and `/P1`, once each, for 4,000 `BDC`s.
+    assert_eq!(resolutions() - before, 2);
 }
 
 /// The `/ActualText` of every property list the device receives.
