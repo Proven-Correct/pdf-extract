@@ -64,9 +64,6 @@
 # Also skipped, because the claim they check is changed by the
 # instrumentation itself rather than by our code (each still runs in the
 # ordinary suite):
-# - a_4mb_named_property_referenced_2000_times_is_fast (core text unit
-#   test): a wall-clock bound (< 2 s) that a several-times-slower
-#   instrumented build misses (2.1 s measured on macOS arm64).
 # - helpers_start_with_only_the_standard_descriptors (ocr tests/process.rs):
 #   the instrumented helper reports one descriptor more (fd 3) than 0-2.
 #   It is opened inside the helper (attributed to the sanitizer runtime's
@@ -125,7 +122,6 @@ SKIP=(
     # core's text unit tests: the same measurement, through that runner.
     the_unit_tests_small_stack_is_measured
     # Changed by the instrumentation, not by our code.
-    a_4mb_named_property_referenced_2000_times_is_fast
     helpers_start_with_only_the_standard_descriptors
     a_hanging_helper_is_killed_at_the_deadline
 )
