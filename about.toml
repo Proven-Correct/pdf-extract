@@ -27,7 +27,7 @@ accepted = [
 ignore-dev-dependencies = true
 ignore-build-dependencies = true
 
-# The platforms CI builds and tests (ubuntu-24.04, macos-14, both
+# The platforms CI builds and tests (ubuntu-24.04, macos-15, both
 # architectures). Naming them makes cargo-about evaluate `cfg(...)`
 # dependencies against real targets, so `[target.'cfg(loom)'.dependencies]`
 # (loom, only in the model-checking build, never in the wheel) and its own
