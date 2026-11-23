@@ -463,7 +463,18 @@ fn proc_environ_of_a_live_helper_holds_only_allowed_variables() {
 #[test]
 fn the_pool_bounds_helpers_and_every_page_completes() {
     let _g = serial();
-    arm("slow-on-recognize:200");
+    // Two helpers must be busy at once for the pool to grow to two. A
+    // fixed sleep in each helper only made that likely: under coverage
+    // instrumentation on a loaded runner the second thread can reach the
+    // pool after the first page has returned its helper, and reuse it
+    // (issue #6). The rendezvous holds each helper's first page until two
+    // helpers have one, so the construction helper is not returned before
+    // the second is spawned. The fault is taken once per helper, so the
+    // last two pages recognise without waiting. A pool that never adds the
+    // second helper fails the waiting page at its deadline (page_timeout,
+    // 60 s) as a timeout: a test failure rather than a hang.
+    let meet = common::scratch("process-pool-rendezvous");
+    arm(&format!("rendezvous-on-recognize:2:{}", meet.display()));
     let e = engine_with(OcrConfig {
         max_instances: 2,
         ..common::process_config()
