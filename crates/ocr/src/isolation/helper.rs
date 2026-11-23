@@ -21,9 +21,20 @@
 //! `PDF_EXTRACT_OCR_HELPER_FAULT_ARMED=1` is set too, so a stray value in a
 //! production environment does nothing. The library never reads these
 //! variables; it only passes them through to the helpers it spawns.
+//!
+//! The modes are `abort-on-recognize`, `exit-on-recognize`,
+//! `hang-on-recognize`, `garbage-on-recognize` (O31) and, beyond O31,
+//! `slow-on-recognize:<ms>`, `report-fds`, `report-env` and
+//! `rendezvous-on-recognize:<n>:<dir>`. The last makes concurrency tests
+//! deterministic: each helper so armed drops a marker file named after its
+//! process id into `<dir>` and holds its first page until `<dir>` holds at
+//! least `n` entries, so `n` helpers are provably busy at once whatever
+//! the scheduler does to the threads feeding them. The wait is capped by
+//! the request's own deadline and ends in a recognition `PageErr` naming
+//! how many arrived, so a missing peer fails the page instead of hanging.
 
 use std::io::{self, BufWriter, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use pdf_extract_core::OcrPageError;
@@ -47,6 +58,10 @@ const EXIT_INIT: u8 = 1;
 /// Exit status of the `exit-on-recognize` fault.
 const EXIT_FAULT: i32 = 3;
 
+/// How often a `rendezvous-on-recognize` helper re-counts the directory:
+/// short against the pages it gates, long enough not to spin.
+const RENDEZVOUS_POLL: Duration = Duration::from_millis(10);
+
 /// Budget of the start-up warm-up recognition, which `Hello` does not
 /// carry; the parent's own wait for `HelloOk` is not bounded by it.
 pub(crate) const WARMUP_BUDGET: Duration = Duration::from_secs(60);
@@ -68,6 +83,10 @@ enum Fault {
     ReportFds,
     /// `report-env`: answer with the names of the environment variables.
     ReportEnv,
+    /// `rendezvous-on-recognize:<n>:<dir>`: create `<dir>/<pid>`, wait
+    /// until `<dir>` holds at least `n` entries (or the page deadline
+    /// passes), then recognise normally.
+    Rendezvous { n: usize, dir: PathBuf },
 }
 
 impl Fault {
@@ -80,8 +99,22 @@ impl Fault {
             "report-fds" => Self::ReportFds,
             "report-env" => Self::ReportEnv,
             other => {
-                let ms = other.strip_prefix("slow-on-recognize:")?.parse().ok()?;
-                Self::Slow(Duration::from_millis(ms))
+                if let Some(rest) = other.strip_prefix("rendezvous-on-recognize:") {
+                    // Split at the first colon only: the directory is the
+                    // rest, and may itself contain colons.
+                    let (n, dir) = rest.split_once(':')?;
+                    let n = n.parse().ok().filter(|&n: &usize| n > 0)?;
+                    if dir.is_empty() {
+                        return None;
+                    }
+                    Self::Rendezvous {
+                        n,
+                        dir: PathBuf::from(dir),
+                    }
+                } else {
+                    let ms = other.strip_prefix("slow-on-recognize:")?.parse().ok()?;
+                    Self::Slow(Duration::from_millis(ms))
+                }
             }
         })
     }
@@ -214,11 +247,37 @@ fn serve(
                 std::thread::sleep(d);
                 recognize(&mut instance, h, pixels, deadline)
             }
+            Some(Fault::Rendezvous { n, dir }) => match rendezvous(n, &dir, deadline) {
+                Ok(()) => recognize(&mut instance, h, pixels, deadline),
+                Err(detail) => Message::PageErr(page_err::RECOGNITION, detail),
+            },
             None => recognize(&mut instance, h, pixels, deadline),
         };
         if !send(out, &reply) {
             return 0;
         }
+    }
+}
+
+/// The `rendezvous-on-recognize` wait: announces this process in `dir`,
+/// then polls until `dir` holds `n` entries. Gives up at `deadline` (the
+/// page's own), so a peer that never arrives costs one page, not a hang.
+/// Entries are counted, not matched to process ids: the directory is the
+/// test's fresh scratch, holding nothing but markers.
+fn rendezvous(n: usize, dir: &Path, deadline: Instant) -> Result<(), String> {
+    let marker = dir.join(std::process::id().to_string());
+    std::fs::write(&marker, b"")
+        .map_err(|e| format!("rendezvous: cannot create {}: {e}", marker.display()))?;
+    loop {
+        let arrived = std::fs::read_dir(dir).map_or(0, Iterator::count);
+        if arrived >= n {
+            return Ok(());
+        }
+        let now = Instant::now();
+        if now >= deadline {
+            return Err(format!("rendezvous timed out: {arrived}/{n}"));
+        }
+        std::thread::sleep(RENDEZVOUS_POLL.min(deadline - now));
     }
 }
 

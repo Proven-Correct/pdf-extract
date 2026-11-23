@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 
 use pdf_extract_core::UnavailableReason;
 use pdf_extract_core::{BlockSeparator, Document, Limits, OcrError, OcrPageError};
-use pdf_extract_ocr::isolation::client::{GRACE, helper_log, set_helper_test_env};
+use pdf_extract_ocr::isolation::client::{GRACE, SHUTDOWN_WAIT, helper_log, set_helper_test_env};
 use pdf_extract_ocr::{Isolation, OcrConfig, OcrEngine, OcrOptions};
 use pdf_extract_render::{RenderOptions, render_gray};
 
@@ -338,7 +338,16 @@ fn the_parent_kills_at_the_deadline_counted_from_the_start_of_ocr() {
 #[test]
 fn dropping_the_engine_shuts_down_every_idle_helper() {
     let _g = serial();
-    arm("slow-on-recognize:300");
+    // Three helpers must be busy at once for the pool to hold three. A
+    // fixed sleep in each helper only makes that likely: a thread whose
+    // render runs late (an instrumented build, a loaded runner) reaches
+    // the pool after the first page has returned its helper, and reuses
+    // it (issue #3). The rendezvous holds every helper's first page until
+    // three helpers have one, so no helper is returned before the third
+    // is checked out. The construction helper's first Recognize is a
+    // page's (its warm-up runs inside Hello), so it takes part too.
+    let meet = common::scratch("process-drop-rendezvous");
+    arm(&format!("rendezvous-on-recognize:3:{}", meet.display()));
     let e = engine_with(OcrConfig {
         max_instances: 3,
         ..common::process_config()
@@ -355,13 +364,18 @@ fn dropping_the_engine_shuts_down_every_idle_helper() {
     // The construction helper plus the two the concurrent pages added.
     let ours: Vec<u32> = pids[before - 1..].to_vec();
     assert_eq!(ours.len(), 3, "{pids:?}");
+    // Hang detection, not a speed claim: drop shuts the idle helpers
+    // down one after another, each allowed SHUTDOWN_WAIT before it is
+    // killed (and an instrumented helper writes its profile at exit), so
+    // the code's own worst case is ours.len() × SHUTDOWN_WAIT. The margin
+    // covers the kill and reap after a wait runs out, and the scheduler.
+    // The exit codes below are what show the helpers obeyed Shutdown.
+    let helpers = u32::try_from(ours.len()).expect("three");
+    let bound = SHUTDOWN_WAIT * helpers + Duration::from_secs(2);
     let start = Instant::now();
     drop(e);
-    assert!(
-        start.elapsed() < Duration::from_secs(2),
-        "{:?}",
-        start.elapsed()
-    );
+    let elapsed = start.elapsed();
+    assert!(elapsed < bound, "{elapsed:?} (bound {bound:?})");
     for pid in ours {
         let status = reaped(pid).expect("reaped on drop");
         assert_eq!(status.code(), Some(0), "pid {pid}: {status:?}");
