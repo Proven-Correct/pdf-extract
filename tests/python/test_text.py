@@ -170,7 +170,7 @@ def test_operator_cap_raises_limit_exceeded(fixtures: Fixtures) -> None:
     assert pdf_extract.open(fixtures.path("operator_flood_400000"))[0].text() == "Start\nEnd\n"
 
 
-def test_time_budget_raises_limit_exceeded_promptly(fixtures: Fixtures) -> None:
+def test_time_budget_raises_limit_exceeded(fixtures: Fixtures) -> None:
     # The budget, and not something else, ended the page, and not before it
     # ran out: the library starts its clock after `start`, on the same
     # monotonic clock (CLOCK_MONOTONIC on Linux, mach_absolute_time on

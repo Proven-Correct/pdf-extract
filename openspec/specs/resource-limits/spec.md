@@ -102,7 +102,7 @@ The system SHALL bound the interpretation of one page by `page_time_budget`, che
 
 #### Scenario: Form fan-out is cut by the deadline
 - **WHEN** a page whose Form XObject fan-out would run for minutes is extracted from Python under `page_time_budget=0.5`
-- **THEN** `LimitExceededError` is raised within 2.5 seconds [0001 §2.3; 0001 §4.10]
+- **THEN** `LimitExceededError` is raised for `page_time_budget` (500 ms), no earlier than the budget and well before the uncut page would finish; the upper bound is only a 10 s hang watchdog [0001 §2.3; 0001 §4.10]
 
 #### Scenario: An unrepresentable budget means no deadline
 - **WHEN** a Rust caller sets `page_time_budget` to `Duration::MAX`

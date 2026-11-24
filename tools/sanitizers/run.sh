@@ -75,8 +75,6 @@
 #   and failed in the next, so it is skipped under both.
 # TSan only (its slowdown, roughly an order of magnitude, breaks
 # deadline arithmetic that ASan's does not):
-# - the_time_budget_is_a_limit_error_within_a_second (render tests/render.rs):
-#   a wall-clock bound (1.37 s measured).
 # - a_hanging_helper_is_killed_at_the_deadline (skipped under ASan too, see
 #   above) and
 #   the_deadline_counts_from_the_start_of_ocr_not_from_the_pipe_write (ocr
@@ -134,7 +132,6 @@ LEAK_BY_DESIGN=(
 )
 SKIP_TSAN=(
     runtime_sizes_open_in_hayro
-    the_time_budget_is_a_limit_error_within_a_second
     the_deadline_counts_from_the_start_of_ocr_not_from_the_pipe_write
 )
 
