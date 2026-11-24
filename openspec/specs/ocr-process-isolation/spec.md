@@ -175,7 +175,7 @@ Under process isolation, the parent SHALL enforce each page's deadline itself: `
 
 #### Scenario: Hanging helper
 - **WHEN** the helper never answers a page and `page_timeout` is 500 ms
-- **THEN** the call returns `OcrPageError::Timeout` carrying the configured `page_timeout` within `page_timeout` + the 2 s transport grace + 2 s of slack for the kill and reap, and the helper is reaped after being killed by a signal [0002 O27, §3.5, §2.4]
+- **THEN** the call returns `OcrPageError::Timeout` carrying the configured `page_timeout`, no earlier than `page_timeout` + the 2 s transport grace and below a 30 s hang watchdog, and the helper is reaped after being killed by a signal [0002 O27, §3.5, §2.4]
 
 #### Scenario: Rendering time counts
 - **WHEN** rendering a page uses most of `page_timeout` before the raster is sent

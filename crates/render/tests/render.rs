@@ -256,7 +256,7 @@ fn the_operator_budget_is_a_limit_error() {
 }
 
 #[test]
-fn the_time_budget_is_a_limit_error_within_a_second() {
+fn the_time_budget_ends_the_render_with_a_limit_error() {
     // Asserted is that the budget ended the render, and not before it ran
     // out (`render_gray` starts its clock after `start`). The upper bound is
     // a hang watchdog: a tight one (it was 1 s) is overrun by coverage
