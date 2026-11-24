@@ -264,7 +264,10 @@ fn bad_replies_to_hello_are_init_failures() {
 
 #[test]
 fn a_helper_that_never_answers_hello_is_killed() {
-    let start_timeout = Duration::from_millis(200);
+    // Long enough that the spawn, which `elapsed` includes but the start
+    // deadline does not, is a small fraction of it: the lower bound below
+    // then fails a start timeout cut to a fraction of this one (issue #18).
+    let start_timeout = Duration::from_secs(2);
     let f = factory(fake("hang", &[], &sleep()), start_timeout);
     let start = Instant::now();
     let e = f.start().map(|_| ()).expect_err("timeout");
