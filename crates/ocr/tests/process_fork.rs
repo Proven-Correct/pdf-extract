@@ -17,15 +17,24 @@
 
 mod common;
 
+// Everything below is used only by the unix `main`; gated item by item so a
+// non-unix build has no dead code under `-D warnings`.
+#[cfg(unix)]
 use std::path::Path;
+#[cfg(unix)]
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
 use pdf_extract_core::{BlockSeparator, Document};
+#[cfg(unix)]
 use pdf_extract_ocr::isolation::client::{helper_log, set_helper_test_env};
+#[cfg(unix)]
 use pdf_extract_ocr::{OcrConfig, OcrEngine, OcrOptions, fork_resets};
 
+#[cfg(unix)]
 const OPTS: OcrOptions = OcrOptions { dpi: Some(150) };
 
+#[cfg(unix)]
 fn recognises(engine: &OcrEngine, doc: &Document) -> bool {
     engine
         .ocr(&doc.page(0).expect("page"), &OPTS)
@@ -38,9 +47,11 @@ fn recognises(engine: &OcrEngine, doc: &Document) -> bool {
 /// How long the parent's helper may take to reach its first page: the
 /// page budget (`page_timeout`'s default), which also bounds its wait at
 /// the rendezvous.
+#[cfg(unix)]
 const MARKER_WAIT: Duration = Duration::from_secs(60);
 
 /// Waits until `marker` exists, panicking at [`MARKER_WAIT`].
+#[cfg(unix)]
 fn await_marker(marker: &Path) {
     let deadline = Instant::now() + MARKER_WAIT;
     while !marker.exists() {

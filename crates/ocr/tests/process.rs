@@ -167,9 +167,11 @@ fn a_hanging_helper_is_killed_at_the_deadline() {
         "{r:?}"
     );
     // The parent kills the helper at the page deadline plus GRACE, and the
-    // deadline is taken inside `ocr()`, after `start`, so the call cannot
-    // have returned sooner. hang-on-recognize never answers and never exits
-    // (helper.rs sleeps forever), so there is no natural exit to stay below:
+    // deadline is taken inside `ocr()`, after `start`, so the parent's kill
+    // cannot come sooner (an early Timeout from the engine's own post-render
+    // or noise-screen checks fails the lower bound below).
+    // hang-on-recognize never answers and never exits (helper.rs sleeps
+    // forever), so there is no natural exit to stay below:
     // the kill itself is proven by the signal status below, and the upper
     // bound is only a hang watchdog. It used to be timeout + GRACE + 2 s,
     // which coverage instrumentation on a shared runner can overrun with the
@@ -278,7 +280,11 @@ fn the_deadline_counts_from_the_start_of_ocr_not_from_the_pipe_write() {
         // Answered cooperatively by the helper, not by the parent's kill:
         // the answer comes at timeout + (R₂ − R/2), so this holds while the
         // render inside ocr() stays under R/2 + 2 s.
-        assert!(elapsed < timeout + Duration::from_secs(2), "{tried}");
+        if elapsed >= timeout + Duration::from_secs(2) {
+            return Err(format!(
+                "{tried}: past the bound; the kill and reap ran long, not the helper's answer?"
+            ));
+        }
         Ok(())
     });
 }
