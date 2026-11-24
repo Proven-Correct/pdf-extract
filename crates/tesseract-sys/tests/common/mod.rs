@@ -19,8 +19,10 @@ pub fn tessdata() -> PathBuf {
         .find(|d| d.join("eng.traineddata").is_file())
         .unwrap_or_else(|| {
             panic!(
-                "no eng.traineddata found: set TESSDATA_PREFIX to a directory holding it \
-                 (CI installs tessdata_fast; see .github/actions/tessdata)"
+                "no eng.traineddata found: set TESSDATA_PREFIX to a directory holding it. \
+                 Locally: `(cd tools/oracle && uv run python mkcorpusd.py --fetch-model)`, then \
+                 `export TESSDATA_PREFIX=$PWD/tools/oracle/.cache/tessdata_fast` (README, \
+                 \"Running the tests\"); CI installs it via .github/actions/tessdata"
             )
         })
 }
